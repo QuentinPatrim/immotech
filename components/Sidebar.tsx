@@ -1,59 +1,102 @@
 "use client";
 
-import { User, Bell, Shield, LogOut } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { 
+  LayoutDashboard, 
+  Wallet, 
+  PieChart, 
+  TrendingUp, 
+  Calculator, 
+  Settings,
+  BrainCircuit
+} from "lucide-react";
 
-export default function SettingsPage() {
-  const handleReset = () => {
-    if (confirm("Voulez-vous vraiment effacer toutes vos données et recommencer l'intro ?")) {
-      localStorage.clear();
-      window.location.href = "/"; // Recharge la page pour relancer l'onboarding
-    }
-  };
+export default function Sidebar() {
+  const pathname = usePathname();
+
+  // Liste complète des liens
+  const links = [
+    { name: "Dashboard", href: "/", icon: LayoutDashboard },
+    { name: "Patrimoine", href: "/patrimoine", icon: Wallet },
+    { name: "Budget", href: "/budget", icon: PieChart },
+    { name: "Projection", href: "/projection", icon: TrendingUp },
+    { name: "Simulateur", href: "/simulateur", icon: Calculator }, // ✅ Ajouté ici
+    { name: "Réglages", href: "/reglages", icon: Settings }, // ✅ Corrigé vers /reglages
+  ];
+
+  // Fonction pour vérifier si un lien est actif
+  const isActive = (path: string) => pathname === path;
 
   return (
-    <div className="space-y-8 pb-24">
-      <div className="flex flex-col gap-2">
-        <h1 className="text-3xl font-bold text-white">Réglages</h1>
-        <p className="text-zinc-400">Gérez vos préférences et vos données.</p>
-      </div>
+    <>
+      {/* --- VERSION DESKTOP (Latérale Fixe) --- */}
+      <div className="hidden md:flex flex-col w-64 bg-zinc-950 border-r border-zinc-800 h-screen fixed left-0 top-0 p-4 z-50">
+        <div className="flex items-center gap-2 mb-8 px-2">
+           <div className="text-2xl font-bold text-white tracking-tight">
+              ImmoTech<span className="text-emerald-500">.</span>
+           </div>
+        </div>
 
-      <div className="space-y-4">
-        {/* Section Profil */}
-        <div className="p-6 bg-zinc-900/50 border border-zinc-800 rounded-2xl">
-            <div className="flex items-center gap-4 mb-6">
-                <div className="h-12 w-12 rounded-full bg-emerald-500/20 flex items-center justify-center text-emerald-500">
-                    <User size={24} />
-                </div>
-                <div>
-                    <h3 className="text-white font-bold text-lg">Mon Profil</h3>
-                    <p className="text-zinc-500 text-sm">Données stockées localement.</p>
-                </div>
-            </div>
-            
-            <Button 
-                onClick={handleReset} 
-                variant="destructive" 
-                className="w-full bg-red-500/10 text-red-500 hover:bg-red-500/20 hover:text-red-400 border border-red-500/20"
+        <nav className="space-y-1 flex-1">
+          {links.map((link) => (
+            <Link
+              key={link.href}
+              href={link.href}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group ${
+                isActive(link.href) 
+                  ? "bg-emerald-500/10 text-emerald-400 font-medium" 
+                  : "text-zinc-500 hover:text-white hover:bg-zinc-900"
+              }`}
             >
-                <LogOut size={18} className="mr-2" /> Réinitialiser l'Application
-            </Button>
-            <p className="text-xs text-zinc-600 mt-3 text-center">
-                Cela effacera votre budget et relancera le questionnaire de démarrage.
-            </p>
-        </div>
+              <link.icon size={20} className={isActive(link.href) ? "text-emerald-500" : "text-zinc-500 group-hover:text-white transition-colors"} />
+              <span>{link.name}</span>
+            </Link>
+          ))}
+          
+          {/* Lien "Analyses IA" */}
+          <Link
+              href="/analyses"
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 mt-4 ${
+                isActive("/analyses") 
+                  ? "bg-emerald-500/10 text-emerald-400" 
+                  : "text-zinc-500 hover:text-white hover:bg-zinc-900"
+              }`}
+            >
+              <BrainCircuit size={20} />
+              <span>Analyses IA</span>
+            </Link>
+        </nav>
 
-        {/* Section Placeholder (Notifications) */}
-        <div className="p-6 bg-zinc-900/50 border border-zinc-800 rounded-2xl opacity-50 cursor-not-allowed">
-             <div className="flex items-center gap-4 mb-4">
-                <div className="h-10 w-10 rounded-full bg-zinc-800 flex items-center justify-center text-zinc-400">
-                    <Bell size={20} />
-                </div>
-                <h3 className="text-zinc-400 font-bold">Notifications (Bientôt)</h3>
-            </div>
-        </div>
-
+        <div className="text-xs text-zinc-700 px-3 pb-2">v2.1 • ImmoTech</div>
       </div>
-    </div>
+
+      {/* --- VERSION MOBILE (Barre du bas Fixe) --- */}
+      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-zinc-950/90 backdrop-blur-xl border-t border-zinc-800 pb-safe pt-2 px-2 z-[999]">
+        <div className="flex justify-between items-center h-16 max-w-md mx-auto">
+          {links.map((link) => (
+            <Link
+              key={link.href}
+              href={link.href}
+              className="flex-1 flex flex-col items-center justify-center gap-1 h-full active:scale-95 transition-transform"
+            >
+              <div className={`p-1.5 rounded-full transition-colors ${
+                  isActive(link.href) ? "bg-emerald-500/10" : "bg-transparent"
+              }`}>
+                  <link.icon 
+                    size={22} 
+                    className={isActive(link.href) ? "text-emerald-500" : "text-zinc-500"} 
+                    strokeWidth={isActive(link.href) ? 2.5 : 2}
+                  />
+              </div>
+              {/* Optimisation mobile : texte plus petit */}
+              <span className={`text-[9px] font-medium ${isActive(link.href) ? "text-white" : "text-zinc-600"}`}>
+                {link.name === "Simulateur" ? "Simu" : link.name}
+              </span>
+            </Link>
+          ))}
+        </div>
+      </div>
+    </>
   );
 }
