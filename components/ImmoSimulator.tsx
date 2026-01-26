@@ -1,25 +1,51 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+// On garde les icônes qui marchent bien
 import { Wallet, Building2, Calculator, AlertCircle, TrendingUp } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
-import { motion, useSpring, useTransform } from "framer-motion";
 
-// --- 1. COMPOSANT D'ANIMATION DES CHIFFRES ---
-// C'est lui qui crée l'effet de défilement "Fintech"
-const AnimatedCount = ({ value, className }: { value: number, className?: string }) => {
-  const spring = useSpring(value, { mass: 0.8, stiffness: 75, damping: 15 });
-  const display = useTransform(spring, (current) => Math.round(current).toLocaleString("fr-FR"));
+// --- 1. COMPOSANT ANIMATION (PUR REACT) ---
+// Plus besoin de librairie externe, ça marche tout seul !
+const AnimatedCount = ({ value }: { value: number }) => {
+  const [displayValue, setDisplayValue] = useState(value);
+  const startTime = useRef<number | null>(null);
+  const startValue = useRef(value);
+  const finalValue = useRef(value);
 
   useEffect(() => {
-    spring.set(value);
-  }, [value, spring]);
+    // Si la valeur change, on lance l'animation
+    if (value !== finalValue.current) {
+        startValue.current = displayValue;
+        finalValue.current = value;
+        startTime.current = null; // Reset du timer
 
-  return <motion.span className={className}>{display}</motion.span>;
+        const duration = 1000; // Durée de l'effet en ms (1 seconde)
+
+        const animate = (timestamp: number) => {
+            if (!startTime.current) startTime.current = timestamp;
+            const progress = Math.min((timestamp - startTime.current) / duration, 1);
+            
+            // Fonction "Ease Out Expo" pour un effet premium (rapide au début, lent à la fin)
+            const ease = progress === 1 ? 1 : 1 - Math.pow(2, -10 * progress);
+            
+            const current = startValue.current + (finalValue.current - startValue.current) * ease;
+            setDisplayValue(current);
+
+            if (progress < 1) {
+                requestAnimationFrame(animate);
+            }
+        };
+        
+        requestAnimationFrame(animate);
+    }
+  }, [value, displayValue]);
+
+  return <span>{Math.round(displayValue).toLocaleString("fr-FR")}</span>;
 };
 
-// --- 2. COMPOSANT INPUT (EXTERNE pour éviter le bug clavier) ---
+// --- 2. COMPOSANT INPUT (EXTERNE) ---
 const InputGroup = ({ label, value, onChange, suffix, placeholder }: any) => (
   <div className="flex flex-col gap-2">
       <label className="text-[11px] uppercase tracking-wider font-bold text-zinc-500 ml-1">{label}</label>
@@ -102,14 +128,13 @@ export default function ImmoSimulator() {
                 <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-56 h-56 bg-emerald-500/10 blur-[90px] rounded-full group-hover:bg-emerald-500/20 transition-all duration-700" />
                 <p className="text-emerald-500 font-bold tracking-[0.2em] text-xs uppercase mb-4 relative z-10">Enveloppe d'Achat Max</p>
                 
-                {/* CHIFFRE ANIMÉ ICI */}
+                {/* CHIFFRE ANIMÉ */}
                 <h2 className="text-6xl md:text-8xl font-black text-white tracking-tighter drop-shadow-[0_0_30px_rgba(16,185,129,0.2)] relative z-10">
                     <AnimatedCount value={capResults.totalEnvelope} /> €
                 </h2>
                 
                 <div className="mt-8 flex justify-center gap-8 md:gap-16 relative z-10 border-t border-zinc-900 pt-6 max-w-lg mx-auto">
                      <div className="text-center">
-                        {/* CHIFFRE ANIMÉ ICI */}
                         <div className="text-2xl font-bold text-white"><AnimatedCount value={capResults.maxMonthly} /> €</div>
                         <div className="text-[10px] text-zinc-500 uppercase font-bold mt-1">Mensualité Max</div>
                      </div>
