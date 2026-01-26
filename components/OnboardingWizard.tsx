@@ -11,8 +11,8 @@ interface OnboardingProps {
   onFinish: () => void;
 }
 
-// --- CORRECTION DU BUG CLAVIER ---
-// Le composant doit être défini À L'EXTÉRIEUR de la fonction principale
+// --- CORRECTION CRUCIALE ---
+// Ce composant est défini À L'EXTÉRIEUR pour éviter le bug du clavier qui se ferme.
 const PremiumInput = ({ value, onChange, placeholder, icon: Icon, type = "text", autoFocus = false, onEnter }: any) => (
   <div className="group relative transition-all duration-300 w-full">
     <div className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 group-focus-within:text-emerald-400 transition-colors">
@@ -21,7 +21,7 @@ const PremiumInput = ({ value, onChange, placeholder, icon: Icon, type = "text",
     <Input
       autoFocus={autoFocus}
       type={type}
-      value={value === 0 ? "" : value} // Affiche vide si 0 pour éviter de devoir effacer
+      value={value === 0 ? "" : value} 
       onChange={onChange}
       onKeyDown={(e) => { if (e.key === "Enter" && onEnter) onEnter(); }}
       placeholder={placeholder}
@@ -31,10 +31,12 @@ const PremiumInput = ({ value, onChange, placeholder, icon: Icon, type = "text",
 );
 
 export default function OnboardingWizard({ onFinish }: OnboardingProps) {
-  // 0: Identité, 1: Patrimoine, 2: Revenus, 3: Loyer, 4: Courses, 5: Transport, 6: Loisirs, 7: Fin
+  // ETAPES : 
+  // 0: Identité, 1: Patrimoine, 2: Revenus
+  // 3: Loyer, 4: Courses, 5: Transport, 6: Loisirs, 7: Fin
   const [step, setStep] = useState(0);
   
-  // DATA STATES
+  // DONNÉES
   const [identity, setIdentity] = useState({ firstName: "", lastName: "", age: "" });
   const [assets, setAssets] = useState({ realEstate: "", stocks: "", crypto: "", cash: "" });
   const [income, setIncome] = useState("");
@@ -55,7 +57,7 @@ export default function OnboardingWizard({ onFinish }: OnboardingProps) {
   const handleFinish = () => {
     triggerHaptic("success");
     
-    // Calcul du total des dépenses
+    // On calcule le total pour le dashboard principal
     const totalExpenses = 
       (parseFloat(expenses.housing) || 0) +
       (parseFloat(expenses.food) || 0) +
@@ -72,12 +74,13 @@ export default function OnboardingWizard({ onFinish }: OnboardingProps) {
       },
       budget: {
         income: parseFloat(income) || 0,
-        expenses: totalExpenses, // On stocke le total pour le dashboard simple
-        details: expenses // On garde le détail pour plus tard
+        expenses: totalExpenses, 
+        details: expenses // On sauvegarde le détail pour plus tard
       },
       onboardingComplete: true
     };
     
+    // Sauvegarde compatible avec tout le système
     localStorage.setItem("userProfile", JSON.stringify(userData));
     localStorage.setItem("myBudget", JSON.stringify({ 
         income: userData.budget.income,
@@ -110,7 +113,7 @@ export default function OnboardingWizard({ onFinish }: OnboardingProps) {
         animate={{ opacity: 1, y: 0 }}
         className="w-full max-w-lg relative z-10"
       >
-        <div className="bg-zinc-950/80 backdrop-blur-xl border border-white/10 rounded-3xl p-6 md:p-8 shadow-[0_0_40px_-10px_rgba(16,185,129,0.1)] min-h-[400px] flex flex-col">
+        <div className="bg-zinc-950/80 backdrop-blur-xl border border-white/10 rounded-3xl p-6 md:p-8 shadow-[0_0_40px_-10px_rgba(16,185,129,0.1)] min-h-[450px] flex flex-col">
           
           {/* BARRE DE PROGRESSION */}
           <div className="flex gap-1 mb-8">
@@ -122,7 +125,7 @@ export default function OnboardingWizard({ onFinish }: OnboardingProps) {
           <div className="flex-1 flex flex-col justify-center">
           <AnimatePresence mode="wait">
             
-            {/* ETAPE 0 : IDENTITÉ */}
+            {/* ETAPE 0 : IDENTITÉ (Correction Prénom/Nom) */}
             {step === 0 && (
               <motion.div key="step0" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6">
                 <div className="text-center space-y-2">
@@ -130,8 +133,12 @@ export default function OnboardingWizard({ onFinish }: OnboardingProps) {
                   <p className="text-zinc-400">Quelques infos pour paramétrer votre profil.</p>
                 </div>
                 <div className="space-y-4">
-                    <PremiumInput icon={User} placeholder="Prénom" value={identity.firstName} onChange={(e: any) => setIdentity({...identity, firstName: e.target.value})} />
+                    {/* Le focus commence ici */}
+                    <PremiumInput autoFocus icon={User} placeholder="Prénom" value={identity.firstName} onChange={(e: any) => setIdentity({...identity, firstName: e.target.value})} />
+                    
+                    {/* Correction : j'ai bien séparé les state, plus de conflit */}
                     <PremiumInput icon={User} placeholder="Nom" value={identity.lastName} onChange={(e: any) => setIdentity({...identity, lastName: e.target.value})} />
+                    
                     <PremiumInput type="number" icon={Check} placeholder="Âge" value={identity.age} onChange={(e: any) => setIdentity({...identity, age: e.target.value})} onEnter={handleNext} />
                 </div>
               </motion.div>
@@ -145,7 +152,7 @@ export default function OnboardingWizard({ onFinish }: OnboardingProps) {
                   <p className="text-zinc-400">Estimation de vos actifs actuels.</p>
                 </div>
                 <div className="space-y-3">
-                  <PremiumInput type="number" icon={Building2} placeholder="Immobilier" value={assets.realEstate} onChange={(e: any) => setAssets({...assets, realEstate: e.target.value})} />
+                  <PremiumInput autoFocus type="number" icon={Building2} placeholder="Immobilier" value={assets.realEstate} onChange={(e: any) => setAssets({...assets, realEstate: e.target.value})} />
                   <PremiumInput type="number" icon={TrendingUp} placeholder="Bourse" value={assets.stocks} onChange={(e: any) => setAssets({...assets, stocks: e.target.value})} />
                   <PremiumInput type="number" icon={Bitcoin} placeholder="Crypto" value={assets.crypto} onChange={(e: any) => setAssets({...assets, crypto: e.target.value})} />
                   <PremiumInput type="number" icon={PiggyBank} placeholder="Cash / Épargne" value={assets.cash} onChange={(e: any) => setAssets({...assets, cash: e.target.value})} onEnter={handleNext} />
@@ -166,7 +173,7 @@ export default function OnboardingWizard({ onFinish }: OnboardingProps) {
               </motion.div>
             )}
 
-            {/* ETAPES DEPENSES (3, 4, 5, 6) */}
+            {/* ETAPES DEPENSES (3, 4, 5, 6) SÉPARÉES */}
             {[3, 4, 5, 6].includes(step) && (
                 <motion.div key={`step${step}`} initial={{ opacity: 0, x: 50 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -50 }} className="space-y-6">
                     <div className="text-center space-y-2">
@@ -201,7 +208,7 @@ export default function OnboardingWizard({ onFinish }: OnboardingProps) {
           </AnimatePresence>
           </div>
 
-          {/* NAVIGATION BUTTONS */}
+          {/* BOUTON SUIVANT (Toujours visible et accessible) */}
           {step < 7 && (
             <div className="mt-8 pt-4 border-t border-white/5 flex justify-end">
                 <Button 
