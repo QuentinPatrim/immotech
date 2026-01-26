@@ -2,106 +2,102 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Wallet, PieChart, TrendingUp, Calculator, Settings, LineChart } from "lucide-react";
-import { triggerHaptic } from "@/lib/haptics";
-
-const MENU_ITEMS = [
-  { name: "Dashboard", icon: LayoutDashboard, path: "/" },
-  { name: "Patrimoine", icon: Wallet, path: "/patrimoine" },
-  { name: "Budget & DCA", icon: PieChart, path: "/budget" },
-  { name: "Projection", icon: LineChart, path: "/projection" },
-  { name: "Simulateur Immo", icon: Calculator, path: "/simulateur" },
-  { name: "Analyses IA", icon: TrendingUp, path: "/analyses" },
-];
+import { 
+  LayoutDashboard, 
+  Wallet, 
+  PieChart, 
+  TrendingUp, 
+  Calculator, 
+  Settings,
+  BrainCircuit
+} from "lucide-react";
 
 export default function Sidebar() {
   const pathname = usePathname();
 
-  const handleNavClick = () => {
-    triggerHaptic("light");
-  };
+  // Liste complète des liens
+  const links = [
+    { name: "Dashboard", href: "/", icon: LayoutDashboard },
+    { name: "Patrimoine", href: "/patrimoine", icon: Wallet },
+    { name: "Budget", href: "/budget", icon: PieChart },
+    { name: "Projection", href: "/projection", icon: TrendingUp },
+    { name: "Simulateur", href: "/simulateur", icon: Calculator }, // ✅ Ajouté ici
+    { name: "Réglages", href: "/reglages", icon: Settings },
+  ];
+
+  // Fonction pour vérifier si un lien est actif
+  const isActive = (path: string) => pathname === path;
 
   return (
     <>
-      {/* --- SIDEBAR DESKTOP (Cachée sur Mobile) --- */}
-      <aside className="hidden md:flex w-64 flex-col border-r border-zinc-800 bg-black h-screen sticky top-0 left-0 shrink-0">
-        <div className="p-6">
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-            <TrendingUp className="text-emerald-500" /> ImmoTech<span className="text-emerald-500">.</span>
-          </h1>
+      {/* --- VERSION DESKTOP (Latérale) --- */}
+      <div className="hidden md:flex flex-col w-64 bg-zinc-950 border-r border-zinc-800 h-screen fixed left-0 top-0 p-4 z-50">
+        <div className="flex items-center gap-2 mb-8 px-2">
+           <div className="text-2xl font-bold text-white tracking-tight">
+              ImmoTech<span className="text-emerald-500">.</span>
+           </div>
         </div>
 
-        <nav className="flex-1 space-y-1 px-3">
-          {MENU_ITEMS.map((item) => {
-            const isActive = pathname === item.path;
-            return (
-              <Link
-                key={item.path}
-                href={item.path}
-                onClick={handleNavClick}
-                className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
-                  isActive
-                    ? "bg-emerald-500/10 text-emerald-500"
-                    : "text-zinc-400 hover:bg-zinc-900 hover:text-white"
-                }`}
-              >
-                <item.icon size={20} />
-                {item.name}
-              </Link>
-            );
-          })}
-        </nav>
-
-        {/* ZONE PARAMÈTRES (Active) */}
-        <div className="p-4 border-t border-zinc-800">
-          <Link 
-            href="/parametres"
-            onClick={handleNavClick}
-            className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                pathname === "/parametres" 
-                ? "bg-zinc-900 text-white" 
-                : "text-zinc-500 hover:text-white hover:bg-zinc-900"
-            }`}
-          >
-            <Settings size={20} />
-            Paramètres
-          </Link>
-        </div>
-      </aside>
-
-      {/* --- BOTTOM BAR MOBILE (Visible uniquement sur Mobile) --- */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-black/90 backdrop-blur-lg border-t border-zinc-800 z-50 pb-safe">
-        <nav className="flex justify-around items-center h-16 px-2">
-            {/* ASTUCE UX : Sur mobile, on affiche les 4 premiers items + Paramètres à la fin 
-               pour que l'utilisateur puisse accéder à son profil facilement.
-            */}
-            {MENU_ITEMS.slice(0, 4).map((item) => {
-                const isActive = pathname === item.path;
-                return (
-                    <Link
-                        key={item.path}
-                        href={item.path}
-                        onClick={handleNavClick}
-                        className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${isActive ? "text-emerald-500" : "text-zinc-500"}`}
-                    >
-                        <item.icon size={isActive ? 24 : 20} strokeWidth={isActive ? 2.5 : 2} className="transition-all"/>
-                    </Link>
-                )
-            })}
-
-            {/* Bouton Paramètres Mobile Spécifique */}
+        <nav className="space-y-1 flex-1">
+          {links.map((link) => (
             <Link
-                href="/parametres"
-                onClick={handleNavClick}
-                className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${pathname === "/parametres" ? "text-emerald-500" : "text-zinc-500"}`}
+              key={link.href}
+              href={link.href}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group ${
+                isActive(link.href) 
+                  ? "bg-emerald-500/10 text-emerald-400 font-medium" 
+                  : "text-zinc-500 hover:text-white hover:bg-zinc-900"
+              }`}
             >
-                <Settings size={pathname === "/parametres" ? 24 : 20} strokeWidth={pathname === "/parametres" ? 2.5 : 2} className="transition-all"/>
+              <link.icon size={20} className={isActive(link.href) ? "text-emerald-500" : "text-zinc-500 group-hover:text-white transition-colors"} />
+              <span>{link.name}</span>
+            </Link>
+          ))}
+          
+          {/* Lien "Analyses IA" séparé ou en bonus sur Desktop */}
+          <Link
+              href="/analyses"
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 mt-4 ${
+                isActive("/analyses") 
+                  ? "bg-emerald-500/10 text-emerald-400" 
+                  : "text-zinc-500 hover:text-white hover:bg-zinc-900"
+              }`}
+            >
+              <BrainCircuit size={20} />
+              <span>Analyses IA</span>
             </Link>
         </nav>
+
+        <div className="text-xs text-zinc-700 px-3 pb-2">v2.0 • ImmoTech</div>
       </div>
-      
-      {/* Spacer Mobile */}
-      <div className="md:hidden h-16 w-full shrink-0" />
+
+      {/* --- VERSION MOBILE (Barre du bas) --- */}
+      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-zinc-950/90 backdrop-blur-xl border-t border-zinc-800 pb-safe pt-2 px-2 z-[999]">
+        <div className="flex justify-between items-center h-16 max-w-md mx-auto">
+          {links.map((link) => (
+            <Link
+              key={link.href}
+              href={link.href}
+              className="flex-1 flex flex-col items-center justify-center gap-1 h-full active:scale-95 transition-transform"
+            >
+              <div className={`p-1.5 rounded-full transition-colors ${
+                  isActive(link.href) ? "bg-emerald-500/10" : "bg-transparent"
+              }`}>
+                  <link.icon 
+                    size={22} // Icônes un peu plus petites pour que les 6 rentrent bien
+                    className={isActive(link.href) ? "text-emerald-500" : "text-zinc-500"} 
+                    strokeWidth={isActive(link.href) ? 2.5 : 2}
+                  />
+              </div>
+              {/* Sur mobile, on cache le texte "Réglages" et "Projections" si ça prend trop de place, 
+                  ou on affiche tout en très petit */}
+              <span className={`text-[9px] font-medium ${isActive(link.href) ? "text-white" : "text-zinc-600"}`}>
+                {link.name === "Simulateur" ? "Simu" : link.name} {/* Raccourci pour gagner de la place */}
+              </span>
+            </Link>
+          ))}
+        </div>
+      </div>
     </>
   );
 }
