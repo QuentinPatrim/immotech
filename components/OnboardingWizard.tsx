@@ -2,7 +2,11 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowRight, Check, User, Building2, TrendingUp, Bitcoin, PiggyBank, Briefcase, Home, ShoppingCart, Car, Coffee } from "lucide-react";
+import { 
+  ArrowRight, Check, User, Building2, TrendingUp, Bitcoin, 
+  PiggyBank, Briefcase, Home, ShoppingCart, Car, Coffee, 
+  LayoutDashboard, PieChart, Calculator, ShieldCheck
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { triggerHaptic } from "@/lib/haptics";
@@ -11,8 +15,7 @@ interface OnboardingProps {
   onFinish: () => void;
 }
 
-// --- CORRECTION CRUCIALE ---
-// Ce composant est défini À L'EXTÉRIEUR pour éviter le bug du clavier qui se ferme.
+// --- COMPOSANT INPUT (EXTERNE pour éviter le bug clavier) ---
 const PremiumInput = ({ value, onChange, placeholder, icon: Icon, type = "text", autoFocus = false, onEnter }: any) => (
   <div className="group relative transition-all duration-300 w-full">
     <div className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 group-focus-within:text-emerald-400 transition-colors">
@@ -25,23 +28,44 @@ const PremiumInput = ({ value, onChange, placeholder, icon: Icon, type = "text",
       onChange={onChange}
       onKeyDown={(e) => { if (e.key === "Enter" && onEnter) onEnter(); }}
       placeholder={placeholder}
-      className="pl-12 h-14 bg-zinc-900/50 border-zinc-800 text-white text-lg placeholder:text-zinc-600 focus:ring-emerald-500/50 focus:border-emerald-500 rounded-xl transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+      className="pl-12 h-16 bg-zinc-900/50 border-zinc-800 text-white text-lg placeholder:text-zinc-600 focus:ring-1 focus:ring-emerald-500/50 focus:border-emerald-500 rounded-2xl transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
     />
   </div>
 );
 
+// --- COMPOSANT CARTE FEATURE (Pour le tuto) ---
+const FeatureCard = ({ icon: Icon, title, desc }: any) => (
+    <div className="flex gap-4 p-4 bg-zinc-900/50 border border-zinc-800/50 rounded-xl items-center">
+        <div className="h-10 w-10 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-500 shrink-0">
+            <Icon size={20} />
+        </div>
+        <div className="text-left">
+            <h4 className="text-white font-bold text-sm">{title}</h4>
+            <p className="text-zinc-400 text-xs leading-tight">{desc}</p>
+        </div>
+    </div>
+);
+
 export default function OnboardingWizard({ onFinish }: OnboardingProps) {
-  // ETAPES : 
-  // 0: Identité, 1: Patrimoine, 2: Revenus
-  // 3: Loyer, 4: Courses, 5: Transport, 6: Loisirs, 7: Fin
+  // ETAPES :
+  // 0: Intro Welcome
+  // 1: Intro Features
+  // 2: Intro Prêt ?
+  // 3: Identité
+  // 4: Patrimoine
+  // 5: Revenus
+  // 6: Loyer
+  // 7: Courses
+  // 8: Transport
+  // 9: Loisirs
+  // 10: Fin
   const [step, setStep] = useState(0);
   
-  // DONNÉES
+  // DATA STATES
   const [identity, setIdentity] = useState({ firstName: "", lastName: "", age: "" });
   const [assets, setAssets] = useState({ realEstate: "", stocks: "", crypto: "", cash: "" });
   const [income, setIncome] = useState("");
   
-  // Dépenses détaillées
   const [expenses, setExpenses] = useState({
     housing: "",    // Loyer / Crédit
     food: "",       // Courses
@@ -57,7 +81,7 @@ export default function OnboardingWizard({ onFinish }: OnboardingProps) {
   const handleFinish = () => {
     triggerHaptic("success");
     
-    // On calcule le total pour le dashboard principal
+    // Calculs
     const totalExpenses = 
       (parseFloat(expenses.housing) || 0) +
       (parseFloat(expenses.food) || 0) +
@@ -75,12 +99,12 @@ export default function OnboardingWizard({ onFinish }: OnboardingProps) {
       budget: {
         income: parseFloat(income) || 0,
         expenses: totalExpenses, 
-        details: expenses // On sauvegarde le détail pour plus tard
+        details: expenses 
       },
       onboardingComplete: true
     };
     
-    // Sauvegarde compatible avec tout le système
+    // Sauvegarde
     localStorage.setItem("userProfile", JSON.stringify(userData));
     localStorage.setItem("myBudget", JSON.stringify({ 
         income: userData.budget.income,
@@ -95,112 +119,189 @@ export default function OnboardingWizard({ onFinish }: OnboardingProps) {
     onFinish();
   };
 
-  // Titres dynamiques selon l'étape
+  // Titres dynamiques pour la phase saisie
   const getStepTitle = () => {
-    if (step === 3) return "Logement 🏠";
-    if (step === 4) return "Alimentation 🛒";
-    if (step === 5) return "Transport 🚗";
-    if (step === 6) return "Loisirs & Abos 🍿";
+    if (step === 6) return "Logement 🏠";
+    if (step === 7) return "Alimentation 🛒";
+    if (step === 8) return "Transport 🚗";
+    if (step === 9) return "Loisirs & Abos 🍿";
     return "Vos Dépenses";
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-emerald-900/20 via-black to-black" />
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black">
+      {/* Background Ambient */}
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom_left,_var(--tw-gradient-stops))] from-emerald-900/10 via-black to-black" />
+      <div className="absolute top-0 right-0 w-full h-1/2 bg-gradient-to-b from-emerald-900/5 to-transparent pointer-events-none" />
       
       <motion.div 
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-lg relative z-10"
+        className="w-full h-full md:h-auto md:max-w-xl relative z-10 flex flex-col"
       >
-        <div className="bg-zinc-950/80 backdrop-blur-xl border border-white/10 rounded-3xl p-6 md:p-8 shadow-[0_0_40px_-10px_rgba(16,185,129,0.1)] min-h-[450px] flex flex-col">
+        <div className="flex-1 flex flex-col md:bg-zinc-950 md:border md:border-zinc-800 md:rounded-3xl md:shadow-2xl md:min-h-[600px] overflow-hidden">
           
-          {/* BARRE DE PROGRESSION */}
-          <div className="flex gap-1 mb-8">
-            {[0, 1, 2, 3, 4, 5, 6, 7].map((s) => (
-              <div key={s} className={`h-1 flex-1 rounded-full transition-all duration-300 ${s <= step ? "bg-emerald-500" : "bg-zinc-800"}`} />
-            ))}
-          </div>
+          {/* BARRE DE PROGRESSION (Visible uniquement après le tuto) */}
+          {step > 2 && step < 10 && (
+            <div className="pt-8 px-8 flex gap-1.5">
+               {/* On affiche une barre simple qui se remplit */}
+               <div className="h-1.5 w-full bg-zinc-900 rounded-full overflow-hidden">
+                   <motion.div 
+                        initial={{ width: 0 }}
+                        animate={{ width: `${((step - 2) / 8) * 100}%` }}
+                        className="h-full bg-emerald-500"
+                   />
+               </div>
+            </div>
+          )}
 
-          <div className="flex-1 flex flex-col justify-center">
+          <div className="flex-1 p-8 flex flex-col justify-center">
           <AnimatePresence mode="wait">
             
-            {/* ETAPE 0 : IDENTITÉ (Correction Prénom/Nom) */}
+            {/* --- PHASE 1 : EDUCATION / TUTO --- */}
+
+            {/* SLIDE 0 : WELCOME */}
             {step === 0 && (
-              <motion.div key="step0" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6">
-                <div className="text-center space-y-2">
-                  <h2 className="text-3xl font-bold text-white tracking-tight">Bienvenue 👋</h2>
-                  <p className="text-zinc-400">Quelques infos pour paramétrer votre profil.</p>
+              <motion.div key="intro0" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} className="space-y-8 text-center">
+                <div className="w-24 h-24 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-3xl mx-auto flex items-center justify-center shadow-lg shadow-emerald-900/50 mb-6">
+                    <TrendingUp size={48} className="text-black" />
                 </div>
-                <div className="space-y-4">
-                    {/* Le focus commence ici */}
+                <div>
+                    <h1 className="text-4xl font-black text-white tracking-tight mb-4">
+                        Bienvenue sur <span className="text-emerald-500">ImmoTech</span>
+                    </h1>
+                    <p className="text-zinc-400 text-lg leading-relaxed">
+                        L'application tout-en-un pour piloter votre patrimoine, optimiser votre budget et simuler vos investissements.
+                    </p>
+                </div>
+              </motion.div>
+            )}
+
+            {/* SLIDE 1 : FEATURES */}
+            {step === 1 && (
+              <motion.div key="intro1" initial={{ opacity: 0, x: 50 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -50 }} className="space-y-6">
+                <div className="text-center mb-8">
+                  <h2 className="text-2xl font-bold text-white mb-2">Votre Cockpit Financier 🚀</h2>
+                  <p className="text-zinc-400">Tout ce dont vous avez besoin, au même endroit.</p>
+                </div>
+                
+                <div className="space-y-3">
+                    <FeatureCard 
+                        icon={ShieldCheck} 
+                        title="Patrimoine Global" 
+                        desc="Suivez l'évolution de votre Net Worth (Immo, Bourse, Crypto) en temps réel." 
+                    />
+                    <FeatureCard 
+                        icon={PieChart} 
+                        title="Budget & Cashflow" 
+                        desc="Analysez vos flux mensuels pour maximiser votre capacité d'épargne." 
+                    />
+                    <FeatureCard 
+                        icon={Calculator} 
+                        title="Simulateur Immo" 
+                        desc="Calculez instantanément la rentabilité et le cashflow de vos projets." 
+                    />
+                </div>
+              </motion.div>
+            )}
+
+            {/* SLIDE 2 : SETUP */}
+            {step === 2 && (
+              <motion.div key="intro2" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 1.1 }} className="text-center space-y-8">
+                <div className="relative">
+                    <div className="absolute inset-0 bg-emerald-500/20 blur-3xl rounded-full" />
+                    <LayoutDashboard size={80} className="text-white relative z-10 mx-auto" />
+                </div>
+                <div>
+                    <h2 className="text-3xl font-bold text-white mb-4">À vous de jouer !</h2>
+                    <p className="text-zinc-400 text-lg">
+                        Pour que la magie opère, nous avons besoin de connaître votre point de départ.
+                    </p>
+                    <p className="text-zinc-500 text-sm mt-4">
+                        🔐 Vos données sont stockées uniquement sur votre téléphone (Local Storage).
+                    </p>
+                </div>
+              </motion.div>
+            )}
+
+            {/* --- PHASE 2 : SAISIE DONNÉES --- */}
+
+            {/* ETAPE 3 : IDENTITÉ */}
+            {step === 3 && (
+              <motion.div key="step3" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6">
+                <div className="text-center space-y-2">
+                  <h2 className="text-3xl font-bold text-white">Qui êtes-vous ? 👤</h2>
+                  <p className="text-zinc-400">Commençons par les présentations.</p>
+                </div>
+                <div className="space-y-4 pt-4">
                     <PremiumInput autoFocus icon={User} placeholder="Prénom" value={identity.firstName} onChange={(e: any) => setIdentity({...identity, firstName: e.target.value})} />
-                    
-                    {/* Correction : j'ai bien séparé les state, plus de conflit */}
                     <PremiumInput icon={User} placeholder="Nom" value={identity.lastName} onChange={(e: any) => setIdentity({...identity, lastName: e.target.value})} />
-                    
                     <PremiumInput type="number" icon={Check} placeholder="Âge" value={identity.age} onChange={(e: any) => setIdentity({...identity, age: e.target.value})} onEnter={handleNext} />
                 </div>
               </motion.div>
             )}
 
-            {/* ETAPE 1 : PATRIMOINE */}
-            {step === 1 && (
-              <motion.div key="step1" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6">
+            {/* ETAPE 4 : PATRIMOINE */}
+            {step === 4 && (
+              <motion.div key="step4" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6">
                 <div className="text-center space-y-2">
                   <h2 className="text-2xl font-bold text-white">Votre Patrimoine 🏛️</h2>
-                  <p className="text-zinc-400">Estimation de vos actifs actuels.</p>
+                  <p className="text-zinc-400">Estimez la valeur actuelle de vos actifs.</p>
                 </div>
-                <div className="space-y-3">
-                  <PremiumInput autoFocus type="number" icon={Building2} placeholder="Immobilier" value={assets.realEstate} onChange={(e: any) => setAssets({...assets, realEstate: e.target.value})} />
-                  <PremiumInput type="number" icon={TrendingUp} placeholder="Bourse" value={assets.stocks} onChange={(e: any) => setAssets({...assets, stocks: e.target.value})} />
+                <div className="space-y-3 pt-2">
+                  <PremiumInput autoFocus type="number" icon={Building2} placeholder="Immobilier (Est.)" value={assets.realEstate} onChange={(e: any) => setAssets({...assets, realEstate: e.target.value})} />
+                  <PremiumInput type="number" icon={TrendingUp} placeholder="Bourse (PEA/CTO)" value={assets.stocks} onChange={(e: any) => setAssets({...assets, stocks: e.target.value})} />
                   <PremiumInput type="number" icon={Bitcoin} placeholder="Crypto" value={assets.crypto} onChange={(e: any) => setAssets({...assets, crypto: e.target.value})} />
                   <PremiumInput type="number" icon={PiggyBank} placeholder="Cash / Épargne" value={assets.cash} onChange={(e: any) => setAssets({...assets, cash: e.target.value})} onEnter={handleNext} />
                 </div>
               </motion.div>
             )}
 
-            {/* ETAPE 2 : REVENUS */}
-            {step === 2 && (
-              <motion.div key="step2" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6">
+            {/* ETAPE 5 : REVENUS */}
+            {step === 5 && (
+              <motion.div key="step5" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6">
                  <div className="text-center space-y-2">
                   <h2 className="text-2xl font-bold text-white">Vos Revenus 💸</h2>
                   <p className="text-zinc-400">Salaire Net Mensuel (avant impôt).</p>
                 </div>
-                <div className="space-y-4 py-4">
+                <div className="space-y-4 py-8">
                     <PremiumInput autoFocus type="number" icon={Briefcase} placeholder="Montant Net Mensuel" value={income} onChange={(e: any) => setIncome(e.target.value)} onEnter={handleNext} />
                 </div>
               </motion.div>
             )}
 
-            {/* ETAPES DEPENSES (3, 4, 5, 6) SÉPARÉES */}
-            {[3, 4, 5, 6].includes(step) && (
+            {/* ETAPES DEPENSES (6, 7, 8, 9) */}
+            {[6, 7, 8, 9].includes(step) && (
                 <motion.div key={`step${step}`} initial={{ opacity: 0, x: 50 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -50 }} className="space-y-6">
                     <div className="text-center space-y-2">
                         <h2 className="text-2xl font-bold text-white">{getStepTitle()}</h2>
-                        <p className="text-zinc-400">Estimation mensuelle.</p>
+                        <p className="text-zinc-400">Estimation mensuelle moyenne.</p>
                     </div>
-                    <div className="space-y-4 py-4">
-                        {step === 3 && <PremiumInput autoFocus type="number" icon={Home} placeholder="Loyer ou Crédit" value={expenses.housing} onChange={(e: any) => setExpenses({...expenses, housing: e.target.value})} onEnter={handleNext} />}
-                        {step === 4 && <PremiumInput autoFocus type="number" icon={ShoppingCart} placeholder="Supermarché & Repas" value={expenses.food} onChange={(e: any) => setExpenses({...expenses, food: e.target.value})} onEnter={handleNext} />}
-                        {step === 5 && <PremiumInput autoFocus type="number" icon={Car} placeholder="Essence, Transport, Assurance" value={expenses.transport} onChange={(e: any) => setExpenses({...expenses, transport: e.target.value})} onEnter={handleNext} />}
-                        {step === 6 && <PremiumInput autoFocus type="number" icon={Coffee} placeholder="Netflix, Sport, Sorties..." value={expenses.leisure} onChange={(e: any) => setExpenses({...expenses, leisure: e.target.value})} onEnter={handleNext} />}
+                    <div className="space-y-4 py-8">
+                        {step === 6 && <PremiumInput autoFocus type="number" icon={Home} placeholder="Loyer ou Crédit" value={expenses.housing} onChange={(e: any) => setExpenses({...expenses, housing: e.target.value})} onEnter={handleNext} />}
+                        {step === 7 && <PremiumInput autoFocus type="number" icon={ShoppingCart} placeholder="Supermarché & Repas" value={expenses.food} onChange={(e: any) => setExpenses({...expenses, food: e.target.value})} onEnter={handleNext} />}
+                        {step === 8 && <PremiumInput autoFocus type="number" icon={Car} placeholder="Essence, Transport, Assurance" value={expenses.transport} onChange={(e: any) => setExpenses({...expenses, transport: e.target.value})} onEnter={handleNext} />}
+                        {step === 9 && <PremiumInput autoFocus type="number" icon={Coffee} placeholder="Netflix, Sport, Sorties..." value={expenses.leisure} onChange={(e: any) => setExpenses({...expenses, leisure: e.target.value})} onEnter={handleNext} />}
                     </div>
                 </motion.div>
             )}
 
-             {/* ETAPE 7 : FINISH */}
-             {step === 7 && (
-              <motion.div key="step7" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="text-center py-4 space-y-6">
-                <div className="w-24 h-24 bg-emerald-500 rounded-full flex items-center justify-center mx-auto shadow-[0_0_30px_rgba(16,185,129,0.4)]">
-                    <Check size={40} className="text-black font-bold" />
+             {/* ETAPE 10 : FINISH */}
+             {step === 10 && (
+              <motion.div key="step10" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="text-center py-4 space-y-8">
+                <div className="w-28 h-28 bg-emerald-500 rounded-full flex items-center justify-center mx-auto shadow-[0_0_50px_rgba(16,185,129,0.4)] animate-pulse">
+                    <Check size={48} className="text-black font-bold" />
                 </div>
                 <div>
-                    <h2 className="text-3xl font-bold text-white">Profil Configuré !</h2>
-                    <p className="text-zinc-400 mt-2">Votre tableau de bord est prêt.</p>
+                    <h2 className="text-3xl font-bold text-white">Tout est prêt !</h2>
+                    <p className="text-zinc-400 mt-2 text-lg">Votre tableau de bord a été généré.</p>
                 </div>
-                <Button onClick={handleFinish} className="w-full bg-white text-black hover:bg-zinc-200 font-bold h-14 rounded-xl text-lg mt-4">
-                    Accéder à Immotech
+                <div className="p-4 bg-zinc-900 rounded-xl border border-zinc-800">
+                    <p className="text-sm text-zinc-500">
+                        "L'investissement dans la connaissance paie le meilleur intérêt."
+                        <br/><span className="text-emerald-500 font-bold">— Benjamin Franklin</span>
+                    </p>
+                </div>
+                <Button onClick={handleFinish} className="w-full bg-white text-black hover:bg-zinc-200 font-bold h-16 rounded-2xl text-xl mt-4">
+                    Lancer ImmoTech
                 </Button>
               </motion.div>
             )}
@@ -208,14 +309,15 @@ export default function OnboardingWizard({ onFinish }: OnboardingProps) {
           </AnimatePresence>
           </div>
 
-          {/* BOUTON SUIVANT (Toujours visible et accessible) */}
-          {step < 7 && (
-            <div className="mt-8 pt-4 border-t border-white/5 flex justify-end">
+          {/* NAVIGATION BUTTONS (Bas de page) */}
+          {step < 10 && (
+            <div className="p-8 border-t border-zinc-800/50 flex justify-end bg-zinc-950/50 backdrop-blur-md sticky bottom-0">
                 <Button 
                     onClick={handleNext} 
-                    className="bg-emerald-600 hover:bg-emerald-500 text-white px-8 h-12 rounded-xl font-semibold shadow-lg shadow-emerald-900/20 w-full md:w-auto"
+                    className="bg-emerald-600 hover:bg-emerald-500 text-white px-8 h-14 rounded-2xl font-bold text-lg shadow-lg shadow-emerald-900/20 w-full md:w-auto transition-all hover:scale-105 active:scale-95"
                 >
-                    Suivant <ArrowRight size={18} className="ml-2" />
+                    {step === 0 ? "Découvrir" : step === 2 ? "Configurer mon Profil" : "Continuer"} 
+                    <ArrowRight size={20} className="ml-2" />
                 </Button>
             </div>
           )}
