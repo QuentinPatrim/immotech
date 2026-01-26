@@ -4,8 +4,9 @@ import { useEffect, useState } from "react";
 import Sidebar from "@/components/Sidebar";
 import AnimatedNumber from "@/components/AnimatedNumber";
 import QuickBudgetWizard from "@/components/QuickBudgetWizard";
+import OnboardingWizard from "@/components/OnboardingWizard"; // <--- IMPORT AJOUTÉ
 import { motion } from "framer-motion";
-import { ShieldCheck, Calculator, Target, ArrowRight, Activity, Wallet, PieChart, Lightbulb, PlusCircle } from "lucide-react";
+import { ShieldCheck, Calculator, Target, Activity, Wallet, PieChart, PlusCircle } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -26,85 +27,98 @@ export default function Dashboard() {
   
   // --- UX ---
   const [greeting, setGreeting] = useState("Bonjour");
-  const [userName, setUserName] = useState("");
+  const [userName, setUserName] = useState("Investisseur");
+  
+  // WIZARDS STATES
+  const [showOnboarding, setShowOnboarding] = useState(false); // <--- NOUVEL ÉTAT
   const [showBudgetWizard, setShowBudgetWizard] = useState(false);
+  const [isBudgetEmpty, setIsBudgetEmpty] = useState(false); 
   const [structureAnalysis, setStructureAnalysis] = useState("En attente de données...");
-  const [isBudgetEmpty, setIsBudgetEmpty] = useState(false); // Nouvel état pour le bouton de secours
 
   // --- CHARGEMENT DES DONNÉES ---
   useEffect(() => {
     try {
-        // 1. Identité & Heure
+        // 1. VÉRIFICATION PRIMORDIALE : EST-CE UN NOUVEL UTILISATEUR ?
         const savedProfile = localStorage.getItem("userProfile");
-        const currentHour = new Date().getHours();
-        if (savedProfile) {
-            const p = JSON.parse(savedProfile);
-            if (p.firstName) setUserName(p.firstName);
+        if (!savedProfile) {
+            setShowOnboarding(true); // Lance le nouvel Onboarding Premium
+            return; // On arrête le chargement ici pour l'instant
         }
+
+        // 2. Identité & Heure
+        const currentHour = new Date().getHours();
+        const p = JSON.parse(savedProfile);
+        if (p.identity?.firstName) setUserName(p.identity.firstName);
+        else if (p.firstName) setUserName(p.firstName); // Compatibilité ancienne version
+        
         setGreeting(currentHour >= 18 ? "Bonsoir" : "Bonjour");
 
-        // 2. Patrimoine
-        const savedAssets = localStorage.getItem("myAssets");
+        // 3. Patrimoine (Récupération depuis le profil ou les actifs séparés)
         let currentAssets: Asset[] = [];
         let total = 0;
-        if (savedAssets) {
-            currentAssets = JSON.parse(savedAssets);
-            setAssets(currentAssets);
-            total = currentAssets.reduce((acc: number, item: Asset) => acc + item.value, 0);
-            setNetWorth(total);
+        
+        // On essaie de construire les actifs depuis le profil utilisateur s'ils existent
+        if (p.assets) {
+             // Conversion simple pour l'affichage
+             if (p.assets.realEstate > 0) currentAssets.push({ id: "re", name: "Immo", value: p.assets.realEstate, type: "Immobilier" });
+             if (p.assets.stocks > 0) currentAssets.push({ id: "st", name: "Bourse", value: p.assets.stocks, type: "Bourse" });
+             if (p.assets.crypto > 0) currentAssets.push({ id: "cr", name: "Crypto", value: p.assets.crypto, type: "Crypto" });
+             if (p.assets.cash > 0) currentAssets.push({ id: "ca", name: "Cash", value: p.assets.cash, type: "Cash" });
+             
+             // Si on a aussi des actifs détaillés (ancien système), on les ajoute ou remplace (logique simplifiée ici)
+             const savedAssetsDetail = localStorage.getItem("myAssets");
+             if (savedAssetsDetail) {
+                 const detailed = JSON.parse(savedAssetsDetail);
+                 if (detailed.length > 0) currentAssets = detailed;
+             }
+        } else {
+             // Fallback ancien système
+             const savedAssets = localStorage.getItem("myAssets");
+             if (savedAssets) currentAssets = JSON.parse(savedAssets);
         }
 
-        // 3. Budget & Logique d'ouverture
+        setAssets(currentAssets);
+        total = currentAssets.reduce((acc: number, item: Asset) => acc + item.value, 0);
+        setNetWorth(total);
+
+        // 4. Budget
         const savedBudget = localStorage.getItem("myBudget");
-        
         if (savedBudget) {
-            // Cas A : Le budget existe
             const b = JSON.parse(savedBudget);
             setMonthlyIncome(b.income || 0);
-            const totalExp = b.expenses ? b.expenses.reduce((acc: number, item: any) => acc + item.amount, 0) : 0;
+            // Gestion compatibilité : expenses peut être un tableau ou un chiffre total
+            let totalExp = 0;
+            if (Array.isArray(b.expenses)) {
+                totalExp = b.expenses.reduce((acc: number, item: any) => acc + item.amount, 0);
+            } else {
+                totalExp = b.expenses || 0;
+            }
+            
             setMonthlyExpenses(totalExp);
             const savings = Math.max(0, (b.income || 0) - totalExp);
             setSavingsRate(b.income > 0 ? (savings / b.income) * 100 : 0);
             setIsBudgetEmpty(false);
         } else {
-            // Cas B : Pas de budget -> On lance l'assistant
             setIsBudgetEmpty(true);
-            
-            // TIMING SÉCURISÉ : On attend 1.5s que le splash screen disparaisse
-            // C'est simple et ça marche à tous les coups
-            const timer = setTimeout(() => {
-                console.log("Ouverture du Wizard automatique"); // Pour vérifier
-                setShowBudgetWizard(true);
-            }, 1500);
-            
-            return () => clearTimeout(timer);
         }
 
-        // 4. ANALYSE IA
+        // 5. ANALYSE IA (Simplifiée)
         if (total > 0) {
             const cryptoVal = currentAssets.filter(a => a.type === "Crypto").reduce((acc, i) => acc + i.value, 0);
             const immoVal = currentAssets.filter(a => a.type === "Immobilier").reduce((acc, i) => acc + i.value, 0);
-            const cashVal = currentAssets.filter(a => a.type === "Cash").reduce((acc, i) => acc + i.value, 0);
             
-            const cryptoShare = (cryptoVal / total) * 100;
-            const immoShare = (immoVal / total) * 100;
-            const cashShare = (cashVal / total) * 100;
-
-            if (cryptoShare > 50) {
-                setStructureAnalysis("Votre profil est agressif. Forte exposition crypto.");
-            } else if (immoShare > 60) {
-                setStructureAnalysis("Vous avez un profil de rentier immobilier.");
-            } else if (cashShare > 40) {
-                setStructureAnalysis("Votre profil est très défensif. Attention à l'inflation.");
-            } else {
-                setStructureAnalysis("Votre allocation est équilibrée. Continuez ainsi.");
-            }
-        } else {
-            setStructureAnalysis("Ajoutez vos premiers actifs pour obtenir une analyse.");
+            if ((cryptoVal / total) > 0.5) setStructureAnalysis("Profil agressif (Crypto dominant).");
+            else if ((immoVal / total) > 0.6) setStructureAnalysis("Profil Rentier Immobilier.");
+            else setStructureAnalysis("Allocation équilibrée.");
         }
 
     } catch (e) { console.error("Erreur Dashboard", e); }
   }, []);
+
+  const handleOnboardingFinish = () => {
+    setShowOnboarding(false);
+    window.location.reload(); // Rafraîchit la page pour charger les nouvelles données
+  };
 
   const formatEuro = (val: number) => new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(val);
 
@@ -117,7 +131,13 @@ export default function Dashboard() {
 
   return (
     <div className="flex flex-col md:flex-row min-h-screen bg-black text-zinc-100 font-sans">
+      
+      {/* --- WIZARDS (S'affichent par dessus tout) --- */}
+      {showOnboarding && <OnboardingWizard onFinish={handleOnboardingFinish} />}
+      <QuickBudgetWizard isOpen={showBudgetWizard} onClose={() => setShowBudgetWizard(false)} />
+
       <Sidebar />
+      
       <main className="flex-1 w-full max-w-full overflow-y-auto overflow-x-hidden p-3 md:p-6 lg:p-8 pb-24 md:pb-8">
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="max-w-[1600px] mx-auto space-y-6">
           
@@ -127,21 +147,22 @@ export default function Dashboard() {
               <p className="text-zinc-500 text-sm">Synthèse de votre situation réelle.</p>
             </div>
             
-            {/* BOUTON DE SECOURS : Apparaît seulement si le budget est vide */}
-            {isBudgetEmpty && (
-                <Button 
-                    onClick={() => setShowBudgetWizard(true)} 
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white animate-pulse"
-                >
-                    <PlusCircle size={16} className="mr-2"/> Configurer mon Budget
-                </Button>
-            )}
+            {/* BOUTON MODIFIER BUDGET */}
+            <Button 
+                onClick={() => setShowBudgetWizard(true)} 
+                variant={isBudgetEmpty ? "default" : "outline"}
+                className={isBudgetEmpty ? "bg-emerald-600 hover:bg-emerald-700 text-white animate-pulse" : "border-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-800"}
+            >
+                {isBudgetEmpty ? <><PlusCircle size={16} className="mr-2"/> Configurer Budget</> : "Modifier Budget"}
+            </Button>
           </header>
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             
-            {/* --- LEFT COL --- */}
+            {/* --- LEFT COL (KPIs) --- */}
             <div className="lg:col-span-8 grid grid-cols-1 md:grid-cols-2 gap-6">
+                
+                {/* CARTE PATRIMOINE */}
                 <div className="md:col-span-2 relative overflow-hidden rounded-2xl border border-zinc-800 bg-gradient-to-br from-zinc-900 via-zinc-900 to-black p-8 shadow-2xl flex flex-col justify-between min-h-[220px]">
                     <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/5 blur-[80px] rounded-full pointer-events-none"></div>
                     <div>
@@ -150,12 +171,17 @@ export default function Dashboard() {
                     </div>
                     <div className="z-10 mt-6">
                         <div className="h-2 w-full flex rounded-full overflow-hidden bg-zinc-800">
-                            {assetDistribution.map((a, i) => (<div key={i} style={{ width: `${(a.value / netWorth) * 100}%`, backgroundColor: a.color }} />))}
-                            {assetDistribution.length === 0 && <div className="w-full bg-zinc-800" />}
+                            {assetDistribution.length > 0 ? (
+                                assetDistribution.map((a, i) => (<div key={i} style={{ width: `${(a.value / netWorth) * 100}%`, backgroundColor: a.color }} />))
+                            ) : (
+                                <div className="w-full bg-zinc-800 h-full" />
+                            )}
                         </div>
+                        {assetDistribution.length === 0 && <p className="text-xs text-zinc-600 mt-2">Ajoutez des actifs pour voir la répartition</p>}
                     </div>
                 </div>
 
+                {/* CARTE BUDGET */}
                 <Card className="border-zinc-800 bg-zinc-900/30">
                     <CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-sm font-medium text-zinc-400">Flux Mensuel</CardTitle><Calculator size={16} className="text-blue-500"/></CardHeader>
                     <CardContent>
@@ -170,20 +196,21 @@ export default function Dashboard() {
                     </CardContent>
                 </Card>
 
+                {/* CARTE EPARGNE */}
                 <Card className="border-zinc-800 bg-zinc-900/30">
                     <CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-sm font-medium text-zinc-400">Taux d'Épargne</CardTitle><PieChart size={16} className="text-purple-500"/></CardHeader>
                     <CardContent className="flex items-center justify-between">
                         <div><div className="text-2xl font-bold text-white mb-1">{savingsRate.toFixed(0)}%</div></div>
                         <div className="h-16 w-16 relative">
                             <ResponsiveContainer width="100%" height="100%">
-                                <RechartsPie><Pie data={[{value: savingsRate}, {value: 100-savingsRate}]} innerRadius={20} outerRadius={30} dataKey="value"><Cell fill={savingsRate >= 20 ? "#10b981" : "#ef4444"} stroke="none"/><Cell fill="#27272a" stroke="none"/></Pie></RechartsPie>
+                                <RechartsPie><Pie data={[{value: savingsRate > 0 ? savingsRate : 1}, {value: 100 - (savingsRate > 0 ? savingsRate : 1)}]} innerRadius={20} outerRadius={30} dataKey="value"><Cell fill={savingsRate >= 20 ? "#10b981" : "#ef4444"} stroke="none"/><Cell fill="#27272a" stroke="none"/></Pie></RechartsPie>
                             </ResponsiveContainer>
                         </div>
                     </CardContent>
                 </Card>
             </div>
 
-            {/* --- RIGHT COL --- */}
+            {/* --- RIGHT COL (Actions) --- */}
             <div className="lg:col-span-4 space-y-6">
                 <Card className="border-zinc-800 bg-zinc-900/30">
                     <CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-sm text-white"><Target size={16} className="text-red-500" /> Prochain Objectif</CardTitle></CardHeader>
@@ -211,17 +238,14 @@ export default function Dashboard() {
               <div className="bg-black rounded-xl p-6 flex flex-col md:flex-row items-center justify-between gap-6">
                   <div className="flex gap-4 items-center">
                       <div className="h-12 w-12 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-500"><Activity size={24}/></div>
-                      <div><h3 className="font-bold text-white">Analyse de Portefeuille</h3><p className="text-sm text-zinc-400">L'IA détecte les déséquilibres.</p></div>
+                      <div><h3 className="font-bold text-white">Analyse de Portefeuille</h3><p className="text-sm text-zinc-400">{structureAnalysis}</p></div>
                   </div>
-                  <Link href="/analyses"><Button className="bg-white text-black hover:bg-zinc-200 font-bold">Consulter</Button></Link>
+                  <Button variant="secondary" className="font-bold">Détails bientôt</Button>
               </div>
           </div>
 
         </motion.div>
       </main>
-      
-      {/* LE WIZARD */}
-      <QuickBudgetWizard isOpen={showBudgetWizard} onClose={() => setShowBudgetWizard(false)} />
     </div>
   );
 }
