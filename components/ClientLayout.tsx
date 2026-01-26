@@ -40,6 +40,7 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
               transition: { duration: 0.5, ease: [0.76, 0, 0.24, 1] } // Courbe de vitesse "Premium"
             }}
           >
+            {/* LOGO CENTRAL */}
             <div className="relative flex items-end">
               
               {/* PARTIE 1 : "Immo" (Vient de la GAUCHE) */}
@@ -78,6 +79,19 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
               </motion.div>
 
             </div>
+
+            {/* SIGNATURE EN BAS DE L'ÉCRAN */}
+            <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 1.2, duration: 0.8 }}
+                className="absolute bottom-12 text-center"
+            >
+                <p className="text-[10px] uppercase tracking-[0.2em] text-zinc-600 font-medium">
+                    by Quentin Delsol
+                </p>
+            </motion.div>
+
           </motion.div>
         )}
       </AnimatePresence>
