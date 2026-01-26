@@ -22,7 +22,7 @@ export default function Sidebar() {
     { name: "Budget", href: "/budget", icon: PieChart },
     { name: "Projection", href: "/projection", icon: TrendingUp },
     { name: "Simulateur", href: "/simulateur", icon: Calculator }, // ✅ Ajouté ici
-    { name: "Réglages", href: "/reglages", icon: Settings },
+    { name: "Réglages", href: "/paramètres", icon: Settings },
   ];
 
   // Fonction pour vérifier si un lien est actif
