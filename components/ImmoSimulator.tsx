@@ -1,14 +1,25 @@
 "use client";
 
 import { useState, useEffect } from "react";
-// J'ai ajouté tous les imports manquants pour éviter les erreurs rouges
 import { Wallet, Building2, Calculator, AlertCircle, TrendingUp } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
+import { motion, useSpring, useTransform } from "framer-motion";
 
-// --- CORRECTION CRUCIALE ---
-// Ce composant est DÉFINI À L'EXTÉRIEUR de la fonction principale.
-// C'est ce qui empêche le bug du clavier qui se ferme.
+// --- 1. COMPOSANT D'ANIMATION DES CHIFFRES ---
+// C'est lui qui crée l'effet de défilement "Fintech"
+const AnimatedCount = ({ value, className }: { value: number, className?: string }) => {
+  const spring = useSpring(value, { mass: 0.8, stiffness: 75, damping: 15 });
+  const display = useTransform(spring, (current) => Math.round(current).toLocaleString("fr-FR"));
+
+  useEffect(() => {
+    spring.set(value);
+  }, [value, spring]);
+
+  return <motion.span className={className}>{display}</motion.span>;
+};
+
+// --- 2. COMPOSANT INPUT (EXTERNE pour éviter le bug clavier) ---
 const InputGroup = ({ label, value, onChange, suffix, placeholder }: any) => (
   <div className="flex flex-col gap-2">
       <label className="text-[11px] uppercase tracking-wider font-bold text-zinc-500 ml-1">{label}</label>
@@ -18,7 +29,6 @@ const InputGroup = ({ label, value, onChange, suffix, placeholder }: any) => (
               value={value === 0 ? "" : value}
               onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
               placeholder={placeholder || "0"}
-              // Le CSS ici supprime les flèches moches et garde le focus
               className="bg-zinc-900/50 border border-zinc-800 text-white font-semibold pl-4 pr-8 h-12 rounded-xl focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 placeholder:text-zinc-700 transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
           />
           {suffix && <span className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-600 text-sm font-medium pointer-events-none group-focus-within:text-emerald-500 transition-colors">{suffix}</span>}
@@ -65,9 +75,8 @@ export default function ImmoSimulator() {
   return (
     <div className="space-y-8 pb-20 font-sans max-w-5xl mx-auto">
       
-      {/* HEADER PURIFIÉ (Plus de double titre !) */}
+      {/* HEADER */}
       <div className="flex flex-col items-center gap-6 mb-4">
-        {/* Uniquement le Toggle ici, le titre principal est géré par la page parente ou supprimé pour épurér */}
         <div className="p-1.5 bg-zinc-950 border border-zinc-800 rounded-full inline-flex relative shadow-inner">
             <button 
                 onClick={() => setMode("capacity")}
@@ -92,12 +101,16 @@ export default function ImmoSimulator() {
              <div className="relative overflow-hidden rounded-3xl bg-zinc-950 border border-zinc-800 p-10 md:p-14 text-center group">
                 <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-56 h-56 bg-emerald-500/10 blur-[90px] rounded-full group-hover:bg-emerald-500/20 transition-all duration-700" />
                 <p className="text-emerald-500 font-bold tracking-[0.2em] text-xs uppercase mb-4 relative z-10">Enveloppe d'Achat Max</p>
+                
+                {/* CHIFFRE ANIMÉ ICI */}
                 <h2 className="text-6xl md:text-8xl font-black text-white tracking-tighter drop-shadow-[0_0_30px_rgba(16,185,129,0.2)] relative z-10">
-                    {(capResults.totalEnvelope).toLocaleString("fr-FR")} €
+                    <AnimatedCount value={capResults.totalEnvelope} /> €
                 </h2>
+                
                 <div className="mt-8 flex justify-center gap-8 md:gap-16 relative z-10 border-t border-zinc-900 pt-6 max-w-lg mx-auto">
                      <div className="text-center">
-                        <div className="text-2xl font-bold text-white">{(capResults.maxMonthly).toFixed(0)} €</div>
+                        {/* CHIFFRE ANIMÉ ICI */}
+                        <div className="text-2xl font-bold text-white"><AnimatedCount value={capResults.maxMonthly} /> €</div>
                         <div className="text-[10px] text-zinc-500 uppercase font-bold mt-1">Mensualité Max</div>
                      </div>
                      <div className="w-px bg-zinc-900 h-10" />
@@ -166,7 +179,7 @@ export default function ImmoSimulator() {
                     <CardContent className="p-8 text-center">
                         <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-3">Cashflow Net</p>
                         <div className={`text-4xl md:text-5xl font-black ${projResults.cashflow >= 0 ? "text-emerald-400" : "text-red-500"}`}>
-                            {projResults.cashflow > 0 && "+"}{projResults.cashflow.toFixed(0)} €
+                            {projResults.cashflow > 0 && "+"}<AnimatedCount value={projResults.cashflow} /> €
                         </div>
                         <p className="text-sm text-zinc-500 mt-1">par mois</p>
                     </CardContent>
@@ -182,7 +195,7 @@ export default function ImmoSimulator() {
                      <Card className="bg-zinc-900/50 border-zinc-800">
                         <CardContent className="p-4 text-center">
                              <p className="text-[10px] text-zinc-500 font-bold uppercase mb-1">Coût Total</p>
-                             <p className="text-2xl font-bold text-white">{(projResults.totalCost/1000).toFixed(0)} k€</p>
+                             <p className="text-2xl font-bold text-white"><AnimatedCount value={projResults.totalCost / 1000} /> k€</p>
                         </CardContent>
                     </Card>
                 </div>
