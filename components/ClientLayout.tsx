@@ -3,13 +3,14 @@
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
+import Sidebar from "@/components/Sidebar"; // ✅ On n'oublie pas d'importer la Sidebar !
 
 export default function ClientLayout({ children }: { children: React.ReactNode }) {
   const [showSplash, setShowSplash] = useState(true);
   const pathname = usePathname();
 
   useEffect(() => {
-    // L'animation dure environ 2.2 secondes au total
+    // Timer pour l'animation de démarrage
     const timer = setTimeout(() => {
       setShowSplash(false);
     }, 2200);
@@ -17,7 +18,7 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
     return () => clearTimeout(timer);
   }, []);
 
-  // Empêche le scroll pendant le splash screen
+  // Bloque le scroll pendant l'animation
   useEffect(() => {
     if (showSplash) {
       document.body.style.overflow = "hidden";
@@ -28,22 +29,19 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
 
   return (
     <>
+      {/* --- 1. ÉCRAN DE DÉMARRAGE (SPLASH SCREEN) --- */}
       <AnimatePresence mode="wait">
         {showSplash && (
           <motion.div
             className="fixed inset-0 z-[9999] flex items-center justify-center bg-black"
-            // L'ANIMATION DE SORTIE (Le "Zoom écran et paf")
             exit={{ 
               opacity: 0, 
-              scale: 1.5, // Zoom vers l'utilisateur
-              filter: "blur(10px)", // Léger flou cinétique
-              transition: { duration: 0.5, ease: [0.76, 0, 0.24, 1] } // Courbe de vitesse "Premium"
+              scale: 1.5, 
+              filter: "blur(10px)", 
+              transition: { duration: 0.5, ease: [0.76, 0, 0.24, 1] } 
             }}
           >
-            {/* LOGO CENTRAL */}
             <div className="relative flex items-end">
-              
-              {/* PARTIE 1 : "Immo" (Vient de la GAUCHE) */}
               <motion.span
                 initial={{ x: -100, opacity: 0 }}
                 animate={{ x: 0, opacity: 1 }}
@@ -52,8 +50,6 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
               >
                 Immo
               </motion.span>
-
-              {/* PARTIE 2 : "Tech" (Vient de la DROITE) */}
               <motion.span
                 initial={{ x: 100, opacity: 0 }}
                 animate={{ x: 0, opacity: 1 }}
@@ -62,25 +58,16 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
               >
                 Tech
               </motion.span>
-
-              {/* PARTIE 3 : LE POINT VERT (Le "Pop") */}
               <motion.div
                 initial={{ scale: 0, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
-                transition={{ 
-                  type: "spring", 
-                  stiffness: 300, 
-                  damping: 15, 
-                  delay: 0.9 // Arrive juste après que le texte soit calé
-                }}
-                className="mb-2 ml-1" // Ajustement pour aligner le point avec la ligne de base du texte
+                transition={{ type: "spring", stiffness: 300, damping: 15, delay: 0.9 }}
+                className="mb-2 ml-1"
               >
                 <div className="w-3 h-3 md:w-4 md:h-4 bg-emerald-500 rounded-full shadow-[0_0_20px_rgba(16,185,129,0.8)]" />
               </motion.div>
-
             </div>
-
-            {/* SIGNATURE EN BAS DE L'ÉCRAN */}
+            
             <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -91,13 +78,24 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
                     by Quentin Delsol
                 </p>
             </motion.div>
-
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Le contenu de l'appli apparaît en dessous */}
-      {children}
+      {/* --- 2. STRUCTURE PRINCIPALE DE L'APP --- */}
+      <div className="flex min-h-screen bg-black">
+        
+        {/* La Sidebar (Fixe à gauche sur PC, Fixe en bas sur Mobile) */}
+        <Sidebar />
+
+        {/* LE CONTENU PRINCIPAL */}
+        {/* md:ml-64 : Pousse le contenu vers la droite sur PC pour ne pas être sous la barre */}
+        {/* pb-24 : Pousse le contenu vers le haut sur Mobile pour ne pas être sous la barre */}
+        <main className="flex-1 md:ml-64 pb-24 md:pb-0 p-4 md:p-8 transition-all duration-300">
+            {children}
+        </main>
+
+      </div>
     </>
   );
 }
