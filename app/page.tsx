@@ -1,115 +1,89 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import Sidebar from "@/components/Sidebar";
-import AnimatedNumber from "@/components/AnimatedNumber";
+import OnboardingWizard from "@/components/OnboardingWizard";
 import QuickBudgetWizard from "@/components/QuickBudgetWizard";
-import OnboardingWizard from "@/components/OnboardingWizard"; // <--- IMPORT AJOUTÉ
-import { motion } from "framer-motion";
-import { ShieldCheck, Calculator, Target, Activity, Wallet, PieChart, PlusCircle } from "lucide-react";
+import { motion, useInView, useMotionValue, useSpring } from "framer-motion";
+import { 
+  ShieldCheck, Wallet, TrendingUp, ArrowUpRight, 
+  Activity, Target, Lock
+} from "lucide-react";
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { PieChart as RechartsPie, Pie, Cell, ResponsiveContainer } from "recharts";
+
+// --- COMPOSANT COMPTEUR (Animation Premium) ---
+// Force l'animation à chaque fois que le composant apparaît
+const Counter = ({ value, currency = true }: { value: number, currency?: boolean }) => {
+  const ref = useRef(null);
+  const isInView = useInView(ref, { once: false }); // "once: false" permet de rejouer l'anim
+  const motionValue = useMotionValue(0);
+  const springValue = useSpring(motionValue, { damping: 30, stiffness: 100 });
+  const [displayValue, setDisplayValue] = useState("0");
+
+  useEffect(() => {
+    if (isInView) {
+      motionValue.set(value);
+    } else {
+      motionValue.set(0); // Reset quand on quitte l'écran (optionnel, ou garder value)
+    }
+  }, [isInView, value, motionValue]);
+
+  useEffect(() => {
+    return springValue.on("change", (latest) => {
+      if (currency) {
+        setDisplayValue(new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(latest));
+      } else {
+        setDisplayValue(latest.toFixed(0));
+      }
+    });
+  }, [springValue, currency]);
+
+  return <span ref={ref}>{displayValue}</span>;
+};
 
 // --- TYPES ---
 type Asset = { id: string; name: string; value: number; type: string };
 
 export default function Dashboard() {
-  
-  // --- ÉTATS ---
   const [netWorth, setNetWorth] = useState(0);
-  const [assets, setAssets] = useState<Asset[]>([]);
-  const [monthlyIncome, setMonthlyIncome] = useState(0);
-  const [monthlyExpenses, setMonthlyExpenses] = useState(0);
   const [savingsRate, setSavingsRate] = useState(0);
-  
-  // --- UX ---
-  const [greeting, setGreeting] = useState("Bonjour");
+  const [monthlyCashflow, setMonthlyCashflow] = useState(0);
   const [userName, setUserName] = useState("Investisseur");
+  const [assets, setAssets] = useState<Asset[]>([]);
   
-  // WIZARDS STATES
-  const [showOnboarding, setShowOnboarding] = useState(false); // <--- NOUVEL ÉTAT
-  const [showBudgetWizard, setShowBudgetWizard] = useState(false);
-  const [isBudgetEmpty, setIsBudgetEmpty] = useState(false); 
-  const [structureAnalysis, setStructureAnalysis] = useState("En attente de données...");
+  // Wizards
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showBudgetWizard, setShowBudgetWizard] = useState(false); // Gardé en mémoire mais masqué du bouton
 
-  // --- CHARGEMENT DES DONNÉES ---
   useEffect(() => {
     try {
-        // 1. VÉRIFICATION PRIMORDIALE : EST-CE UN NOUVEL UTILISATEUR ?
         const savedProfile = localStorage.getItem("userProfile");
-        if (!savedProfile) {
-            setShowOnboarding(true); // Lance le nouvel Onboarding Premium
-            return; // On arrête le chargement ici pour l'instant
-        }
+        if (!savedProfile) { setShowOnboarding(true); return; }
 
-        // 2. Identité & Heure
-        const currentHour = new Date().getHours();
         const p = JSON.parse(savedProfile);
         if (p.identity?.firstName) setUserName(p.identity.firstName);
-        else if (p.firstName) setUserName(p.firstName); // Compatibilité ancienne version
-        
-        setGreeting(currentHour >= 18 ? "Bonsoir" : "Bonjour");
 
-        // 3. Patrimoine (Récupération depuis le profil ou les actifs séparés)
+        // PATRIMOINE
+        const savedAssets = localStorage.getItem("myAssets");
         let currentAssets: Asset[] = [];
-        let total = 0;
+        if (savedAssets) currentAssets = JSON.parse(savedAssets);
         
-        // On essaie de construire les actifs depuis le profil utilisateur s'ils existent
-        if (p.assets) {
-             // Conversion simple pour l'affichage
-             if (p.assets.realEstate > 0) currentAssets.push({ id: "re", name: "Immo", value: p.assets.realEstate, type: "Immobilier" });
-             if (p.assets.stocks > 0) currentAssets.push({ id: "st", name: "Bourse", value: p.assets.stocks, type: "Bourse" });
-             if (p.assets.crypto > 0) currentAssets.push({ id: "cr", name: "Crypto", value: p.assets.crypto, type: "Crypto" });
-             if (p.assets.cash > 0) currentAssets.push({ id: "ca", name: "Cash", value: p.assets.cash, type: "Cash" });
-             
-             // Si on a aussi des actifs détaillés (ancien système), on les ajoute ou remplace (logique simplifiée ici)
-             const savedAssetsDetail = localStorage.getItem("myAssets");
-             if (savedAssetsDetail) {
-                 const detailed = JSON.parse(savedAssetsDetail);
-                 if (detailed.length > 0) currentAssets = detailed;
-             }
-        } else {
-             // Fallback ancien système
-             const savedAssets = localStorage.getItem("myAssets");
-             if (savedAssets) currentAssets = JSON.parse(savedAssets);
-        }
-
         setAssets(currentAssets);
-        total = currentAssets.reduce((acc: number, item: Asset) => acc + item.value, 0);
+        const total = currentAssets.reduce((acc: number, item: Asset) => acc + (item.value || 0), 0);
         setNetWorth(total);
 
-        // 4. Budget
+        // BUDGET
         const savedBudget = localStorage.getItem("myBudget");
         if (savedBudget) {
             const b = JSON.parse(savedBudget);
-            setMonthlyIncome(b.income || 0);
-            // Gestion compatibilité : expenses peut être un tableau ou un chiffre total
-            let totalExp = 0;
-            if (Array.isArray(b.expenses)) {
-                totalExp = b.expenses.reduce((acc: number, item: any) => acc + item.amount, 0);
-            } else {
-                totalExp = b.expenses || 0;
-            }
+            const inc = b.income || 0;
+            let exp = 0;
+            if (Array.isArray(b.expenses)) exp = b.expenses.reduce((acc: number, item: any) => acc + (item.amount || 0), 0);
+            else exp = b.expenses || 0;
             
-            setMonthlyExpenses(totalExp);
-            const savings = Math.max(0, (b.income || 0) - totalExp);
-            setSavingsRate(b.income > 0 ? (savings / b.income) * 100 : 0);
-            setIsBudgetEmpty(false);
-        } else {
-            setIsBudgetEmpty(true);
-        }
-
-        // 5. ANALYSE IA (Simplifiée)
-        if (total > 0) {
-            const cryptoVal = currentAssets.filter(a => a.type === "Crypto").reduce((acc, i) => acc + i.value, 0);
-            const immoVal = currentAssets.filter(a => a.type === "Immobilier").reduce((acc, i) => acc + i.value, 0);
-            
-            if ((cryptoVal / total) > 0.5) setStructureAnalysis("Profil agressif (Crypto dominant).");
-            else if ((immoVal / total) > 0.6) setStructureAnalysis("Profil Rentier Immobilier.");
-            else setStructureAnalysis("Allocation équilibrée.");
+            setMonthlyCashflow(inc - exp);
+            setSavingsRate(inc > 0 ? (Math.max(0, inc - exp) / inc) * 100 : 0);
         }
 
     } catch (e) { console.error("Erreur Dashboard", e); }
@@ -117,131 +91,191 @@ export default function Dashboard() {
 
   const handleOnboardingFinish = () => {
     setShowOnboarding(false);
-    window.location.reload(); // Rafraîchit la page pour charger les nouvelles données
+    window.location.reload();
   };
 
-  const formatEuro = (val: number) => new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(val);
-
+  // Distribution pour la barre visuelle
   const assetDistribution = [
-      { name: "Immo", value: assets.filter(a => a.type === "Immobilier").reduce((acc, i) => acc + i.value, 0), color: "#3b82f6" },
-      { name: "Bourse", value: assets.filter(a => a.type === "Bourse").reduce((acc, i) => acc + i.value, 0), color: "#10b981" },
-      { name: "Crypto", value: assets.filter(a => a.type === "Crypto").reduce((acc, i) => acc + i.value, 0), color: "#8b5cf6" },
-      { name: "Cash", value: assets.filter(a => a.type === "Cash").reduce((acc, i) => acc + i.value, 0), color: "#f59e0b" },
+      { type: "Immobilier", color: "bg-blue-500", value: assets.filter(a => a.type.includes("Immo")).reduce((acc, i) => acc + i.value, 0) },
+      { type: "Bourse", color: "bg-emerald-500", value: assets.filter(a => a.type === "Bourse").reduce((acc, i) => acc + i.value, 0) },
+      { type: "Crypto", color: "bg-purple-500", value: assets.filter(a => a.type === "Crypto").reduce((acc, i) => acc + i.value, 0) },
+      { type: "Cash", color: "bg-amber-500", value: assets.filter(a => a.type.includes("Cash")).reduce((acc, i) => acc + i.value, 0) },
   ].filter(d => d.value > 0);
 
   return (
-    <div className="flex flex-col md:flex-row min-h-screen bg-black text-zinc-100 font-sans">
+    <div className="flex flex-col md:flex-row min-h-screen bg-black text-zinc-100 font-sans selection:bg-emerald-500/30">
       
-      {/* --- WIZARDS (S'affichent par dessus tout) --- */}
       {showOnboarding && <OnboardingWizard onFinish={handleOnboardingFinish} />}
       <QuickBudgetWizard isOpen={showBudgetWizard} onClose={() => setShowBudgetWizard(false)} />
 
       <Sidebar />
       
-      <main className="flex-1 w-full max-w-full overflow-y-auto overflow-x-hidden p-3 md:p-6 lg:p-8 pb-24 md:pb-8">
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="max-w-[1600px] mx-auto space-y-6">
+      <main className="flex-1 w-full max-w-[1400px] mx-auto overflow-y-auto p-4 md:p-8 pb-24 md:pb-8">
+        <motion.div 
+            initial={{ opacity: 0, y: 20 }} 
+            animate={{ opacity: 1, y: 0 }} 
+            transition={{ duration: 0.6 }}
+            className="space-y-6"
+        >
           
-          <header className="flex items-center justify-between mb-8">
+          {/* HEADER MINIMALISTE */}
+          <div className="flex items-center justify-between pt-2">
             <div>
-              <h1 className="text-2xl font-bold tracking-tight">{greeting}{userName ? `, ${userName}` : ""}</h1>
-              <p className="text-zinc-500 text-sm">Synthèse de votre situation réelle.</p>
+              <p className="text-zinc-500 text-xs uppercase tracking-widest font-medium mb-1">Vue d'ensemble</p>
+              <h1 className="text-2xl md:text-3xl font-bold text-white tracking-tight">
+                Bon retour, <span className="text-zinc-400">{userName}</span>
+              </h1>
             </div>
-            
-            {/* BOUTON MODIFIER BUDGET */}
-            <Button 
-                onClick={() => setShowBudgetWizard(true)} 
-                variant={isBudgetEmpty ? "default" : "outline"}
-                className={isBudgetEmpty ? "bg-emerald-600 hover:bg-emerald-700 text-white animate-pulse" : "border-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-800"}
-            >
-                {isBudgetEmpty ? <><PlusCircle size={16} className="mr-2"/> Configurer Budget</> : "Modifier Budget"}
-            </Button>
-          </header>
-
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            
-            {/* --- LEFT COL (KPIs) --- */}
-            <div className="lg:col-span-8 grid grid-cols-1 md:grid-cols-2 gap-6">
-                
-                {/* CARTE PATRIMOINE */}
-                <div className="md:col-span-2 relative overflow-hidden rounded-2xl border border-zinc-800 bg-gradient-to-br from-zinc-900 via-zinc-900 to-black p-8 shadow-2xl flex flex-col justify-between min-h-[220px]">
-                    <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/5 blur-[80px] rounded-full pointer-events-none"></div>
-                    <div>
-                        <p className="text-zinc-400 font-medium text-sm flex items-center gap-2 mb-1"><ShieldCheck size={16} className="text-emerald-500"/> Patrimoine Net Total</p>
-                        <div className="text-5xl md:text-6xl font-black text-white tracking-tighter"><AnimatedNumber value={netWorth} /></div>
-                    </div>
-                    <div className="z-10 mt-6">
-                        <div className="h-2 w-full flex rounded-full overflow-hidden bg-zinc-800">
-                            {assetDistribution.length > 0 ? (
-                                assetDistribution.map((a, i) => (<div key={i} style={{ width: `${(a.value / netWorth) * 100}%`, backgroundColor: a.color }} />))
-                            ) : (
-                                <div className="w-full bg-zinc-800 h-full" />
-                            )}
-                        </div>
-                        {assetDistribution.length === 0 && <p className="text-xs text-zinc-600 mt-2">Ajoutez des actifs pour voir la répartition</p>}
-                    </div>
-                </div>
-
-                {/* CARTE BUDGET */}
-                <Card className="border-zinc-800 bg-zinc-900/30">
-                    <CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-sm font-medium text-zinc-400">Flux Mensuel</CardTitle><Calculator size={16} className="text-blue-500"/></CardHeader>
-                    <CardContent>
-                        {isBudgetEmpty ? (
-                            <div className="text-sm text-zinc-500">Aucun budget défini</div>
-                        ) : (
-                            <>
-                                <div className="text-2xl font-bold text-white mb-1">{formatEuro(monthlyIncome - monthlyExpenses)}</div>
-                                <div className="flex justify-between text-xs mt-2"><span className="text-emerald-400">+{formatEuro(monthlyIncome)}</span><span className="text-red-400">-{formatEuro(monthlyExpenses)}</span></div>
-                            </>
-                        )}
-                    </CardContent>
-                </Card>
-
-                {/* CARTE EPARGNE */}
-                <Card className="border-zinc-800 bg-zinc-900/30">
-                    <CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-sm font-medium text-zinc-400">Taux d'Épargne</CardTitle><PieChart size={16} className="text-purple-500"/></CardHeader>
-                    <CardContent className="flex items-center justify-between">
-                        <div><div className="text-2xl font-bold text-white mb-1">{savingsRate.toFixed(0)}%</div></div>
-                        <div className="h-16 w-16 relative">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <RechartsPie><Pie data={[{value: savingsRate > 0 ? savingsRate : 1}, {value: 100 - (savingsRate > 0 ? savingsRate : 1)}]} innerRadius={20} outerRadius={30} dataKey="value"><Cell fill={savingsRate >= 20 ? "#10b981" : "#ef4444"} stroke="none"/><Cell fill="#27272a" stroke="none"/></Pie></RechartsPie>
-                            </ResponsiveContainer>
-                        </div>
-                    </CardContent>
-                </Card>
-            </div>
-
-            {/* --- RIGHT COL (Actions) --- */}
-            <div className="lg:col-span-4 space-y-6">
-                <Card className="border-zinc-800 bg-zinc-900/30">
-                    <CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-sm text-white"><Target size={16} className="text-red-500" /> Prochain Objectif</CardTitle></CardHeader>
-                    <CardContent>
-                        <div className="flex justify-between items-end mb-2"><span className="text-2xl font-bold text-white">100k €</span></div>
-                        <Progress value={Math.min(100, (netWorth / 100000) * 100)} className="h-2 bg-zinc-800" indicatorClassName="bg-gradient-to-r from-red-500 to-orange-500"/>
-                        <p className="text-xs text-zinc-400 mt-2 text-right">{((netWorth / 100000) * 100).toFixed(1)}%</p>
-                    </CardContent>
-                </Card>
-
-                <div className="grid grid-cols-2 gap-3">
-                    <Link href="/patrimoine" className="flex flex-col items-center justify-center p-4 rounded-xl border border-zinc-800 bg-zinc-900/50 hover:bg-zinc-800 transition-all text-center gap-2">
-                        <Wallet size={20} className="text-blue-500 mb-2"/>
-                        <span className="text-xs font-medium text-zinc-300">Gérer Actifs</span>
-                    </Link>
-                    <Link href="/simulateur" className="flex flex-col items-center justify-center p-4 rounded-xl border border-zinc-800 bg-zinc-900/50 hover:bg-zinc-800 transition-all text-center gap-2">
-                        <Calculator size={20} className="text-emerald-500 mb-2"/>
-                        <span className="text-xs font-medium text-zinc-300">Simulateur</span>
-                    </Link>
-                </div>
+            {/* Le bouton "Modifier Budget" a été supprimé comme demandé */}
+            <div className="h-10 w-10 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-500">
+                <Activity size={18} />
             </div>
           </div>
 
-          <div className="p-1 rounded-2xl bg-gradient-to-r from-zinc-800 to-zinc-900">
-              <div className="bg-black rounded-xl p-6 flex flex-col md:flex-row items-center justify-between gap-6">
-                  <div className="flex gap-4 items-center">
-                      <div className="h-12 w-12 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-500"><Activity size={24}/></div>
-                      <div><h3 className="font-bold text-white">Analyse de Portefeuille</h3><p className="text-sm text-zinc-400">{structureAnalysis}</p></div>
-                  </div>
-                  <Button variant="secondary" className="font-bold">Détails bientôt</Button>
+          {/* GRILLE BENTO (Layout Premium) */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
+            
+            {/* 1. CARTE PRINCIPALE : NET WORTH (Prend 2 colonnes sur Desktop) */}
+            <div className="md:col-span-2 relative overflow-hidden rounded-3xl bg-zinc-900 border border-zinc-800/60 p-8 shadow-2xl flex flex-col justify-between min-h-[260px] group">
+                {/* Effet Glow d'arrière plan */}
+                <div className="absolute top-0 right-0 w-[300px] h-[300px] bg-emerald-500/10 blur-[100px] rounded-full group-hover:bg-emerald-500/15 transition-all duration-700 pointer-events-none"></div>
+                
+                <div>
+                    <div className="flex items-center gap-2 mb-3">
+                        <div className="p-1.5 bg-emerald-500/10 rounded-lg text-emerald-500">
+                            <ShieldCheck size={18} />
+                        </div>
+                        <span className="text-emerald-500 font-medium text-sm tracking-wide">Patrimoine Net</span>
+                    </div>
+                    <div className="text-5xl md:text-7xl font-bold text-white tracking-tighter">
+                        <Counter value={netWorth} />
+                    </div>
+                </div>
+
+                <div className="relative z-10 mt-8">
+                    <div className="flex justify-between text-xs text-zinc-400 mb-2 font-medium uppercase tracking-wider">
+                        <span>Allocation d'actifs</span>
+                        <span>100%</span>
+                    </div>
+                    {/* Barre de distribution ultra-fine */}
+                    <div className="h-1.5 w-full flex rounded-full overflow-hidden bg-zinc-800/50">
+                        {assetDistribution.length > 0 ? (
+                            assetDistribution.map((a, i) => (
+                                <motion.div 
+                                    key={i} 
+                                    initial={{ width: 0 }}
+                                    animate={{ width: `${(a.value / netWorth) * 100}%` }}
+                                    transition={{ duration: 1, delay: 0.5 }}
+                                    className={`h-full ${a.color}`} 
+                                />
+                            ))
+                        ) : (
+                            <div className="w-full bg-zinc-800 h-full" />
+                        )}
+                    </div>
+                    <div className="flex gap-4 mt-3">
+                        {assetDistribution.map((a, i) => (
+                            <div key={i} className="flex items-center gap-1.5">
+                                <div className={`w-1.5 h-1.5 rounded-full ${a.color}`} />
+                                <span className="text-xs text-zinc-500">{a.type}</span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+
+            {/* 2. SIDE CARDS (Colonne de droite) */}
+            <div className="space-y-4 md:space-y-6">
+                
+                {/* Carte Flux */}
+                <div className="rounded-3xl bg-zinc-900/50 border border-zinc-800 p-6 flex flex-col justify-center h-[140px] relative overflow-hidden">
+                     <div className="absolute -right-6 -top-6 w-24 h-24 bg-blue-500/10 blur-3xl rounded-full"></div>
+                     <p className="text-zinc-500 text-xs uppercase font-bold tracking-widest mb-1">Flux Mensuel (Est.)</p>
+                     <div className="text-3xl font-bold text-white tracking-tight flex items-baseline gap-1">
+                        {monthlyCashflow > 0 ? "+" : ""}<Counter value={monthlyCashflow} />
+                        <span className="text-sm font-normal text-zinc-500">/mois</span>
+                     </div>
+                </div>
+
+                {/* Carte Épargne */}
+                <div className="rounded-3xl bg-zinc-900/50 border border-zinc-800 p-6 flex flex-col justify-center h-[140px] relative overflow-hidden">
+                     <div className="absolute -right-6 -top-6 w-24 h-24 bg-purple-500/10 blur-3xl rounded-full"></div>
+                     <p className="text-zinc-500 text-xs uppercase font-bold tracking-widest mb-1">Taux d'Épargne</p>
+                     <div className="text-3xl font-bold text-white tracking-tight flex items-baseline gap-1">
+                        <Counter value={savingsRate} currency={false} />
+                        <span className="text-lg text-zinc-500">%</span>
+                     </div>
+                     <div className="w-full bg-zinc-800 h-1 mt-3 rounded-full overflow-hidden">
+                        <motion.div 
+                            initial={{ width: 0 }}
+                            animate={{ width: `${savingsRate}%` }}
+                            transition={{ duration: 1, delay: 0.2 }}
+                            className="h-full bg-purple-500"
+                        />
+                     </div>
+                </div>
+
+            </div>
+
+          </div>
+
+          {/* 3. SECTION OBJECTIFS & ACTIONS */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+              
+              {/* Prochain Objectif */}
+              <div className="p-[1px] rounded-3xl bg-gradient-to-br from-zinc-800 to-zinc-950">
+                <div className="bg-black/90 backdrop-blur-sm rounded-[23px] p-6 h-full flex flex-col justify-center">
+                    <div className="flex justify-between items-start mb-4">
+                        <div className="flex items-center gap-2">
+                            <Target className="text-red-500" size={20} />
+                            <span className="text-white font-bold">Prochain Cap</span>
+                        </div>
+                        <span className="text-xs font-mono text-zinc-500">100K CLUB</span>
+                    </div>
+                    
+                    <div className="flex items-end gap-2 mb-2">
+                        <span className="text-2xl font-bold text-white">100 000 €</span>
+                        <span className="text-sm text-zinc-500 mb-1">objectif</span>
+                    </div>
+                    
+                    <Progress value={Math.min(100, (netWorth / 100000) * 100)} className="h-2 bg-zinc-800" indicatorClassName="bg-gradient-to-r from-red-600 to-orange-500"/>
+                    <p className="text-right text-xs text-zinc-500 mt-2">
+                        {((netWorth / 100000) * 100).toFixed(1)}% atteint
+                    </p>
+                </div>
               </div>
+
+              {/* Actions Rapides (Style Premium Buttons) */}
+              <div className="grid grid-cols-2 gap-4">
+                  <Link href="/patrimoine" className="group flex flex-col items-center justify-center p-6 rounded-3xl border border-zinc-800 bg-zinc-900/30 hover:bg-zinc-900 hover:border-zinc-700 transition-all cursor-pointer">
+                      <div className="h-12 w-12 rounded-full bg-blue-500/10 flex items-center justify-center text-blue-500 group-hover:scale-110 transition-transform mb-3">
+                          <Wallet size={24} />
+                      </div>
+                      <span className="text-sm font-medium text-white">Mes Actifs</span>
+                  </Link>
+                  
+                  <Link href="/simulateur" className="group flex flex-col items-center justify-center p-6 rounded-3xl border border-zinc-800 bg-zinc-900/30 hover:bg-zinc-900 hover:border-zinc-700 transition-all cursor-pointer">
+                      <div className="h-12 w-12 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-500 group-hover:scale-110 transition-transform mb-3">
+                          <TrendingUp size={24} />
+                      </div>
+                      <span className="text-sm font-medium text-white">Projection</span>
+                  </Link>
+              </div>
+
+          </div>
+
+          {/* 4. BANNIÈRE ANALYSE (Verrouillée) */}
+          <div className="w-full p-6 rounded-3xl border border-zinc-800/50 bg-gradient-to-r from-zinc-900/50 to-zinc-950 flex items-center justify-between opacity-60 grayscale hover:grayscale-0 hover:opacity-100 transition-all duration-500 cursor-not-allowed">
+              <div className="flex items-center gap-4">
+                  <div className="h-10 w-10 rounded-full bg-zinc-800 flex items-center justify-center">
+                      <Lock size={18} className="text-zinc-500" />
+                  </div>
+                  <div>
+                      <h3 className="text-sm font-bold text-white">Analyse IA détaillée</h3>
+                      <p className="text-xs text-zinc-500">Disponible dans la version Pro.</p>
+                  </div>
+              </div>
+              <ArrowUpRight size={18} className="text-zinc-600" />
           </div>
 
         </motion.div>
