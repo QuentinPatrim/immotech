@@ -22,7 +22,7 @@ const cleanNumber = (val: any): number => {
     return isNaN(num) ? 0 : num;
 };
 
-// MODIFICATION ICI : Ajout du prop "numeric" pour gérer le type de clavier
+// 1. On autorise le paramètre "numeric"
 const PremiumInput = ({ value, onValueChange, placeholder, icon: Icon, autoFocus = false, onEnter, numeric = true }: any) => (
   <div className="group relative transition-all duration-300 w-full">
     <div className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 group-focus-within:text-emerald-400 transition-colors">
@@ -31,7 +31,7 @@ const PremiumInput = ({ value, onValueChange, placeholder, icon: Icon, autoFocus
     <Input
       autoFocus={autoFocus}
       type="text"
-      // Si numeric est vrai (défaut), clavier chiffres. Sinon, clavier texte normal.
+      // Si numeric est faux, on met "text" (clavier AZERTY)
       inputMode={numeric ? "decimal" : "text"} 
       value={value} 
       onChange={(e) => onValueChange(e.target.value)}
@@ -56,7 +56,6 @@ const FeatureCard = ({ icon: Icon, title, desc }: any) => (
 
 export default function OnboardingWizard({ onFinish }: OnboardingProps) {
   const [step, setStep] = useState(0);
-  
   const [identity, setIdentity] = useState({ firstName: "", lastName: "", age: "" });
   const [assets, setAssets] = useState({ realEstate: "", stocks: "", crypto: "", cash: "" });
   const [income, setIncome] = useState("");
@@ -74,8 +73,6 @@ export default function OnboardingWizard({ onFinish }: OnboardingProps) {
 
   const handleFinish = () => {
     triggerHaptic("success");
-    
-    // NETTOYAGE
     const finalAssets = {
         realEstate: cleanNumber(assets.realEstate),
         stocks: cleanNumber(assets.stocks),
@@ -91,20 +88,14 @@ export default function OnboardingWizard({ onFinish }: OnboardingProps) {
     };
     const totalExpensesVal = finalExpenses.housing + finalExpenses.food + finalExpenses.transport + finalExpenses.leisure;
 
-    // SAUVEGARDE PROFIL
     const userData = {
       identity,
       assets: finalAssets,
-      budget: {
-        income: finalIncome,
-        expenses: totalExpensesVal, 
-        details: expenses 
-      },
+      budget: { income: finalIncome, expenses: totalExpensesVal, details: expenses },
       onboardingComplete: true
     };
     localStorage.setItem("userProfile", JSON.stringify(userData));
 
-    // SAUVEGARDE BUDGET
     localStorage.setItem("myBudget", JSON.stringify({ 
         income: finalIncome,
         expenses: [
@@ -115,22 +106,11 @@ export default function OnboardingWizard({ onFinish }: OnboardingProps) {
         ] 
     }));
 
-    // CREATION LISTE PATRIMOINE
     const initialAssetsList = [];
-
-    if (finalAssets.realEstate > 0) {
-        initialAssetsList.push({ id: "init-re-" + Date.now(), name: "Immobilier Principal", value: finalAssets.realEstate, type: "Immobilier", color: "#3b82f6" });
-    }
-    if (finalAssets.stocks > 0) {
-        initialAssetsList.push({ id: "init-st-" + Date.now(), name: "Portefeuille Bourse", value: finalAssets.stocks, type: "Bourse", color: "#10b981" });
-    }
-    if (finalAssets.crypto > 0) {
-        initialAssetsList.push({ id: "init-cr-" + Date.now(), name: "Portefeuille Crypto", value: finalAssets.crypto, type: "Crypto", color: "#8b5cf6" });
-    }
-    if (finalAssets.cash > 0) {
-        initialAssetsList.push({ id: "init-ca-" + Date.now(), name: "Cash & Épargne", value: finalAssets.cash, type: "Cash", color: "#f59e0b" });
-    }
-
+    if (finalAssets.realEstate > 0) initialAssetsList.push({ id: "init-re-" + Date.now(), name: "Immobilier Principal", value: finalAssets.realEstate, type: "Immobilier", color: "#3b82f6" });
+    if (finalAssets.stocks > 0) initialAssetsList.push({ id: "init-st-" + Date.now(), name: "Portefeuille Bourse", value: finalAssets.stocks, type: "Bourse", color: "#10b981" });
+    if (finalAssets.crypto > 0) initialAssetsList.push({ id: "init-cr-" + Date.now(), name: "Portefeuille Crypto", value: finalAssets.crypto, type: "Crypto", color: "#8b5cf6" });
+    if (finalAssets.cash > 0) initialAssetsList.push({ id: "init-ca-" + Date.now(), name: "Cash & Épargne", value: finalAssets.cash, type: "Cash", color: "#f59e0b" });
     localStorage.setItem("myAssets", JSON.stringify(initialAssetsList));
     
     onFinish();
@@ -148,22 +128,15 @@ export default function OnboardingWizard({ onFinish }: OnboardingProps) {
     <div className="fixed inset-0 z-[99999] bg-black">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom_left,_var(--tw-gradient-stops))] from-emerald-900/10 via-black to-black" />
       <motion.div className="relative z-10 w-full h-[100dvh] flex flex-col md:h-auto md:max-w-xl md:mx-auto md:my-10 md:bg-zinc-950 md:border md:border-zinc-800 md:rounded-3xl md:shadow-2xl md:min-h-[600px] md:h-auto">
-          
           <div className="pt-safe px-8 pt-6 pb-2 shrink-0">
-            {step > 2 && step < 10 && (
-               <div className="h-1.5 w-full bg-zinc-900 rounded-full overflow-hidden">
-                   <motion.div initial={{ width: 0 }} animate={{ width: `${((step - 2) / 8) * 100}%` }} className="h-full bg-emerald-500" />
-               </div>
-            )}
+            {step > 2 && step < 10 && (<div className="h-1.5 w-full bg-zinc-900 rounded-full overflow-hidden"><motion.div initial={{ width: 0 }} animate={{ width: `${((step - 2) / 8) * 100}%` }} className="h-full bg-emerald-500" /></div>)}
           </div>
 
           <div id="onboarding-scroll" className="flex-1 overflow-y-auto px-8 py-4 flex flex-col justify-center">
             <AnimatePresence mode="wait">
                 {step === 0 && (
                 <motion.div key="intro0" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} className="space-y-8 text-center my-auto">
-                    <div className="w-24 h-24 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-3xl mx-auto flex items-center justify-center shadow-lg shadow-emerald-900/50 mb-6">
-                        <TrendingUp size={48} className="text-black" />
-                    </div>
+                    <div className="w-24 h-24 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-3xl mx-auto flex items-center justify-center shadow-lg shadow-emerald-900/50 mb-6"><TrendingUp size={48} className="text-black" /></div>
                     <div><h1 className="text-4xl font-black text-white tracking-tight mb-4">Bienvenue sur <span className="text-emerald-500">ImmoTech</span></h1><p className="text-zinc-400 text-lg leading-relaxed">L'application tout-en-un pour piloter votre patrimoine.</p></div>
                 </motion.div>
                 )}
@@ -187,10 +160,9 @@ export default function OnboardingWizard({ onFinish }: OnboardingProps) {
                 <motion.div key="step3" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6 my-auto">
                     <div className="text-center space-y-2"><h2 className="text-3xl font-bold text-white">Qui êtes-vous ? 👤</h2></div>
                     <div className="space-y-4 pt-4">
-                        {/* MODIFICATION ICI : numeric={false} pour avoir le clavier texte */}
+                        {/* 2. On applique numeric={false} pour le texte */}
                         <PremiumInput autoFocus icon={User} placeholder="Prénom" value={identity.firstName} onValueChange={(val: string) => setIdentity({...identity, firstName: val})} numeric={false} />
                         <PremiumInput icon={User} placeholder="Nom" value={identity.lastName} onValueChange={(val: string) => setIdentity({...identity, lastName: val})} numeric={false} />
-                        {/* L'âge reste en numérique (numeric={true} par défaut) */}
                         <PremiumInput icon={Check} placeholder="Âge" value={identity.age} onValueChange={(val: string) => setIdentity({...identity, age: val})} onEnter={handleNext} />
                     </div>
                 </motion.div>
@@ -209,9 +181,7 @@ export default function OnboardingWizard({ onFinish }: OnboardingProps) {
                 {step === 5 && (
                 <motion.div key="step5" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6 my-auto">
                     <div className="text-center space-y-2"><h2 className="text-2xl font-bold text-white">Vos Revenus 💸</h2><p className="text-zinc-400">Net Mensuel avant impôt.</p></div>
-                    <div className="space-y-4 py-8">
-                        <PremiumInput autoFocus icon={Briefcase} placeholder="Montant Net Mensuel" value={income} onValueChange={(val: string) => setIncome(val)} onEnter={handleNext} />
-                    </div>
+                    <div className="space-y-4 py-8"><PremiumInput autoFocus icon={Briefcase} placeholder="Montant Net Mensuel" value={income} onValueChange={(val: string) => setIncome(val)} onEnter={handleNext} /></div>
                 </motion.div>
                 )}
                 {[6, 7, 8, 9].includes(step) && (
@@ -234,14 +204,7 @@ export default function OnboardingWizard({ onFinish }: OnboardingProps) {
                 )}
             </AnimatePresence>
           </div>
-
-          {step < 10 && (
-            <div className="p-6 md:p-8 border-t border-zinc-800/50 bg-zinc-950/80 backdrop-blur-md pb-safe shrink-0">
-                <Button onClick={handleNext} className="bg-emerald-600 hover:bg-emerald-500 text-white w-full h-14 rounded-2xl font-bold text-lg shadow-lg shadow-emerald-900/20 transition-all active:scale-95">
-                    {step === 0 ? "Découvrir" : step === 2 ? "Configurer mon Profil" : "Continuer"} <ArrowRight size={20} className="ml-2" />
-                </Button>
-            </div>
-          )}
+          {step < 10 && (<div className="p-6 md:p-8 border-t border-zinc-800/50 bg-zinc-950/80 backdrop-blur-md pb-safe shrink-0"><Button onClick={handleNext} className="bg-emerald-600 hover:bg-emerald-500 text-white w-full h-14 rounded-2xl font-bold text-lg shadow-lg shadow-emerald-900/20 transition-all active:scale-95">{step === 0 ? "Découvrir" : step === 2 ? "Configurer mon Profil" : "Continuer"} <ArrowRight size={20} className="ml-2" /></Button></div>)}
       </motion.div>
     </div>
   );
