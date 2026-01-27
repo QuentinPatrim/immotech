@@ -22,7 +22,8 @@ const cleanNumber = (val: any): number => {
     return isNaN(num) ? 0 : num;
 };
 
-const PremiumInput = ({ value, onValueChange, placeholder, icon: Icon, autoFocus = false, onEnter }: any) => (
+// MODIFICATION ICI : Ajout du prop "numeric" pour gérer le type de clavier
+const PremiumInput = ({ value, onValueChange, placeholder, icon: Icon, autoFocus = false, onEnter, numeric = true }: any) => (
   <div className="group relative transition-all duration-300 w-full">
     <div className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 group-focus-within:text-emerald-400 transition-colors">
       <Icon size={20} />
@@ -30,7 +31,8 @@ const PremiumInput = ({ value, onValueChange, placeholder, icon: Icon, autoFocus
     <Input
       autoFocus={autoFocus}
       type="text"
-      inputMode="decimal"
+      // Si numeric est vrai (défaut), clavier chiffres. Sinon, clavier texte normal.
+      inputMode={numeric ? "decimal" : "text"} 
       value={value} 
       onChange={(e) => onValueChange(e.target.value)}
       onKeyDown={(e) => { if (e.key === "Enter" && onEnter) onEnter(); }}
@@ -113,7 +115,7 @@ export default function OnboardingWizard({ onFinish }: OnboardingProps) {
         ] 
     }));
 
-    // --- CORRECTION CRUCIALE ICI : On utilise "value" et des types lisibles ---
+    // CREATION LISTE PATRIMOINE
     const initialAssetsList = [];
 
     if (finalAssets.realEstate > 0) {
@@ -185,8 +187,10 @@ export default function OnboardingWizard({ onFinish }: OnboardingProps) {
                 <motion.div key="step3" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6 my-auto">
                     <div className="text-center space-y-2"><h2 className="text-3xl font-bold text-white">Qui êtes-vous ? 👤</h2></div>
                     <div className="space-y-4 pt-4">
-                        <PremiumInput autoFocus icon={User} placeholder="Prénom" value={identity.firstName} onValueChange={(val: string) => setIdentity({...identity, firstName: val})} />
-                        <PremiumInput icon={User} placeholder="Nom" value={identity.lastName} onValueChange={(val: string) => setIdentity({...identity, lastName: val})} />
+                        {/* MODIFICATION ICI : numeric={false} pour avoir le clavier texte */}
+                        <PremiumInput autoFocus icon={User} placeholder="Prénom" value={identity.firstName} onValueChange={(val: string) => setIdentity({...identity, firstName: val})} numeric={false} />
+                        <PremiumInput icon={User} placeholder="Nom" value={identity.lastName} onValueChange={(val: string) => setIdentity({...identity, lastName: val})} numeric={false} />
+                        {/* L'âge reste en numérique (numeric={true} par défaut) */}
                         <PremiumInput icon={Check} placeholder="Âge" value={identity.age} onValueChange={(val: string) => setIdentity({...identity, age: val})} onEnter={handleNext} />
                     </div>
                 </motion.div>
