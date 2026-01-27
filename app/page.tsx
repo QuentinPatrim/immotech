@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import Sidebar from "@/components/Sidebar";
 import OnboardingWizard from "@/components/OnboardingWizard";
-import QuickBudgetWizard from "@/components/QuickBudgetWizard";
+// SUPPRIMÉ : import QuickBudgetWizard ... (Plus besoin)
 import { motion, useInView, useMotionValue, useSpring } from "framer-motion";
 import { 
   ShieldCheck, Wallet, TrendingUp, ArrowUpRight, 
@@ -13,10 +13,9 @@ import Link from "next/link";
 import { Progress } from "@/components/ui/progress";
 
 // --- COMPOSANT COMPTEUR (Animation Premium) ---
-// Force l'animation à chaque fois que le composant apparaît
 const Counter = ({ value, currency = true }: { value: number, currency?: boolean }) => {
   const ref = useRef(null);
-  const isInView = useInView(ref, { once: false }); // "once: false" permet de rejouer l'anim
+  const isInView = useInView(ref, { once: false });
   const motionValue = useMotionValue(0);
   const springValue = useSpring(motionValue, { damping: 30, stiffness: 100 });
   const [displayValue, setDisplayValue] = useState("0");
@@ -25,7 +24,7 @@ const Counter = ({ value, currency = true }: { value: number, currency?: boolean
     if (isInView) {
       motionValue.set(value);
     } else {
-      motionValue.set(0); // Reset quand on quitte l'écran (optionnel, ou garder value)
+      motionValue.set(0);
     }
   }, [isInView, value, motionValue]);
 
@@ -54,7 +53,7 @@ export default function Dashboard() {
   
   // Wizards
   const [showOnboarding, setShowOnboarding] = useState(false);
-  const [showBudgetWizard, setShowBudgetWizard] = useState(false); // Gardé en mémoire mais masqué du bouton
+  // SUPPRIMÉ : const [showBudgetWizard... (Plus besoin)
 
   useEffect(() => {
     try {
@@ -94,7 +93,6 @@ export default function Dashboard() {
     window.location.reload();
   };
 
-  // Distribution pour la barre visuelle
   const assetDistribution = [
       { type: "Immobilier", color: "bg-blue-500", value: assets.filter(a => a.type.includes("Immo")).reduce((acc, i) => acc + i.value, 0) },
       { type: "Bourse", color: "bg-emerald-500", value: assets.filter(a => a.type === "Bourse").reduce((acc, i) => acc + i.value, 0) },
@@ -106,7 +104,8 @@ export default function Dashboard() {
     <div className="flex flex-col md:flex-row min-h-screen bg-black text-zinc-100 font-sans selection:bg-emerald-500/30">
       
       {showOnboarding && <OnboardingWizard onFinish={handleOnboardingFinish} />}
-      <QuickBudgetWizard isOpen={showBudgetWizard} onClose={() => setShowBudgetWizard(false)} />
+      
+      {/* SUPPRIMÉ : <QuickBudgetWizard ... /> (C'est cette ligne qui causait l'erreur isOpen) */}
 
       <Sidebar />
       
@@ -126,7 +125,7 @@ export default function Dashboard() {
                 Bon retour, <span className="text-zinc-400">{userName}</span>
               </h1>
             </div>
-            {/* Le bouton "Modifier Budget" a été supprimé comme demandé */}
+            
             <div className="h-10 w-10 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-500">
                 <Activity size={18} />
             </div>
@@ -135,9 +134,8 @@ export default function Dashboard() {
           {/* GRILLE BENTO (Layout Premium) */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
             
-            {/* 1. CARTE PRINCIPALE : NET WORTH (Prend 2 colonnes sur Desktop) */}
+            {/* 1. CARTE PRINCIPALE : NET WORTH */}
             <div className="md:col-span-2 relative overflow-hidden rounded-3xl bg-zinc-900 border border-zinc-800/60 p-8 shadow-2xl flex flex-col justify-between min-h-[260px] group">
-                {/* Effet Glow d'arrière plan */}
                 <div className="absolute top-0 right-0 w-[300px] h-[300px] bg-emerald-500/10 blur-[100px] rounded-full group-hover:bg-emerald-500/15 transition-all duration-700 pointer-events-none"></div>
                 
                 <div>
@@ -157,7 +155,6 @@ export default function Dashboard() {
                         <span>Allocation d'actifs</span>
                         <span>100%</span>
                     </div>
-                    {/* Barre de distribution ultra-fine */}
                     <div className="h-1.5 w-full flex rounded-full overflow-hidden bg-zinc-800/50">
                         {assetDistribution.length > 0 ? (
                             assetDistribution.map((a, i) => (
@@ -184,10 +181,9 @@ export default function Dashboard() {
                 </div>
             </div>
 
-            {/* 2. SIDE CARDS (Colonne de droite) */}
+            {/* 2. SIDE CARDS */}
             <div className="space-y-4 md:space-y-6">
                 
-                {/* Carte Flux */}
                 <div className="rounded-3xl bg-zinc-900/50 border border-zinc-800 p-6 flex flex-col justify-center h-[140px] relative overflow-hidden">
                      <div className="absolute -right-6 -top-6 w-24 h-24 bg-blue-500/10 blur-3xl rounded-full"></div>
                      <p className="text-zinc-500 text-xs uppercase font-bold tracking-widest mb-1">Flux Mensuel (Est.)</p>
@@ -197,7 +193,6 @@ export default function Dashboard() {
                      </div>
                 </div>
 
-                {/* Carte Épargne */}
                 <div className="rounded-3xl bg-zinc-900/50 border border-zinc-800 p-6 flex flex-col justify-center h-[140px] relative overflow-hidden">
                      <div className="absolute -right-6 -top-6 w-24 h-24 bg-purple-500/10 blur-3xl rounded-full"></div>
                      <p className="text-zinc-500 text-xs uppercase font-bold tracking-widest mb-1">Taux d'Épargne</p>
@@ -222,7 +217,6 @@ export default function Dashboard() {
           {/* 3. SECTION OBJECTIFS & ACTIONS */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
               
-              {/* Prochain Objectif */}
               <div className="p-[1px] rounded-3xl bg-gradient-to-br from-zinc-800 to-zinc-950">
                 <div className="bg-black/90 backdrop-blur-sm rounded-[23px] p-6 h-full flex flex-col justify-center">
                     <div className="flex justify-between items-start mb-4">
@@ -245,7 +239,6 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              {/* Actions Rapides (Style Premium Buttons) */}
               <div className="grid grid-cols-2 gap-4">
                   <Link href="/patrimoine" className="group flex flex-col items-center justify-center p-6 rounded-3xl border border-zinc-800 bg-zinc-900/30 hover:bg-zinc-900 hover:border-zinc-700 transition-all cursor-pointer">
                       <div className="h-12 w-12 rounded-full bg-blue-500/10 flex items-center justify-center text-blue-500 group-hover:scale-110 transition-transform mb-3">
@@ -264,7 +257,7 @@ export default function Dashboard() {
 
           </div>
 
-          {/* 4. BANNIÈRE ANALYSE (Verrouillée) */}
+          {/* 4. BANNIÈRE PRO */}
           <div className="w-full p-6 rounded-3xl border border-zinc-800/50 bg-gradient-to-r from-zinc-900/50 to-zinc-950 flex items-center justify-between opacity-60 grayscale hover:grayscale-0 hover:opacity-100 transition-all duration-500 cursor-not-allowed">
               <div className="flex items-center gap-4">
                   <div className="h-10 w-10 rounded-full bg-zinc-800 flex items-center justify-center">
