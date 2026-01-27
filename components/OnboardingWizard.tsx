@@ -15,7 +15,7 @@ interface OnboardingProps {
   onFinish: () => void;
 }
 
-// --- COMPOSANT INPUT (EXTERNE pour éviter le bug clavier) ---
+// --- COMPOSANT INPUT ---
 const PremiumInput = ({ value, onChange, placeholder, icon: Icon, type = "text", autoFocus = false, onEnter }: any) => (
   <div className="group relative transition-all duration-300 w-full">
     <div className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 group-focus-within:text-emerald-400 transition-colors">
@@ -33,7 +33,7 @@ const PremiumInput = ({ value, onChange, placeholder, icon: Icon, type = "text",
   </div>
 );
 
-// --- COMPOSANT CARTE FEATURE (Pour le tuto) ---
+// --- COMPOSANT CARTE FEATURE ---
 const FeatureCard = ({ icon: Icon, title, desc }: any) => (
     <div className="flex gap-4 p-4 bg-zinc-900/50 border border-zinc-800/50 rounded-xl items-center">
         <div className="h-10 w-10 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-500 shrink-0">
@@ -47,18 +47,6 @@ const FeatureCard = ({ icon: Icon, title, desc }: any) => (
 );
 
 export default function OnboardingWizard({ onFinish }: OnboardingProps) {
-  // ETAPES :
-  // 0: Intro Welcome
-  // 1: Intro Features
-  // 2: Intro Prêt ?
-  // 3: Identité
-  // 4: Patrimoine
-  // 5: Revenus
-  // 6: Loyer
-  // 7: Courses
-  // 8: Transport
-  // 9: Loisirs
-  // 10: Fin
   const [step, setStep] = useState(0);
   
   // DATA STATES
@@ -81,20 +69,26 @@ export default function OnboardingWizard({ onFinish }: OnboardingProps) {
   const handleFinish = () => {
     triggerHaptic("success");
     
-    // Calculs
+    // 1. Calcul des totaux pour le profil
     const totalExpenses = 
       (parseFloat(expenses.housing) || 0) +
       (parseFloat(expenses.food) || 0) +
       (parseFloat(expenses.transport) || 0) +
       (parseFloat(expenses.leisure) || 0);
 
+    const realEstateVal = parseFloat(assets.realEstate) || 0;
+    const stocksVal = parseFloat(assets.stocks) || 0;
+    const cryptoVal = parseFloat(assets.crypto) || 0;
+    const cashVal = parseFloat(assets.cash) || 0;
+
+    // 2. Sauvegarde du Profil Global
     const userData = {
       identity,
       assets: {
-        realEstate: parseFloat(assets.realEstate) || 0,
-        stocks: parseFloat(assets.stocks) || 0,
-        crypto: parseFloat(assets.crypto) || 0,
-        cash: parseFloat(assets.cash) || 0,
+        realEstate: realEstateVal,
+        stocks: stocksVal,
+        crypto: cryptoVal,
+        cash: cashVal,
       },
       budget: {
         income: parseFloat(income) || 0,
@@ -103,9 +97,9 @@ export default function OnboardingWizard({ onFinish }: OnboardingProps) {
       },
       onboardingComplete: true
     };
-    
-    // Sauvegarde
     localStorage.setItem("userProfile", JSON.stringify(userData));
+
+    // 3. Sauvegarde du Budget Détaillé
     localStorage.setItem("myBudget", JSON.stringify({ 
         income: userData.budget.income,
         expenses: [
@@ -115,11 +109,55 @@ export default function OnboardingWizard({ onFinish }: OnboardingProps) {
             { id: "4", name: "Loisirs & Abos", amount: parseFloat(expenses.leisure) || 0 },
         ] 
     }));
+
+    // --- 4. LA CORRECTION : GÉNÉRATION DES ACTIFS POUR LA PAGE PATRIMOINE ---
+    // On crée une liste d'actifs compatible avec la page "Patrimoine"
+    const initialAssetsList = [];
+
+    if (realEstateVal > 0) {
+        initialAssetsList.push({
+            id: "init-re-" + Date.now(),
+            name: "Immobilier (Principal)",
+            amount: realEstateVal,
+            type: "real_estate", // Type reconnu par ton app
+            color: "#10b981" // Emerald
+        });
+    }
+    if (stocksVal > 0) {
+        initialAssetsList.push({
+            id: "init-st-" + Date.now(),
+            name: "Portefeuille Bourse",
+            amount: stocksVal,
+            type: "stock",
+            color: "#3b82f6" // Blue
+        });
+    }
+    if (cryptoVal > 0) {
+        initialAssetsList.push({
+            id: "init-cr-" + Date.now(),
+            name: "Portefeuille Crypto",
+            amount: cryptoVal,
+            type: "crypto",
+            color: "#f59e0b" // Amber
+        });
+    }
+    if (cashVal > 0) {
+        initialAssetsList.push({
+            id: "init-ca-" + Date.now(),
+            name: "Épargne & Cash",
+            amount: cashVal,
+            type: "cash",
+            color: "#6366f1" // Indigo
+        });
+    }
+
+    // On enregistre cette liste sous la clé "myAssets" que la page Patrimoine utilise
+    localStorage.setItem("myAssets", JSON.stringify(initialAssetsList));
     
+    // Fin
     onFinish();
   };
 
-  // Titres dynamiques pour la phase saisie
   const getStepTitle = () => {
     if (step === 6) return "Logement 🏠";
     if (step === 7) return "Alimentation 🛒";
@@ -130,19 +168,14 @@ export default function OnboardingWizard({ onFinish }: OnboardingProps) {
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black">
-      {/* Background Ambient */}
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom_left,_var(--tw-gradient-stops))] from-emerald-900/10 via-black to-black" />
       <div className="absolute top-0 right-0 w-full h-1/2 bg-gradient-to-b from-emerald-900/5 to-transparent pointer-events-none" />
       
-      <motion.div 
-        className="w-full h-full md:h-auto md:max-w-xl relative z-10 flex flex-col"
-      >
+      <motion.div className="w-full h-full md:h-auto md:max-w-xl relative z-10 flex flex-col">
         <div className="flex-1 flex flex-col md:bg-zinc-950 md:border md:border-zinc-800 md:rounded-3xl md:shadow-2xl md:min-h-[600px] overflow-hidden">
           
-          {/* BARRE DE PROGRESSION (Visible uniquement après le tuto) */}
           {step > 2 && step < 10 && (
             <div className="pt-8 px-8 flex gap-1.5">
-               {/* On affiche une barre simple qui se remplit */}
                <div className="h-1.5 w-full bg-zinc-900 rounded-full overflow-hidden">
                    <motion.div 
                         initial={{ width: 0 }}
@@ -156,9 +189,7 @@ export default function OnboardingWizard({ onFinish }: OnboardingProps) {
           <div className="flex-1 p-8 flex flex-col justify-center">
           <AnimatePresence mode="wait">
             
-            {/* --- PHASE 1 : EDUCATION / TUTO --- */}
-
-            {/* SLIDE 0 : WELCOME */}
+            {/* 0. WELCOME */}
             {step === 0 && (
               <motion.div key="intro0" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} className="space-y-8 text-center">
                 <div className="w-24 h-24 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-3xl mx-auto flex items-center justify-center shadow-lg shadow-emerald-900/50 mb-6">
@@ -175,35 +206,22 @@ export default function OnboardingWizard({ onFinish }: OnboardingProps) {
               </motion.div>
             )}
 
-            {/* SLIDE 1 : FEATURES */}
+            {/* 1. FEATURES */}
             {step === 1 && (
               <motion.div key="intro1" initial={{ opacity: 0, x: 50 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -50 }} className="space-y-6">
                 <div className="text-center mb-8">
                   <h2 className="text-2xl font-bold text-white mb-2">Votre Cockpit Financier 🚀</h2>
                   <p className="text-zinc-400">Tout ce dont vous avez besoin, au même endroit.</p>
                 </div>
-                
                 <div className="space-y-3">
-                    <FeatureCard 
-                        icon={ShieldCheck} 
-                        title="Patrimoine Global" 
-                        desc="Suivez l'évolution de votre Net Worth (Immo, Bourse, Crypto) en temps réel." 
-                    />
-                    <FeatureCard 
-                        icon={PieChart} 
-                        title="Budget & Cashflow" 
-                        desc="Analysez vos flux mensuels pour maximiser votre capacité d'épargne." 
-                    />
-                    <FeatureCard 
-                        icon={Calculator} 
-                        title="Simulateur Immo" 
-                        desc="Calculez instantanément la rentabilité et le cashflow de vos projets." 
-                    />
+                    <FeatureCard icon={ShieldCheck} title="Patrimoine Global" desc="Suivez l'évolution de votre Net Worth (Immo, Bourse, Crypto) en temps réel." />
+                    <FeatureCard icon={PieChart} title="Budget & Cashflow" desc="Analysez vos flux mensuels pour maximiser votre capacité d'épargne." />
+                    <FeatureCard icon={Calculator} title="Simulateur Immo" desc="Calculez instantanément la rentabilité et le cashflow de vos projets." />
                 </div>
               </motion.div>
             )}
 
-            {/* SLIDE 2 : SETUP */}
+            {/* 2. PRE-SETUP */}
             {step === 2 && (
               <motion.div key="intro2" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 1.1 }} className="text-center space-y-8">
                 <div className="relative">
@@ -212,19 +230,13 @@ export default function OnboardingWizard({ onFinish }: OnboardingProps) {
                 </div>
                 <div>
                     <h2 className="text-3xl font-bold text-white mb-4">À vous de jouer !</h2>
-                    <p className="text-zinc-400 text-lg">
-                        Pour que la magie opère, nous avons besoin de connaître votre point de départ.
-                    </p>
-                    <p className="text-zinc-500 text-sm mt-4">
-                        🔐 Vos données sont stockées uniquement sur votre téléphone (Local Storage).
-                    </p>
+                    <p className="text-zinc-400 text-lg">Pour que la magie opère, nous avons besoin de connaître votre point de départ.</p>
+                    <p className="text-zinc-500 text-sm mt-4">🔐 Vos données sont stockées uniquement sur votre téléphone (Local Storage).</p>
                 </div>
               </motion.div>
             )}
 
-            {/* --- PHASE 2 : SAISIE DONNÉES --- */}
-
-            {/* ETAPE 3 : IDENTITÉ */}
+            {/* 3. IDENTITÉ */}
             {step === 3 && (
               <motion.div key="step3" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6">
                 <div className="text-center space-y-2">
@@ -239,7 +251,7 @@ export default function OnboardingWizard({ onFinish }: OnboardingProps) {
               </motion.div>
             )}
 
-            {/* ETAPE 4 : PATRIMOINE */}
+            {/* 4. PATRIMOINE */}
             {step === 4 && (
               <motion.div key="step4" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6">
                 <div className="text-center space-y-2">
@@ -255,7 +267,7 @@ export default function OnboardingWizard({ onFinish }: OnboardingProps) {
               </motion.div>
             )}
 
-            {/* ETAPE 5 : REVENUS */}
+            {/* 5. REVENUS */}
             {step === 5 && (
               <motion.div key="step5" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6">
                  <div className="text-center space-y-2">
@@ -268,7 +280,7 @@ export default function OnboardingWizard({ onFinish }: OnboardingProps) {
               </motion.div>
             )}
 
-            {/* ETAPES DEPENSES (6, 7, 8, 9) */}
+            {/* 6-9. DEPENSES */}
             {[6, 7, 8, 9].includes(step) && (
                 <motion.div key={`step${step}`} initial={{ opacity: 0, x: 50 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -50 }} className="space-y-6">
                     <div className="text-center space-y-2">
@@ -284,7 +296,7 @@ export default function OnboardingWizard({ onFinish }: OnboardingProps) {
                 </motion.div>
             )}
 
-             {/* ETAPE 10 : FINISH */}
+             {/* 10. FINISH */}
              {step === 10 && (
               <motion.div key="step10" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="text-center py-4 space-y-8">
                 <div className="w-28 h-28 bg-emerald-500 rounded-full flex items-center justify-center mx-auto shadow-[0_0_50px_rgba(16,185,129,0.4)] animate-pulse">
@@ -309,7 +321,6 @@ export default function OnboardingWizard({ onFinish }: OnboardingProps) {
           </AnimatePresence>
           </div>
 
-          {/* NAVIGATION BUTTONS (Bas de page) */}
           {step < 10 && (
             <div className="p-8 border-t border-zinc-800/50 flex justify-end bg-zinc-950/50 backdrop-blur-md sticky bottom-0">
                 <Button 
