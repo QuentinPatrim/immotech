@@ -136,11 +136,12 @@ export default function OnboardingWizard({ onFinish }: OnboardingProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-[100] bg-black">
+    // CORRECTION ICI : z-[10000] pour passer DEVANT le menu du bas
+    <div className="fixed inset-0 z-[10000] bg-black">
       {/* Background */}
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom_left,_var(--tw-gradient-stops))] from-emerald-900/10 via-black to-black" />
       
-      {/* CONTENEUR PRINCIPAL : Utilise 'dvh' pour gérer la hauteur mobile dynamique */}
+      {/* CONTENEUR PRINCIPAL */}
       <motion.div className="relative z-10 w-full h-[100dvh] flex flex-col md:h-auto md:max-w-xl md:mx-auto md:my-10 md:bg-zinc-950 md:border md:border-zinc-800 md:rounded-3xl md:shadow-2xl md:min-h-[600px] md:h-auto">
           
           {/* 1. HEADER (Barre progression) */}
@@ -283,7 +284,7 @@ export default function OnboardingWizard({ onFinish }: OnboardingProps) {
                             <br/><span className="text-emerald-500 font-bold">— Benjamin Franklin</span>
                         </p>
                     </div>
-                    {/* Bouton spécifique pour la dernière étape (pas dans le footer fixe pour le centrer) */}
+                    {/* Bouton spécifique pour la dernière étape */}
                     <Button onClick={handleFinish} className="w-full bg-white text-black hover:bg-zinc-200 font-bold h-16 rounded-2xl text-xl mt-4">
                         Lancer ImmoTech
                     </Button>
@@ -294,7 +295,6 @@ export default function OnboardingWizard({ onFinish }: OnboardingProps) {
           </div>
 
           {/* 3. FOOTER FIXE (Le bas qui ne bouge pas) */}
-          {/* C'est ICI que la magie opère pour le mobile : le bouton est toujours visible */}
           {step < 10 && (
             <div className="p-6 md:p-8 border-t border-zinc-800/50 bg-zinc-950/80 backdrop-blur-md pb-safe shrink-0">
                 <Button 
