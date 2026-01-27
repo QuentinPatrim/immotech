@@ -2,229 +2,246 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, ArrowRight, Wallet, CheckCircle, Plus, Trash2, Banknote, Landmark } from "lucide-react";
+import { 
+  ArrowRight, Check, User, Building2, TrendingUp, Bitcoin, 
+  PiggyBank, Briefcase, Home, ShoppingCart, Car, Coffee, 
+  LayoutDashboard, PieChart, Calculator, ShieldCheck
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Slider } from "@/components/ui/slider";
 import { triggerHaptic } from "@/lib/haptics";
 
-interface QuickBudgetWizardProps {
-  isOpen: boolean;
-  onClose: () => void;
+interface OnboardingProps {
+  onFinish: () => void;
 }
 
-// Catégories par défaut
-const DEFAULT_EXPENSES = [
-  { id: "1", name: "Loyer / Crédit Immo", amount: 0 },
-  { id: "2", name: "Courses Alimentaires", amount: 0 },
-  { id: "3", name: "Transports & Voiture", amount: 0 },
-  { id: "4", name: "Abonnements (Tel, Internet, Streaming)", amount: 0 },
-];
+const cleanNumber = (val: any): number => {
+    if (!val) return 0;
+    const cleanStr = String(val).replace(/,/g, ".").replace(/\s/g, "").trim();
+    const num = parseFloat(cleanStr);
+    return isNaN(num) ? 0 : num;
+};
 
-export default function QuickBudgetWizard({ isOpen, onClose }: QuickBudgetWizardProps) {
-  const [step, setStep] = useState(1);
-  const [income, setIncome] = useState(0);
-  const [expenses, setExpenses] = useState(DEFAULT_EXPENSES);
-  const [showConfetti, setShowConfetti] = useState(false);
+// MODIFICATION ICI : Ajout du prop "numeric" (par défaut true)
+const PremiumInput = ({ value, onValueChange, placeholder, icon: Icon, autoFocus = false, onEnter, numeric = true }: any) => (
+  <div className="group relative transition-all duration-300 w-full">
+    <div className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 group-focus-within:text-emerald-400 transition-colors">
+      <Icon size={20} />
+    </div>
+    <Input
+      autoFocus={autoFocus}
+      type="text"
+      // Si numeric est vrai, on force le pavé numérique, sinon texte normal
+      inputMode={numeric ? "decimal" : "text"} 
+      value={value} 
+      onChange={(e) => onValueChange(e.target.value)}
+      onKeyDown={(e) => { if (e.key === "Enter" && onEnter) onEnter(); }}
+      placeholder={placeholder}
+      className="pl-12 h-16 bg-zinc-900/50 border-zinc-800 text-white text-lg placeholder:text-zinc-600 focus:ring-1 focus:ring-emerald-500/50 focus:border-emerald-500 rounded-2xl transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+    />
+  </div>
+);
 
-  // Reset quand on ouvre
+const FeatureCard = ({ icon: Icon, title, desc }: any) => (
+    <div className="flex gap-4 p-4 bg-zinc-900/50 border border-zinc-800/50 rounded-xl items-center">
+        <div className="h-10 w-10 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-500 shrink-0">
+            <Icon size={20} />
+        </div>
+        <div className="text-left">
+            <h4 className="text-white font-bold text-sm">{title}</h4>
+            <p className="text-zinc-400 text-xs leading-tight">{desc}</p>
+        </div>
+    </div>
+);
+
+export default function OnboardingWizard({ onFinish }: OnboardingProps) {
+  const [step, setStep] = useState(0);
+  
+  const [identity, setIdentity] = useState({ firstName: "", lastName: "", age: "" });
+  const [assets, setAssets] = useState({ realEstate: "", stocks: "", crypto: "", cash: "" });
+  const [income, setIncome] = useState("");
+  const [expenses, setExpenses] = useState({ housing: "", food: "", transport: "", leisure: "" });
+
   useEffect(() => {
-    if (isOpen) {
-      setStep(1);
-      // On essaie de pré-remplir si existant
-      const saved = localStorage.getItem("myBudget");
-      if (saved) {
-        const b = JSON.parse(saved);
-        setIncome(b.income || 0);
-        if (b.expenses && b.expenses.length > 0) {
-            setExpenses(b.expenses);
-        }
-      }
-    }
-  }, [isOpen]);
+    const scrollContainer = document.getElementById("onboarding-scroll");
+    if (scrollContainer) scrollContainer.scrollTop = 0;
+  }, [step]);
 
   const handleNext = () => {
     triggerHaptic("light");
-    setStep(step + 1);
+    setStep((prev) => prev + 1);
   };
 
   const handleFinish = () => {
     triggerHaptic("success");
-    // Sauvegarde
-    const budgetData = {
-      income,
-      expenses,
-      updatedAt: new Date().toISOString(),
-    };
-    localStorage.setItem("myBudget", JSON.stringify(budgetData));
     
-    // Animation de succès
-    setShowConfetti(true);
-    setTimeout(() => {
-      setShowConfetti(false);
-      onClose();
-      window.location.reload(); // Force le rafraichissement du dashboard
-    }, 1500);
+    // NETTOYAGE
+    const finalAssets = {
+        realEstate: cleanNumber(assets.realEstate),
+        stocks: cleanNumber(assets.stocks),
+        crypto: cleanNumber(assets.crypto),
+        cash: cleanNumber(assets.cash)
+    };
+    const finalIncome = cleanNumber(income);
+    const finalExpenses = {
+        housing: cleanNumber(expenses.housing),
+        food: cleanNumber(expenses.food),
+        transport: cleanNumber(expenses.transport),
+        leisure: cleanNumber(expenses.leisure)
+    };
+    const totalExpensesVal = finalExpenses.housing + finalExpenses.food + finalExpenses.transport + finalExpenses.leisure;
+
+    // SAUVEGARDE PROFIL
+    const userData = {
+      identity,
+      assets: finalAssets,
+      budget: {
+        income: finalIncome,
+        expenses: totalExpensesVal, 
+        details: expenses 
+      },
+      onboardingComplete: true
+    };
+    localStorage.setItem("userProfile", JSON.stringify(userData));
+
+    // SAUVEGARDE BUDGET
+    localStorage.setItem("myBudget", JSON.stringify({ 
+        income: finalIncome,
+        expenses: [
+            { id: "1", name: "Logement", amount: finalExpenses.housing },
+            { id: "2", name: "Alimentation", amount: finalExpenses.food },
+            { id: "3", name: "Transport", amount: finalExpenses.transport },
+            { id: "4", name: "Loisirs & Abos", amount: finalExpenses.leisure },
+        ] 
+    }));
+
+    // --- CORRECTION CRUCIALE ICI : On utilise "value" et des types lisibles ---
+    const initialAssetsList = [];
+
+    if (finalAssets.realEstate > 0) {
+        initialAssetsList.push({ id: "init-re-" + Date.now(), name: "Immobilier Principal", value: finalAssets.realEstate, type: "Immobilier", color: "#3b82f6" });
+    }
+    if (finalAssets.stocks > 0) {
+        initialAssetsList.push({ id: "init-st-" + Date.now(), name: "Portefeuille Bourse", value: finalAssets.stocks, type: "Bourse", color: "#10b981" });
+    }
+    if (finalAssets.crypto > 0) {
+        initialAssetsList.push({ id: "init-cr-" + Date.now(), name: "Portefeuille Crypto", value: finalAssets.crypto, type: "Crypto", color: "#8b5cf6" });
+    }
+    if (finalAssets.cash > 0) {
+        initialAssetsList.push({ id: "init-ca-" + Date.now(), name: "Cash & Épargne", value: finalAssets.cash, type: "Cash", color: "#f59e0b" });
+    }
+
+    localStorage.setItem("myAssets", JSON.stringify(initialAssetsList));
+    
+    onFinish();
   };
 
-  const updateExpense = (id: string, field: "name" | "amount", value: any) => {
-    setExpenses(expenses.map(e => e.id === id ? { ...e, [field]: value } : e));
+  const getStepTitle = () => {
+    if (step === 6) return "Logement 🏠";
+    if (step === 7) return "Alimentation 🛒";
+    if (step === 8) return "Transport 🚗";
+    if (step === 9) return "Loisirs & Abos 🍿";
+    return "Vos Dépenses";
   };
-
-  const addExpenseRow = () => {
-    setExpenses([...expenses, { id: Date.now().toString(), name: "", amount: 0 }]);
-  };
-
-  const removeExpenseRow = (id: string) => {
-    setExpenses(expenses.filter(e => e.id !== id));
-  };
-
-  if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-      <motion.div 
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.95 }}
-        className="w-full max-w-md bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
-      >
-        
-        {/* HEADER */}
-        <div className="p-4 border-b border-zinc-800 flex justify-between items-center bg-zinc-900/50">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-500">
-                <Wallet size={16} />
-            </div>
-            <h2 className="font-bold text-white text-sm">Assistant Budget</h2>
+    <div className="fixed inset-0 z-[99999] bg-black">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom_left,_var(--tw-gradient-stops))] from-emerald-900/10 via-black to-black" />
+      <motion.div className="relative z-10 w-full h-[100dvh] flex flex-col md:h-auto md:max-w-xl md:mx-auto md:my-10 md:bg-zinc-950 md:border md:border-zinc-800 md:rounded-3xl md:shadow-2xl md:min-h-[600px] md:h-auto">
+          
+          <div className="pt-safe px-8 pt-6 pb-2 shrink-0">
+            {step > 2 && step < 10 && (
+               <div className="h-1.5 w-full bg-zinc-900 rounded-full overflow-hidden">
+                   <motion.div initial={{ width: 0 }} animate={{ width: `${((step - 2) / 8) * 100}%` }} className="h-full bg-emerald-500" />
+               </div>
+            )}
           </div>
-          <button onClick={onClose} className="text-zinc-500 hover:text-white transition-colors">
-            <X size={20} />
-          </button>
-        </div>
 
-        {/* CONTENT */}
-        <div className="p-6 overflow-y-auto flex-1">
-          <AnimatePresence mode="wait">
-            
-            {/* ETAPE 1 : REVENUS */}
-            {step === 1 && (
-              <motion.div 
-                key="step1"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                className="space-y-6"
-              >
-                <div className="text-center space-y-2">
-                    <h3 className="text-xl font-bold text-white">Vos Revenus</h3>
-                    <p className="text-zinc-400 text-sm">Quel est votre salaire net mensuel (avant impôts) ?</p>
-                </div>
-
-                <div className="bg-zinc-900/50 p-6 rounded-xl border border-zinc-800 flex flex-col items-center gap-4">
-                    <Banknote size={40} className="text-emerald-500" />
-                    <div className="w-full">
-                        <label className="text-xs text-zinc-500 mb-1 block uppercase font-bold tracking-wider">Net Mensuel</label>
-                        <div className="relative">
-                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 font-bold">€</span>
-                            {/* CORRECTION ICI : Gestion du 0 et couleur du texte */}
-                            <Input 
-                                type="number" 
-                                value={income === 0 ? "" : income} 
-                                onChange={(e) => setIncome(parseFloat(e.target.value) || 0)}
-                                className="pl-8 text-lg font-bold bg-zinc-900 border-zinc-700 text-white placeholder:text-zinc-600 focus:ring-emerald-500 h-12"
-                                placeholder="0"
-                            />
-                        </div>
+          <div id="onboarding-scroll" className="flex-1 overflow-y-auto px-8 py-4 flex flex-col justify-center">
+            <AnimatePresence mode="wait">
+                {step === 0 && (
+                <motion.div key="intro0" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} className="space-y-8 text-center my-auto">
+                    <div className="w-24 h-24 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-3xl mx-auto flex items-center justify-center shadow-lg shadow-emerald-900/50 mb-6">
+                        <TrendingUp size={48} className="text-black" />
                     </div>
-                </div>
+                    <div><h1 className="text-4xl font-black text-white tracking-tight mb-4">Bienvenue sur <span className="text-emerald-500">ImmoTech</span></h1><p className="text-zinc-400 text-lg leading-relaxed">L'application tout-en-un pour piloter votre patrimoine.</p></div>
+                </motion.div>
+                )}
+                {step === 1 && (
+                <motion.div key="intro1" initial={{ opacity: 0, x: 50 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -50 }} className="space-y-6 my-auto">
+                    <div className="text-center mb-8"><h2 className="text-2xl font-bold text-white mb-2">Votre Cockpit Financier 🚀</h2><p className="text-zinc-400">Tout ce dont vous avez besoin, au même endroit.</p></div>
+                    <div className="space-y-3">
+                        <FeatureCard icon={ShieldCheck} title="Patrimoine Global" desc="Suivez l'évolution de votre Net Worth." />
+                        <FeatureCard icon={PieChart} title="Budget & Cashflow" desc="Analysez vos flux mensuels." />
+                        <FeatureCard icon={Calculator} title="Simulateur Immo" desc="Calculez la rentabilité de vos projets." />
+                    </div>
+                </motion.div>
+                )}
+                {step === 2 && (
+                <motion.div key="intro2" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 1.1 }} className="text-center space-y-8 my-auto">
+                    <div className="relative"><div className="absolute inset-0 bg-emerald-500/20 blur-3xl rounded-full" /><LayoutDashboard size={80} className="text-white relative z-10 mx-auto" /></div>
+                    <div><h2 className="text-3xl font-bold text-white mb-4">À vous de jouer !</h2><p className="text-zinc-400 text-lg">Configurons votre espace.</p></div>
+                </motion.div>
+                )}
+                {step === 3 && (
+                <motion.div key="step3" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6 my-auto">
+                    <div className="text-center space-y-2"><h2 className="text-3xl font-bold text-white">Qui êtes-vous ? 👤</h2></div>
+                    <div className="space-y-4 pt-4">
+                        {/* MODIFICATION ICI : On passe numeric={false} pour les noms */}
+                        <PremiumInput autoFocus icon={User} placeholder="Prénom" value={identity.firstName} onValueChange={(val: string) => setIdentity({...identity, firstName: val})} numeric={false} />
+                        <PremiumInput icon={User} placeholder="Nom" value={identity.lastName} onValueChange={(val: string) => setIdentity({...identity, lastName: val})} numeric={false} />
+                        {/* L'âge reste numérique par défaut */}
+                        <PremiumInput icon={Check} placeholder="Âge" value={identity.age} onValueChange={(val: string) => setIdentity({...identity, age: val})} onEnter={handleNext} />
+                    </div>
+                </motion.div>
+                )}
+                {step === 4 && (
+                <motion.div key="step4" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6 my-auto">
+                    <div className="text-center space-y-2"><h2 className="text-2xl font-bold text-white">Votre Patrimoine 🏛️</h2><p className="text-zinc-400">Estimez la valeur actuelle (0 si aucun).</p></div>
+                    <div className="space-y-3 pt-2">
+                        <PremiumInput autoFocus icon={Building2} placeholder="Immobilier (Est.)" value={assets.realEstate} onValueChange={(val: string) => setAssets({...assets, realEstate: val})} />
+                        <PremiumInput icon={TrendingUp} placeholder="Bourse (PEA/CTO)" value={assets.stocks} onValueChange={(val: string) => setAssets({...assets, stocks: val})} />
+                        <PremiumInput icon={Bitcoin} placeholder="Crypto" value={assets.crypto} onValueChange={(val: string) => setAssets({...assets, crypto: val})} />
+                        <PremiumInput icon={PiggyBank} placeholder="Cash / Épargne" value={assets.cash} onValueChange={(val: string) => setAssets({...assets, cash: val})} onEnter={handleNext} />
+                    </div>
+                </motion.div>
+                )}
+                {step === 5 && (
+                <motion.div key="step5" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6 my-auto">
+                    <div className="text-center space-y-2"><h2 className="text-2xl font-bold text-white">Vos Revenus 💸</h2><p className="text-zinc-400">Net Mensuel avant impôt.</p></div>
+                    <div className="space-y-4 py-8">
+                        <PremiumInput autoFocus icon={Briefcase} placeholder="Montant Net Mensuel" value={income} onValueChange={(val: string) => setIncome(val)} onEnter={handleNext} />
+                    </div>
+                </motion.div>
+                )}
+                {[6, 7, 8, 9].includes(step) && (
+                    <motion.div key={`step${step}`} initial={{ opacity: 0, x: 50 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -50 }} className="space-y-6 my-auto">
+                        <div className="text-center space-y-2"><h2 className="text-2xl font-bold text-white">{getStepTitle()}</h2><p className="text-zinc-400">Moyenne mensuelle.</p></div>
+                        <div className="space-y-4 py-8">
+                            {step === 6 && <PremiumInput autoFocus icon={Home} placeholder="Loyer ou Crédit" value={expenses.housing} onValueChange={(val: string) => setExpenses({...expenses, housing: val})} onEnter={handleNext} />}
+                            {step === 7 && <PremiumInput icon={ShoppingCart} placeholder="Supermarché & Repas" value={expenses.food} onValueChange={(val: string) => setExpenses({...expenses, food: val})} onEnter={handleNext} />}
+                            {step === 8 && <PremiumInput icon={Car} placeholder="Essence, Transport" value={expenses.transport} onValueChange={(val: string) => setExpenses({...expenses, transport: val})} onEnter={handleNext} />}
+                            {step === 9 && <PremiumInput icon={Coffee} placeholder="Loisirs, Abos..." value={expenses.leisure} onValueChange={(val: string) => setExpenses({...expenses, leisure: val})} onEnter={handleNext} />}
+                        </div>
+                    </motion.div>
+                )}
+                {step === 10 && (
+                <motion.div key="step10" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="text-center py-4 space-y-8 my-auto">
+                    <div className="w-28 h-28 bg-emerald-500 rounded-full flex items-center justify-center mx-auto shadow-[0_0_50px_rgba(16,185,129,0.4)] animate-pulse"><Check size={48} className="text-black font-bold" /></div>
+                    <div><h2 className="text-3xl font-bold text-white">Tout est prêt !</h2><p className="text-zinc-400 mt-2 text-lg">Votre tableau de bord a été généré.</p></div>
+                    <Button onClick={handleFinish} className="w-full bg-white text-black hover:bg-zinc-200 font-bold h-16 rounded-2xl text-xl mt-4">Lancer ImmoTech</Button>
+                </motion.div>
+                )}
+            </AnimatePresence>
+          </div>
 
-                <Button onClick={handleNext} className="w-full bg-white text-black hover:bg-zinc-200 font-bold h-12 rounded-xl text-base">
-                    Suivant <ArrowRight size={18} className="ml-2" />
+          {step < 10 && (
+            <div className="p-6 md:p-8 border-t border-zinc-800/50 bg-zinc-950/80 backdrop-blur-md pb-safe shrink-0">
+                <Button onClick={handleNext} className="bg-emerald-600 hover:bg-emerald-500 text-white w-full h-14 rounded-2xl font-bold text-lg shadow-lg shadow-emerald-900/20 transition-all active:scale-95">
+                    {step === 0 ? "Découvrir" : step === 2 ? "Configurer mon Profil" : "Continuer"} <ArrowRight size={20} className="ml-2" />
                 </Button>
-              </motion.div>
-            )}
-
-            {/* ETAPE 2 : DEPENSES */}
-            {step === 2 && (
-              <motion.div 
-                key="step2"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                className="space-y-4"
-              >
-                <div className="text-center space-y-1">
-                    <h3 className="text-xl font-bold text-white">Vos Charges fixes</h3>
-                    <p className="text-zinc-400 text-xs">Estimez vos sorties d'argent mensuelles.</p>
-                </div>
-
-                <div className="space-y-3 max-h-[350px] overflow-y-auto pr-1">
-                    {expenses.map((expense) => (
-                        <div key={expense.id} className="flex gap-2 items-center">
-                            {/* CORRECTION ICI : Inputs text-white */}
-                            <Input 
-                                value={expense.name}
-                                onChange={(e) => updateExpense(expense.id, "name", e.target.value)}
-                                placeholder="Nom (ex: Loyer)"
-                                className="bg-zinc-900/80 border-zinc-800 text-white placeholder:text-zinc-600 text-sm h-10"
-                            />
-                            <div className="relative w-28 shrink-0">
-                                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 text-xs">€</span>
-                                <Input 
-                                    type="number"
-                                    value={expense.amount === 0 ? "" : expense.amount}
-                                    onChange={(e) => updateExpense(expense.id, "amount", parseFloat(e.target.value) || 0)}
-                                    placeholder="0"
-                                    className="bg-zinc-900/80 border-zinc-800 text-white text-right pr-6 h-10 placeholder:text-zinc-600"
-                                />
-                            </div>
-                            <button onClick={() => removeExpenseRow(expense.id)} className="text-zinc-600 hover:text-red-500 p-1">
-                                <Trash2 size={16} />
-                            </button>
-                        </div>
-                    ))}
-                    <Button onClick={addExpenseRow} variant="outline" className="w-full border-dashed border-zinc-700 text-zinc-400 hover:text-white hover:bg-zinc-900 h-9 text-xs">
-                        <Plus size={14} className="mr-1"/> Ajouter une ligne
-                    </Button>
-                </div>
-
-                <div className="pt-2 border-t border-zinc-800 mt-2">
-                    <div className="flex justify-between items-center mb-4 text-sm">
-                        <span className="text-zinc-400">Total Dépenses :</span>
-                        <span className="font-bold text-red-400">
-                             {new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(expenses.reduce((acc, e) => acc + e.amount, 0))}
-                        </span>
-                    </div>
-                    <Button onClick={handleFinish} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-12 rounded-xl text-base shadow-[0_0_20px_rgba(16,185,129,0.2)]">
-                        Valider mon Budget <CheckCircle size={18} className="ml-2" />
-                    </Button>
-                </div>
-              </motion.div>
-            )}
-            
-          </AnimatePresence>
-        </div>
-
-        {/* PROGRESS BAR */}
-        <div className="h-1 bg-zinc-900 w-full">
-            <motion.div 
-                className="h-full bg-emerald-500"
-                initial={{ width: "0%" }}
-                animate={{ width: step === 1 ? "50%" : "100%" }}
-            />
-        </div>
-
-        {/* CONFETTI OVERLAY */}
-        {showConfetti && (
-             <div className="absolute inset-0 flex items-center justify-center bg-black/90 z-50">
-                 <motion.div initial={{scale:0}} animate={{scale:1}} className="text-center">
-                     <div className="text-6xl mb-4">🎉</div>
-                     <h3 className="text-2xl font-bold text-white">Budget Configuré !</h3>
-                 </motion.div>
-             </div>
-        )}
-
+            </div>
+          )}
       </motion.div>
     </div>
   );
