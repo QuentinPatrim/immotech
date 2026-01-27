@@ -33,14 +33,16 @@ const KEYWORDS: Record<string, string[]> = {
 
 export default function BudgetCalculator() {
   const router = useRouter();
-  const [income, setIncome] = useState(0);
+  
+  // CORRECTION 1 : income est géré comme string pour pouvoir l'effacer ("")
+  const [income, setIncome] = useState<string | number>(""); 
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
 
   // Formulaire & Edition
   const [newExpName, setNewExpName] = useState("");
   const [newExpAmount, setNewExpAmount] = useState("");
-  const [editingId, setEditingId] = useState<string | null>(null); // ID en cours d'édition
+  const [editingId, setEditingId] = useState<string | null>(null); 
   
   const [riskProfile, setRiskProfile] = useState([50]);
 
@@ -55,7 +57,9 @@ export default function BudgetCalculator() {
   }, []);
 
   useEffect(() => {
-    if (isLoaded) localStorage.setItem("myBudget", JSON.stringify({ income, expenses }));
+    // On sauvegarde la valeur numérique (0 si vide)
+    const incomeValue = income === "" ? 0 : Number(income);
+    if (isLoaded) localStorage.setItem("myBudget", JSON.stringify({ income: incomeValue, expenses }));
   }, [income, expenses, isLoaded]);
 
   // --- LOGIQUE ---
@@ -73,11 +77,9 @@ export default function BudgetCalculator() {
     const cat = detectCategory(newExpName);
 
     if (editingId) {
-        // Mode Modification
         setExpenses(expenses.map(e => e.id === editingId ? { ...e, name: newExpName, amount: amountVal, category: cat } : e));
         setEditingId(null);
     } else {
-        // Mode Ajout
         setExpenses([...expenses, { id: Date.now().toString(), name: newExpName, amount: amountVal, category: cat }]);
     }
     setNewExpName(""); setNewExpAmount("");
@@ -101,6 +103,9 @@ export default function BudgetCalculator() {
       const breakdownData: any[] = [];
       const groups: Record<string, number> = {};
 
+      // On convertit income en nombre pour les calculs
+      const currentIncome = Number(income) || 0;
+
       expenses.forEach(e => {
           const cat = e.category || detectCategory(e.name);
           const type = CATEGORIES[cat]?.type || 'variable';
@@ -109,17 +114,23 @@ export default function BudgetCalculator() {
       });
 
       const totalExpenses = fixed + variable;
-      const realSavings = Math.max(0, income - totalExpenses); 
+      const realSavings = Math.max(0, currentIncome - totalExpenses); 
       const investCapacity = realSavings + saved;
 
       // Score
-      const needsRatio = (fixed / income) * 100;
-      const wantsRatio = (variable / income) * 100;
-      const savingsRatio = (investCapacity / income) * 100;
+      const needsRatio = currentIncome > 0 ? (fixed / currentIncome) * 100 : 0;
+      const wantsRatio = currentIncome > 0 ? (variable / currentIncome) * 100 : 0;
+      const savingsRatio = currentIncome > 0 ? (investCapacity / currentIncome) * 100 : 0;
+      
       let score = 100;
-      if (needsRatio > 50) score -= (needsRatio - 50);
-      if (wantsRatio > 30) score -= (wantsRatio - 30);
-      if (savingsRatio < 20) score -= (20 - savingsRatio);
+      if (currentIncome > 0) {
+          if (needsRatio > 50) score -= (needsRatio - 50);
+          if (wantsRatio > 30) score -= (wantsRatio - 30);
+          if (savingsRatio < 20) score -= (20 - savingsRatio);
+      } else {
+          score = 0;
+      }
+      
       score = Math.max(0, Math.min(100, Math.round(score)));
 
       Object.entries(groups).forEach(([key, val]) => {
@@ -141,7 +152,6 @@ export default function BudgetCalculator() {
 
   // --- NAVIGATION VERS PROJECTION ---
   const goToProjection = () => {
-      // On sauvegarde la stratégie DCA pour que la page Projection puisse la lire
       const strategy = {
           stock: stockAlloc,
           crypto: cryptoAlloc,
@@ -182,7 +192,14 @@ export default function BudgetCalculator() {
                 <CardHeader><CardTitle className="text-zinc-400 text-sm uppercase tracking-widest">Revenus Net</CardTitle></CardHeader>
                 <CardContent>
                     <div className="flex items-center gap-2 bg-zinc-950/50 p-2 rounded-xl border border-zinc-800/50">
-                        <Input type="number" value={income} onChange={(e) => setIncome(parseFloat(e.target.value) || 0)} className="bg-transparent border-none text-3xl font-bold text-white p-0 h-auto focus-visible:ring-0"/>
+                        {/* CORRECTION 2 : Gestion input propre (String vide si 0) */}
+                        <Input 
+                            type="number" 
+                            value={income === 0 ? "" : income} 
+                            onChange={(e) => setIncome(e.target.value)} 
+                            placeholder="0"
+                            className="bg-transparent border-none text-3xl font-bold text-white p-0 h-auto focus-visible:ring-0 placeholder:text-zinc-700"
+                        />
                         <span className="text-zinc-500 pr-4">€</span>
                     </div>
                 </CardContent>
@@ -196,8 +213,20 @@ export default function BudgetCalculator() {
                     <CardHeader><CardTitle className="text-white flex items-center gap-2"><CreditCard size={18} className="text-blue-500"/> Charges & Dépenses</CardTitle></CardHeader>
                     <CardContent className="space-y-4">
                         <div className="flex gap-2 relative">
-                            <Input placeholder={editingId ? "Modifier..." : "Netflix, Loyer..."} value={newExpName} onChange={(e) => setNewExpName(e.target.value)} className="bg-zinc-950 border-zinc-800 text-sm" />
-                            <Input type="number" placeholder="€" value={newExpAmount} onChange={(e) => setNewExpAmount(e.target.value)} className="w-20 bg-zinc-950 border-zinc-800 text-sm" />
+                            {/* CORRECTION 3 : text-white ajouté pour la visibilité */}
+                            <Input 
+                                placeholder={editingId ? "Modifier..." : "Netflix, Loyer..."} 
+                                value={newExpName} 
+                                onChange={(e) => setNewExpName(e.target.value)} 
+                                className="bg-zinc-950 border-zinc-800 text-sm text-white placeholder:text-zinc-500" 
+                            />
+                            <Input 
+                                type="number" 
+                                placeholder="€" 
+                                value={newExpAmount} 
+                                onChange={(e) => setNewExpAmount(e.target.value)} 
+                                className="w-20 bg-zinc-950 border-zinc-800 text-sm text-white placeholder:text-zinc-500" 
+                            />
                             
                             {editingId ? (
                                 <div className="flex gap-1">
@@ -250,7 +279,7 @@ export default function BudgetCalculator() {
                             </ResponsiveContainer>
                             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
                                 <span className="text-xs text-zinc-500 uppercase tracking-widest">Total</span>
-                                <span className="text-xl font-bold text-white">{formatEuro(income)}</span>
+                                <span className="text-xl font-bold text-white">{formatEuro(Number(income))}</span>
                             </div>
                         </div>
                         <div className="w-full space-y-3 mt-4">
