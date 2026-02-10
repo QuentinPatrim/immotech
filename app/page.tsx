@@ -1,14 +1,14 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { useRouter } from "next/navigation"; // Pour la redirection
-import { supabase } from "@/lib/supabaseClient"; // Pour vérifier l'identité
+import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabaseClient";
 import Sidebar from "@/components/Sidebar";
 import OnboardingWizard from "@/components/OnboardingWizard";
 import { motion, useInView, useMotionValue, useSpring } from "framer-motion";
 import { 
-  ShieldCheck, Wallet, TrendingUp, ArrowUpRight, 
-  Activity, Target, Lock
+  ShieldCheck, ArrowUpRight, Activity, Target, Lock, Loader2,
+  Wallet, TrendingUp // <--- AJOUTÉ ICI (Correction 1)
 } from "lucide-react";
 import Link from "next/link";
 import { Progress } from "@/components/ui/progress";
@@ -36,83 +36,99 @@ const Counter = ({ value, currency = true }: { value: number, currency?: boolean
   return <span ref={ref}>{displayValue}</span>;
 };
 
-type Asset = { id: string; name: string; value: number; type: string };
+type Asset = { id: string; name: string; value: number; type: string; color?: string };
 
 export default function Dashboard() {
   const router = useRouter();
-  const [loadingAuth, setLoadingAuth] = useState(true); // État de chargement auth
-
-  const [netWorth, setNetWorth] = useState(0);
-  const [savingsRate, setSavingsRate] = useState(0);
-  const [monthlyCashflow, setMonthlyCashflow] = useState(0);
+  const [loading, setLoading] = useState(true);
+  
+  // Données
   const [userName, setUserName] = useState("Investisseur");
+  const [netWorth, setNetWorth] = useState(0);
+  const [monthlyCashflow, setMonthlyCashflow] = useState(0);
+  const [savingsRate, setSavingsRate] = useState(0);
   const [assets, setAssets] = useState<Asset[]>([]);
+  
   const [showOnboarding, setShowOnboarding] = useState(false);
 
-  // 1. SÉCURITÉ : VÉRIFIER LA CONNEXION AU DÉMARRAGE
+  // --- CHARGEMENT DES DONNÉES DEPUIS LE CLOUD (SUPABASE) ---
   useEffect(() => {
-    const checkUser = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (!session) {
-        // Pas connecté ? Hop, direction le Login !
-        router.push("/login");
-      } else {
-        // Connecté ? On charge les données
-        setLoadingAuth(false);
-        loadLocalData(); // Pour l'instant on charge le LocalStorage (transition)
+    const fetchData = async () => {
+      try {
+        // 1. Qui est connecté ?
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (!session) {
+          router.push("/login");
+          return;
+        }
+
+        // 2. On récupère son profil dans la base de données
+        const { data: profile, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .single();
+
+        if (error || !profile) {
+            // Pas de profil ? C'est un nouveau, on lance l'onboarding
+            console.log("Aucun profil trouvé, lancement onboarding");
+            setShowOnboarding(true);
+        } else {
+            // 3. On remplit l'application avec les données du Cloud
+            setUserName(profile.first_name || "Investisseur");
+            setNetWorth(profile.net_worth || 0);
+
+            // Gestion des Assets
+            if (profile.assets_json && Array.isArray(profile.assets_json)) {
+                setAssets(profile.assets_json);
+            }
+
+            // Gestion du Budget pour calculer le Cashflow
+            if (profile.budget_json) {
+                const b = profile.budget_json;
+                const inc = Number(b.income) || 0;
+                let exp = 0;
+                
+                // On gère les deux formats (ancien tableau ou nouveau total)
+                if (b.expenses && typeof b.expenses === 'number') {
+                    exp = b.expenses;
+                } else if (Array.isArray(b.expenses)) {
+                    exp = b.expenses.reduce((acc: number, item: any) => acc + (item.amount || 0), 0);
+                }
+
+                setMonthlyCashflow(inc - exp);
+                setSavingsRate(inc > 0 ? (Math.max(0, inc - exp) / inc) * 100 : 0);
+            }
+        }
+      } catch (e) {
+        console.error("Erreur chargement données", e);
+      } finally {
+        setLoading(false);
       }
     };
-    
-    checkUser();
+
+    fetchData();
   }, [router]);
-
-  // Fonction pour charger les données (extraite pour la clarté)
-  const loadLocalData = () => {
-    try {
-        const savedProfile = localStorage.getItem("userProfile");
-        // Si pas de profil local, on lance l'Onboarding
-        if (!savedProfile) { setShowOnboarding(true); return; }
-
-        const p = JSON.parse(savedProfile);
-        if (p.identity?.firstName) setUserName(p.identity.firstName);
-
-        const savedAssets = localStorage.getItem("myAssets");
-        let currentAssets: Asset[] = [];
-        if (savedAssets) currentAssets = JSON.parse(savedAssets);
-        
-        setAssets(currentAssets);
-        const total = currentAssets.reduce((acc: number, item: Asset) => acc + (item.value || 0), 0);
-        setNetWorth(total);
-
-        const savedBudget = localStorage.getItem("myBudget");
-        if (savedBudget) {
-            const b = JSON.parse(savedBudget);
-            const inc = b.income || 0;
-            let exp = 0;
-            if (Array.isArray(b.expenses)) exp = b.expenses.reduce((acc: number, item: any) => acc + (item.amount || 0), 0);
-            else exp = b.expenses || 0;
-            
-            setMonthlyCashflow(inc - exp);
-            setSavingsRate(inc > 0 ? (Math.max(0, inc - exp) / inc) * 100 : 0);
-        }
-    } catch (e) { console.error("Erreur Dashboard", e); }
-  };
 
   const handleOnboardingFinish = () => {
     setShowOnboarding(false);
-    window.location.reload();
+    window.location.reload(); 
   };
 
+  // Calcul pour le graphique
   const assetDistribution = [
-      { type: "Immobilier", color: "bg-blue-500", value: assets.filter(a => a.type.includes("Immo")).reduce((acc, i) => acc + i.value, 0) },
-      { type: "Bourse", color: "bg-emerald-500", value: assets.filter(a => a.type === "Bourse").reduce((acc, i) => acc + i.value, 0) },
-      { type: "Crypto", color: "bg-purple-500", value: assets.filter(a => a.type === "Crypto").reduce((acc, i) => acc + i.value, 0) },
-      { type: "Cash", color: "bg-amber-500", value: assets.filter(a => a.type.includes("Cash")).reduce((acc, i) => acc + i.value, 0) },
+      { type: "Immobilier", color: "bg-blue-500", value: assets.filter(a => a.type.includes("Immo")).reduce((acc, i) => acc + (i.value || 0), 0) },
+      { type: "Bourse", color: "bg-emerald-500", value: assets.filter(a => a.type === "Bourse").reduce((acc, i) => acc + (i.value || 0), 0) },
+      { type: "Crypto", color: "bg-purple-500", value: assets.filter(a => a.type === "Crypto").reduce((acc, i) => acc + (i.value || 0), 0) },
+      { type: "Cash", color: "bg-amber-500", value: assets.filter(a => a.type.includes("Cash")).reduce((acc, i) => acc + (i.value || 0), 0) },
   ].filter(d => d.value > 0);
 
-  // Si on vérifie encore l'identité, on n'affiche rien (écran noir)
-  if (loadingAuth) return <div className="min-h-screen bg-black" />;
+  if (loading) return (
+    <div className="min-h-screen bg-black flex items-center justify-center text-emerald-500">
+        <Loader2 className="animate-spin" size={40} />
+    </div>
+  );
 
   return (
     <div className="flex flex-col md:flex-row min-h-screen bg-black text-zinc-100 font-sans selection:bg-emerald-500/30">
@@ -143,7 +159,7 @@ export default function Dashboard() {
                     <div className="text-5xl md:text-7xl font-bold text-white tracking-tighter"><Counter value={netWorth} /></div>
                 </div>
                 <div className="relative z-10 mt-8">
-                    <div className="flex justify-between text-xs text-zinc-400 mb-2 font-medium uppercase tracking-wider"><span>Allocation d'actifs</span><span>100%</span></div>
+                    <div className="flex justify-between text-xs text-zinc-400 mb-2 font-medium uppercase tracking-wider"><span>Allocation d&apos;actifs</span><span>100%</span></div>
                     <div className="h-1.5 w-full flex rounded-full overflow-hidden bg-zinc-800/50">
                         {assetDistribution.length > 0 ? (assetDistribution.map((a, i) => (<motion.div key={i} initial={{ width: 0 }} animate={{ width: `${(a.value / netWorth) * 100}%` }} transition={{ duration: 1, delay: 0.5 }} className={`h-full ${a.color}`} />))) : (<div className="w-full bg-zinc-800 h-full" />)}
                     </div>
@@ -161,7 +177,7 @@ export default function Dashboard() {
                 </div>
                 <div className="rounded-3xl bg-zinc-900/50 border border-zinc-800 p-6 flex flex-col justify-center h-[140px] relative overflow-hidden">
                      <div className="absolute -right-6 -top-6 w-24 h-24 bg-purple-500/10 blur-3xl rounded-full"></div>
-                     <p className="text-zinc-500 text-xs uppercase font-bold tracking-widest mb-1">Taux d'Épargne</p>
+                     <p className="text-zinc-500 text-xs uppercase font-bold tracking-widest mb-1">Taux d&apos;Épargne</p> {/* <--- CORRECTION 2 : d' -> d&apos; */}
                      <div className="text-3xl font-bold text-white tracking-tight flex items-baseline gap-1"><Counter value={savingsRate} currency={false} /><span className="text-lg text-zinc-500">%</span></div>
                      <div className="w-full bg-zinc-800 h-1 mt-3 rounded-full overflow-hidden"><motion.div initial={{ width: 0 }} animate={{ width: `${savingsRate}%` }} transition={{ duration: 1, delay: 0.2 }} className="h-full bg-purple-500"/></div>
                 </div>
