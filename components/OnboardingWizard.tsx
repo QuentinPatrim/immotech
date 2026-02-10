@@ -22,7 +22,6 @@ const cleanNumber = (val: any): number => {
     return isNaN(num) ? 0 : num;
 };
 
-// 1. On autorise le paramètre "numeric"
 const PremiumInput = ({ value, onValueChange, placeholder, icon: Icon, autoFocus = false, onEnter, numeric = true }: any) => (
   <div className="group relative transition-all duration-300 w-full">
     <div className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 group-focus-within:text-emerald-400 transition-colors">
@@ -31,7 +30,6 @@ const PremiumInput = ({ value, onValueChange, placeholder, icon: Icon, autoFocus
     <Input
       autoFocus={autoFocus}
       type="text"
-      // Si numeric est faux, on met "text" (clavier AZERTY)
       inputMode={numeric ? "decimal" : "text"} 
       value={value} 
       onChange={(e) => onValueChange(e.target.value)}
@@ -134,12 +132,24 @@ export default function OnboardingWizard({ onFinish }: OnboardingProps) {
 
           <div id="onboarding-scroll" className="flex-1 overflow-y-auto px-8 py-4 flex flex-col justify-center">
             <AnimatePresence mode="wait">
+                
+                {/* 0. WELCOME (TEXTE MODIFIÉ ICI) */}
                 {step === 0 && (
                 <motion.div key="intro0" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} className="space-y-8 text-center my-auto">
-                    <div className="w-24 h-24 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-3xl mx-auto flex items-center justify-center shadow-lg shadow-emerald-900/50 mb-6"><TrendingUp size={48} className="text-black" /></div>
-                    <div><h1 className="text-4xl font-black text-white tracking-tight mb-4">Bienvenue sur <span className="text-emerald-500">ImmoTech</span></h1><p className="text-zinc-400 text-lg leading-relaxed">L'application tout-en-un pour piloter votre patrimoine.</p></div>
+                    <div className="w-24 h-24 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-3xl mx-auto flex items-center justify-center shadow-lg shadow-emerald-900/50 mb-6">
+                        <TrendingUp size={48} className="text-black" />
+                    </div>
+                    <div>
+                        <h1 className="text-4xl font-black text-white tracking-tight mb-4">
+                            Bienvenue sur <span className="text-emerald-500">Nexus</span>
+                        </h1>
+                        <p className="text-zinc-400 text-lg leading-relaxed">
+                            Votre centre de contrôle patrimonial intelligent.
+                        </p>
+                    </div>
                 </motion.div>
                 )}
+
                 {step === 1 && (
                 <motion.div key="intro1" initial={{ opacity: 0, x: 50 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -50 }} className="space-y-6 my-auto">
                     <div className="text-center mb-8"><h2 className="text-2xl font-bold text-white mb-2">Votre Cockpit Financier 🚀</h2><p className="text-zinc-400">Tout ce dont vous avez besoin, au même endroit.</p></div>
@@ -160,7 +170,6 @@ export default function OnboardingWizard({ onFinish }: OnboardingProps) {
                 <motion.div key="step3" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6 my-auto">
                     <div className="text-center space-y-2"><h2 className="text-3xl font-bold text-white">Qui êtes-vous ? 👤</h2></div>
                     <div className="space-y-4 pt-4">
-                        {/* 2. On applique numeric={false} pour le texte */}
                         <PremiumInput autoFocus icon={User} placeholder="Prénom" value={identity.firstName} onValueChange={(val: string) => setIdentity({...identity, firstName: val})} numeric={false} />
                         <PremiumInput icon={User} placeholder="Nom" value={identity.lastName} onValueChange={(val: string) => setIdentity({...identity, lastName: val})} numeric={false} />
                         <PremiumInput icon={Check} placeholder="Âge" value={identity.age} onValueChange={(val: string) => setIdentity({...identity, age: val})} onEnter={handleNext} />
@@ -199,7 +208,7 @@ export default function OnboardingWizard({ onFinish }: OnboardingProps) {
                 <motion.div key="step10" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="text-center py-4 space-y-8 my-auto">
                     <div className="w-28 h-28 bg-emerald-500 rounded-full flex items-center justify-center mx-auto shadow-[0_0_50px_rgba(16,185,129,0.4)] animate-pulse"><Check size={48} className="text-black font-bold" /></div>
                     <div><h2 className="text-3xl font-bold text-white">Tout est prêt !</h2><p className="text-zinc-400 mt-2 text-lg">Votre tableau de bord a été généré.</p></div>
-                    <Button onClick={handleFinish} className="w-full bg-white text-black hover:bg-zinc-200 font-bold h-16 rounded-2xl text-xl mt-4">Lancer ImmoTech</Button>
+                    <Button onClick={handleFinish} className="w-full bg-white text-black hover:bg-zinc-200 font-bold h-16 rounded-2xl text-xl mt-4">Lancer Nexus</Button>
                 </motion.div>
                 )}
             </AnimatePresence>
