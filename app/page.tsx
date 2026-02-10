@@ -56,7 +56,7 @@ export default function Dashboard() {
   // --- LOGIQUE DE DÉCONNEXION ---
   const handleLogout = async () => {
     await supabase.auth.signOut();
-    localStorage.clear(); // On nettoie tout
+    localStorage.clear();
     router.push("/login");
   };
 
@@ -64,7 +64,6 @@ export default function Dashboard() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // 1. Qui est connecté ?
         const { data: { session } } = await supabase.auth.getSession();
         
         if (!session) {
@@ -72,7 +71,6 @@ export default function Dashboard() {
           return;
         }
 
-        // 2. On récupère le profil Cloud
         const { data: profile, error } = await supabase
           .from('profiles')
           .select('*')
@@ -81,16 +79,12 @@ export default function Dashboard() {
 
         if (error || !profile) {
             console.log("Profil Cloud introuvable. Vérification LocalStorage...");
-            
-            // 3. TENTATIVE DE MIGRATION (Sauvetage des données locales)
             const localProfile = localStorage.getItem("userProfile");
             
             if (localProfile) {
-                console.log("Données locales trouvées ! Migration en cours...");
                 const p = JSON.parse(localProfile);
                 const localAssets = JSON.parse(localStorage.getItem("myAssets") || "[]");
                 
-                // On envoie les données locales vers Supabase
                 const { error: uploadError } = await supabase.from('profiles').upsert({
                     id: session.user.id,
                     first_name: p.identity?.firstName || "Investisseur",
@@ -101,20 +95,15 @@ export default function Dashboard() {
                 });
 
                 if (!uploadError) {
-                    console.log("Migration réussie ! Rechargement...");
                     window.location.reload();
                     return;
                 } else {
-                    console.error("Echec migration", uploadError);
-                    setErrorDetails("Echec sauvegarde Cloud. Vérifiez votre connexion.");
+                    setErrorDetails("Echec sauvegarde Cloud.");
                 }
             }
-
-            // Si vraiment rien (ni Cloud, ni Local), on affiche l'Onboarding
             setShowOnboarding(true);
             setLoading(false);
         } else {
-            // 4. TOUT VA BIEN : CHARGEMENT DU CLOUD
             setUserName(profile.first_name || "Investisseur");
             setNetWorth(profile.net_worth || 0);
 
@@ -126,7 +115,6 @@ export default function Dashboard() {
                 const b = profile.budget_json;
                 const inc = Number(b.income) || 0;
                 let exp = 0;
-                
                 if (b.expenses && typeof b.expenses === 'number') exp = b.expenses;
                 else if (Array.isArray(b.expenses)) exp = b.expenses.reduce((acc: number, item: any) => acc + (item.amount || 0), 0);
 
@@ -136,7 +124,6 @@ export default function Dashboard() {
             setLoading(false);
         }
       } catch (e: any) {
-        console.error("Erreur critique", e);
         setErrorDetails(e.message || "Erreur inconnue");
         setLoading(false);
       }
@@ -146,11 +133,9 @@ export default function Dashboard() {
   }, [router]);
 
   const handleOnboardingFinish = () => {
-    // Force un rechargement complet pour relancer la vérification Cloud
     window.location.reload(); 
   };
 
-  // --- CALCUL DU GRAPHIQUE (C'est ce bloc qu'il manquait !) ---
   const assetDistribution = [
       { type: "Immobilier", color: "bg-blue-500", value: assets.filter(a => a.type.includes("Immo")).reduce((acc, i) => acc + (i.value || 0), 0) },
       { type: "Bourse", color: "bg-emerald-500", value: assets.filter(a => a.type === "Bourse").reduce((acc, i) => acc + (i.value || 0), 0) },
@@ -162,33 +147,28 @@ export default function Dashboard() {
     <div className="min-h-screen bg-black flex flex-col items-center justify-center text-emerald-500 gap-4">
         <Loader2 className="animate-spin" size={40} />
         <p className="text-zinc-500 text-sm animate-pulse">Synchronisation Nexus...</p>
-        <Button variant="outline" onClick={handleLogout} className="mt-8 border-zinc-800 text-zinc-500 hover:text-white">
-            Annuler et se déconnecter
-        </Button>
     </div>
   );
 
   return (
-    <div className="flex flex-col md:flex-row min-h-screen bg-black text-zinc-100 font-sans selection:bg-emerald-500/30">
+    // CORRECTION 1 : On retire 'flex-row' pour laisser le flux normal, et on garde min-h-screen bg-black
+    <div className="min-h-screen bg-black text-zinc-100 font-sans selection:bg-emerald-500/30">
       
       {showOnboarding && (
         <div className="relative z-[9999]">
             <OnboardingWizard onFinish={handleOnboardingFinish} />
-            {/* Bouton de secours sur l'écran d'Onboarding */}
             <div className="fixed bottom-4 right-4 z-[100000]">
-                 <button onClick={handleLogout} className="text-xs text-zinc-600 hover:text-red-500 underline">
-                    Se déconnecter (Reset)
-                 </button>
+                 <button onClick={handleLogout} className="text-xs text-zinc-600 hover:text-red-500 underline">Se déconnecter (Reset)</button>
             </div>
         </div>
       )}
       
       <Sidebar />
       
-      <main className="flex-1 w-full max-w-[1400px] mx-auto overflow-y-auto p-4 md:p-8 pb-24 md:pb-8">
+      {/* CORRECTION 2 : On ajoute 'md:ml-64' pour décaler le contenu à droite de la sidebar fixe */}
+      <main className="md:ml-64 flex-1 w-auto max-w-[1400px] mx-auto overflow-y-auto p-4 md:p-8 pb-24 md:pb-8">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }} className="space-y-6">
           
-          {/* Header Dashboard */}
           <div className="flex items-center justify-between pt-2">
             <div>
               <p className="text-zinc-500 text-xs uppercase tracking-widest font-medium mb-1">Vue d&apos;ensemble</p>
@@ -202,15 +182,8 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Message d'erreur si besoin */}
-          {errorDetails && (
-              <div className="bg-red-500/10 border border-red-500/20 p-4 rounded-xl flex items-center gap-3 text-red-400">
-                  <AlertCircle size={20} />
-                  <p className="text-sm">{errorDetails}</p>
-              </div>
-          )}
+          {errorDetails && (<div className="bg-red-500/10 border border-red-500/20 p-4 rounded-xl flex items-center gap-3 text-red-400"><AlertCircle size={20} /><p className="text-sm">{errorDetails}</p></div>)}
 
-          {/* --- KPI BLOCKS --- */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
             <div className="md:col-span-2 relative overflow-hidden rounded-3xl bg-zinc-900 border border-zinc-800/60 p-8 shadow-2xl flex flex-col justify-between min-h-[260px] group">
                 <div className="absolute top-0 right-0 w-[300px] h-[300px] bg-emerald-500/10 blur-[100px] rounded-full group-hover:bg-emerald-500/15 transition-all duration-700 pointer-events-none"></div>
