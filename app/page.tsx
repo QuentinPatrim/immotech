@@ -8,10 +8,11 @@ import OnboardingWizard from "@/components/OnboardingWizard";
 import { motion, useInView, useMotionValue, useSpring } from "framer-motion";
 import { 
   ShieldCheck, ArrowUpRight, Activity, Target, Lock, Loader2,
-  Wallet, TrendingUp // <--- AJOUTÉ ICI (Correction 1)
+  Wallet, TrendingUp, LogOut, AlertCircle
 } from "lucide-react";
 import Link from "next/link";
 import { Progress } from "@/components/ui/progress";
+import { Button } from "@/components/ui/button";
 
 // --- COMPOSANT COMPTEUR ---
 const Counter = ({ value, currency = true }: { value: number, currency?: boolean }) => {
@@ -41,6 +42,7 @@ type Asset = { id: string; name: string; value: number; type: string; color?: st
 export default function Dashboard() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
+  const [errorDetails, setErrorDetails] = useState("");
   
   // Données
   const [userName, setUserName] = useState("Investisseur");
@@ -51,7 +53,14 @@ export default function Dashboard() {
   
   const [showOnboarding, setShowOnboarding] = useState(false);
 
-  // --- CHARGEMENT DES DONNÉES DEPUIS LE CLOUD (SUPABASE) ---
+  // --- LOGIQUE DE DÉCONNEXION ---
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    localStorage.clear(); // On nettoie tout
+    router.push("/login");
+  };
+
+  // --- CHARGEMENT DES DONNÉES ---
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -63,7 +72,7 @@ export default function Dashboard() {
           return;
         }
 
-        // 2. On récupère son profil dans la base de données
+        // 2. On récupère le profil Cloud
         const { data: profile, error } = await supabase
           .from('profiles')
           .select('*')
@@ -71,39 +80,64 @@ export default function Dashboard() {
           .single();
 
         if (error || !profile) {
-            // Pas de profil ? C'est un nouveau, on lance l'onboarding
-            console.log("Aucun profil trouvé, lancement onboarding");
+            console.log("Profil Cloud introuvable. Vérification LocalStorage...");
+            
+            // 3. TENTATIVE DE MIGRATION (Sauvetage des données locales)
+            const localProfile = localStorage.getItem("userProfile");
+            
+            if (localProfile) {
+                console.log("Données locales trouvées ! Migration en cours...");
+                const p = JSON.parse(localProfile);
+                const localAssets = JSON.parse(localStorage.getItem("myAssets") || "[]");
+                
+                // On envoie les données locales vers Supabase
+                const { error: uploadError } = await supabase.from('profiles').upsert({
+                    id: session.user.id,
+                    first_name: p.identity?.firstName || "Investisseur",
+                    net_worth: p.assets?.realEstate + p.assets?.stocks + p.assets?.crypto + p.assets?.cash || 0,
+                    assets_json: localAssets,
+                    budget_json: p.budget,
+                    updated_at: new Date().toISOString()
+                });
+
+                if (!uploadError) {
+                    console.log("Migration réussie ! Rechargement...");
+                    window.location.reload();
+                    return;
+                } else {
+                    console.error("Echec migration", uploadError);
+                    setErrorDetails("Echec sauvegarde Cloud. Vérifiez votre connexion.");
+                }
+            }
+
+            // Si vraiment rien (ni Cloud, ni Local), on affiche l'Onboarding
             setShowOnboarding(true);
+            setLoading(false);
         } else {
-            // 3. On remplit l'application avec les données du Cloud
+            // 4. TOUT VA BIEN : CHARGEMENT DU CLOUD
             setUserName(profile.first_name || "Investisseur");
             setNetWorth(profile.net_worth || 0);
 
-            // Gestion des Assets
             if (profile.assets_json && Array.isArray(profile.assets_json)) {
                 setAssets(profile.assets_json);
             }
 
-            // Gestion du Budget pour calculer le Cashflow
             if (profile.budget_json) {
                 const b = profile.budget_json;
                 const inc = Number(b.income) || 0;
                 let exp = 0;
                 
-                // On gère les deux formats (ancien tableau ou nouveau total)
-                if (b.expenses && typeof b.expenses === 'number') {
-                    exp = b.expenses;
-                } else if (Array.isArray(b.expenses)) {
-                    exp = b.expenses.reduce((acc: number, item: any) => acc + (item.amount || 0), 0);
-                }
+                if (b.expenses && typeof b.expenses === 'number') exp = b.expenses;
+                else if (Array.isArray(b.expenses)) exp = b.expenses.reduce((acc: number, item: any) => acc + (item.amount || 0), 0);
 
                 setMonthlyCashflow(inc - exp);
                 setSavingsRate(inc > 0 ? (Math.max(0, inc - exp) / inc) * 100 : 0);
             }
+            setLoading(false);
         }
-      } catch (e) {
-        console.error("Erreur chargement données", e);
-      } finally {
+      } catch (e: any) {
+        console.error("Erreur critique", e);
+        setErrorDetails(e.message || "Erreur inconnue");
         setLoading(false);
       }
     };
@@ -112,11 +146,11 @@ export default function Dashboard() {
   }, [router]);
 
   const handleOnboardingFinish = () => {
-    setShowOnboarding(false);
+    // Force un rechargement complet pour relancer la vérification Cloud
     window.location.reload(); 
   };
 
-  // Calcul pour le graphique
+  // --- CALCUL DU GRAPHIQUE (C'est ce bloc qu'il manquait !) ---
   const assetDistribution = [
       { type: "Immobilier", color: "bg-blue-500", value: assets.filter(a => a.type.includes("Immo")).reduce((acc, i) => acc + (i.value || 0), 0) },
       { type: "Bourse", color: "bg-emerald-500", value: assets.filter(a => a.type === "Bourse").reduce((acc, i) => acc + (i.value || 0), 0) },
@@ -125,29 +159,58 @@ export default function Dashboard() {
   ].filter(d => d.value > 0);
 
   if (loading) return (
-    <div className="min-h-screen bg-black flex items-center justify-center text-emerald-500">
+    <div className="min-h-screen bg-black flex flex-col items-center justify-center text-emerald-500 gap-4">
         <Loader2 className="animate-spin" size={40} />
+        <p className="text-zinc-500 text-sm animate-pulse">Synchronisation Nexus...</p>
+        <Button variant="outline" onClick={handleLogout} className="mt-8 border-zinc-800 text-zinc-500 hover:text-white">
+            Annuler et se déconnecter
+        </Button>
     </div>
   );
 
   return (
     <div className="flex flex-col md:flex-row min-h-screen bg-black text-zinc-100 font-sans selection:bg-emerald-500/30">
       
-      {showOnboarding && <OnboardingWizard onFinish={handleOnboardingFinish} />}
+      {showOnboarding && (
+        <div className="relative z-[9999]">
+            <OnboardingWizard onFinish={handleOnboardingFinish} />
+            {/* Bouton de secours sur l'écran d'Onboarding */}
+            <div className="fixed bottom-4 right-4 z-[100000]">
+                 <button onClick={handleLogout} className="text-xs text-zinc-600 hover:text-red-500 underline">
+                    Se déconnecter (Reset)
+                 </button>
+            </div>
+        </div>
+      )}
       
       <Sidebar />
       
       <main className="flex-1 w-full max-w-[1400px] mx-auto overflow-y-auto p-4 md:p-8 pb-24 md:pb-8">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }} className="space-y-6">
           
+          {/* Header Dashboard */}
           <div className="flex items-center justify-between pt-2">
             <div>
-              <p className="text-zinc-500 text-xs uppercase tracking-widest font-medium mb-1">Vue d'ensemble</p>
+              <p className="text-zinc-500 text-xs uppercase tracking-widest font-medium mb-1">Vue d&apos;ensemble</p>
               <h1 className="text-2xl md:text-3xl font-bold text-white tracking-tight">Bon retour, <span className="text-zinc-400">{userName}</span></h1>
             </div>
-            <div className="h-10 w-10 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-500"><Activity size={18} /></div>
+            <div className="flex gap-3">
+                <Button variant="ghost" size="icon" onClick={handleLogout} className="rounded-full bg-zinc-900 border border-zinc-800 text-zinc-500 hover:text-red-500 hover:bg-red-500/10">
+                    <LogOut size={18} />
+                </Button>
+                <div className="h-10 w-10 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-500"><Activity size={18} /></div>
+            </div>
           </div>
 
+          {/* Message d'erreur si besoin */}
+          {errorDetails && (
+              <div className="bg-red-500/10 border border-red-500/20 p-4 rounded-xl flex items-center gap-3 text-red-400">
+                  <AlertCircle size={20} />
+                  <p className="text-sm">{errorDetails}</p>
+              </div>
+          )}
+
+          {/* --- KPI BLOCKS --- */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
             <div className="md:col-span-2 relative overflow-hidden rounded-3xl bg-zinc-900 border border-zinc-800/60 p-8 shadow-2xl flex flex-col justify-between min-h-[260px] group">
                 <div className="absolute top-0 right-0 w-[300px] h-[300px] bg-emerald-500/10 blur-[100px] rounded-full group-hover:bg-emerald-500/15 transition-all duration-700 pointer-events-none"></div>
@@ -177,7 +240,7 @@ export default function Dashboard() {
                 </div>
                 <div className="rounded-3xl bg-zinc-900/50 border border-zinc-800 p-6 flex flex-col justify-center h-[140px] relative overflow-hidden">
                      <div className="absolute -right-6 -top-6 w-24 h-24 bg-purple-500/10 blur-3xl rounded-full"></div>
-                     <p className="text-zinc-500 text-xs uppercase font-bold tracking-widest mb-1">Taux d&apos;Épargne</p> {/* <--- CORRECTION 2 : d' -> d&apos; */}
+                     <p className="text-zinc-500 text-xs uppercase font-bold tracking-widest mb-1">Taux d&apos;Épargne</p>
                      <div className="text-3xl font-bold text-white tracking-tight flex items-baseline gap-1"><Counter value={savingsRate} currency={false} /><span className="text-lg text-zinc-500">%</span></div>
                      <div className="w-full bg-zinc-800 h-1 mt-3 rounded-full overflow-hidden"><motion.div initial={{ width: 0 }} animate={{ width: `${savingsRate}%` }} transition={{ duration: 1, delay: 0.2 }} className="h-full bg-purple-500"/></div>
                 </div>
