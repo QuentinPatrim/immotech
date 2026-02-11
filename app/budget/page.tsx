@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Sidebar from "@/components/Sidebar";
 import { motion } from "framer-motion";
 import { BarChart, Bar, XAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Legend } from "recharts";
-import { Plus, Trash2, ShoppingBag, Home, Target, ShieldCheck, Loader2, ChevronLeft, ChevronRight, Save, TrendingUp, AlertTriangle, Coffee, ArrowRight } from "lucide-react";
+import { Plus, Trash2, Home, Target, ShieldCheck, Loader2, ChevronLeft, ChevronRight, Save, TrendingUp, AlertTriangle, Coffee, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { triggerHaptic } from "@/lib/haptics";
@@ -16,24 +16,18 @@ const formatMonth = (date: Date) => {
     return new Intl.DateTimeFormat('fr-FR', { month: 'long', year: 'numeric' }).format(date);
 };
 
-const detectCategory = (name: string) => {
-  const n = name.toLowerCase();
-  const keywords = {
-    besoin: ["loyer", "crédit", "immo", "courses", "eau", "elec", "gaz", "internet", "assurance", "impôt", "transport", "essence", "charges", "abonnement", "box", "téléphone"],
-    epargne: ["bourse", "crypto", "livret", "cash", "action", "etf", "dca"]
-  };
-  if (keywords.besoin.some(k => n.includes(k))) return "BESOIN";
-  if (keywords.epargne.some(k => n.includes(k))) return "EPARGNE";
-  return "ENVIE"; 
-};
-
 export default function BudgetPage() {
     const [selectedDate, setSelectedDate] = useState(new Date()); 
     const [isExistingMonth, setIsExistingMonth] = useState(false); 
     const [income, setIncome] = useState(0);
     const [expenses, setExpenses] = useState<{id: string, name: string, amount: number, category: string}[]>([]);
-    const [newItemName, setNewItemName] = useState("");
-    const [newItemAmount, setNewItemAmount] = useState("");
+    
+    // INPUTS SÉPARÉS
+    const [newNeedName, setNewNeedName] = useState("");
+    const [newNeedAmount, setNewNeedAmount] = useState("");
+    const [newWantName, setNewWantName] = useState("");
+    const [newWantAmount, setNewWantAmount] = useState("");
+
     const [currentCash, setCurrentCash] = useState(0);
     const [loading, setLoading] = useState(true);
     const [safetyAllocation, setSafetyAllocation] = useState(50);
@@ -50,36 +44,32 @@ export default function BudgetPage() {
         const user = session.user;
         const startOfMonth = new Date(Date.UTC(date.getFullYear(), date.getMonth(), 1)).toISOString().split('T')[0];
 
-        const { data: history } = await supabase
-            .from('monthly_history')
-            .select('*')
-            .eq('user_id', user.id)
-            .eq('month', startOfMonth)
-            .maybeSingle();
+        // 1. On récupère TOUJOURS le profil pour avoir le Cash à jour (Lien Patrimoine)
+        const { data: profile } = await supabase.from('profiles').select('budget_json, assets_json').eq('id', user.id).single();
+        
+        if (profile && Array.isArray(profile.assets_json)) {
+            const cash = (profile.assets_json as any[])
+                .filter(a => a.type === "Cash" || (a.type && a.type.includes("Livret")))
+                .reduce((acc, a) => acc + (a.value || 0), 0);
+            setCurrentCash(cash);
+        }
+
+        // 2. On regarde si on a un historique pour ce mois
+        const { data: history } = await supabase.from('monthly_history').select('*').eq('user_id', user.id).eq('month', startOfMonth).maybeSingle();
 
         if (history) {
             setIsExistingMonth(true);
             setIncome(history.income || 0);
-            if (history.details_json && Array.isArray(history.details_json)) {
-                setExpenses(history.details_json);
-            }
+            if (history.details_json && Array.isArray(history.details_json)) setExpenses(history.details_json);
         } else {
             setIsExistingMonth(false);
-            const { data: profile } = await supabase.from('profiles').select('budget_json, assets_json').eq('id', user.id).single();
-            if (profile) {
-                if (profile.budget_json) {
-                    const b = profile.budget_json as any;
-                    setIncome(Number(b.income) || 0);
-                    if (Array.isArray(b.details)) setExpenses(b.details);
-                }
-                if (Array.isArray(profile.assets_json)) {
-                    const cash = (profile.assets_json as any[])
-                        .filter(a => a.type === "Cash" || (a.type && a.type.includes("Livret")))
-                        .reduce((acc, a) => acc + (a.value || 0), 0);
-                    setCurrentCash(cash);
-                }
+            if (profile && profile.budget_json) {
+                const b = profile.budget_json as any;
+                setIncome(Number(b.income) || 0);
+                if (Array.isArray(b.details)) setExpenses(b.details);
             }
         }
+        
         fetchHistoryGraph(user.id);
         setLoading(false);
     };
@@ -107,17 +97,35 @@ export default function BudgetPage() {
         setSelectedDate(newDate);
     };
 
+    // --- CALCULS DU FLUX (CORRIGÉS) ---
+    const totalExp = expenses.reduce((acc, i) => acc + i.amount, 0);
+    const totalSurplus = Math.max(0, income - totalExp); // Le surplus total brut
+    
+    // Matelas
+    const safetyTarget = totalExp * 6;
+    const safetyGap = Math.max(0, safetyTarget - currentCash);
+    const isSafe = currentCash >= safetyTarget && safetyTarget > 0;
+    
+    // Répartition dynamique
+    const effectiveSafetyRate = isSafe ? 0 : (safetyAllocation / 100);
+    const flowToSafety = totalSurplus * effectiveSafetyRate;
+    const flowToInvest = totalSurplus - flowToSafety; // C'est CE chiffre qui doit être affiché en haut
+
     const saveCurrentMonth = async () => {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
         setLoading(true);
-        const totalExp = expenses.reduce((acc, i) => acc + i.amount, 0);
-        const investCapacity = Math.max(0, income - totalExp);
+        
         const saveDate = new Date(Date.UTC(selectedDate.getFullYear(), selectedDate.getMonth(), 1)).toISOString().split('T')[0];
 
         const { error } = await supabase.from('monthly_history').upsert({
-            user_id: user.id, month: saveDate, income: income, expenses: totalExp,
-            invested: investCapacity * (1 - (safetyAllocation/100)), saved: investCapacity * (safetyAllocation/100), details_json: expenses,
+            user_id: user.id, 
+            month: saveDate, 
+            income: income, 
+            expenses: totalExp,
+            invested: flowToInvest, // On sauvegarde la vraie part investie
+            saved: flowToSafety,    // On sauvegarde la part sécurisée
+            details_json: expenses,
         }, { onConflict: 'user_id, month' });
 
         if (!error) {
@@ -132,25 +140,27 @@ export default function BudgetPage() {
         setLoading(false);
     };
 
-    const addExpense = () => {
-        if (!newItemName || !newItemAmount) return;
-        const val = parseFloat(newItemAmount);
-        if (isNaN(val)) return;
-        const newExp = [...expenses, { id: Date.now().toString(), name: newItemName, amount: val, category: detectCategory(newItemName) }];
-        setExpenses(newExp);
-        setNewItemName(""); setNewItemAmount("");
+    // Actions UI (Add/Remove/Update)
+    const addNeed = () => {
+        if (!newNeedName || !newNeedAmount) return;
+        const val = parseFloat(newNeedAmount); if (isNaN(val)) return;
+        setExpenses([...expenses, { id: Date.now().toString(), name: newNeedName, amount: val, category: "BESOIN" }]);
+        setNewNeedName(""); setNewNeedAmount("");
+    };
+    const addWant = () => {
+        if (!newWantName || !newWantAmount) return;
+        const val = parseFloat(newWantAmount); if (isNaN(val)) return;
+        setExpenses([...expenses, { id: Date.now().toString(), name: newWantName, amount: val, category: "ENVIE" }]);
+        setNewWantName(""); setNewWantAmount("");
+    };
+    const updateAmount = (id: string, newAmount: string) => {
+        const val = parseFloat(newAmount); const safeVal = isNaN(val) ? 0 : val;
+        setExpenses(expenses.map(e => e.id === id ? { ...e, amount: safeVal } : e));
     };
     const removeExpense = (id: string) => setExpenses(expenses.filter(e => e.id !== id));
 
     const needsList = expenses.filter(e => e.category === 'BESOIN');
-    const wantsList = expenses.filter(e => e.category !== 'BESOIN' && e.category !== 'EPARGNE');
-    const totalExp = expenses.reduce((acc, i) => acc + i.amount, 0);
-    const investCapacity = Math.max(0, income - totalExp);
-    const safetyTarget = totalExp * 6;
-    const safetyGap = Math.max(0, safetyTarget - currentCash);
-    const isSafe = currentCash >= safetyTarget && safetyTarget > 0;
-    const flowToSafety = investCapacity * (isSafe ? 0 : safetyAllocation/100);
-    const flowToInvest = investCapacity * (1 - (isSafe ? 0 : safetyAllocation/100));
+    const wantsList = expenses.filter(e => e.category !== 'BESOIN');
 
     if (loading && expenses.length === 0) return <div className="min-h-screen bg-black flex items-center justify-center"><Loader2 className="animate-spin text-emerald-500"/></div>;
 
@@ -160,6 +170,11 @@ export default function BudgetPage() {
             <main className="md:ml-64 flex-1 w-auto max-w-full p-4 md:p-8">
                 <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="max-w-6xl mx-auto space-y-8">
                     
+                    <div className="flex flex-col gap-2">
+                        <h1 className="text-3xl font-bold text-white">Mon Budget<span className="text-emerald-500">.</span></h1>
+                        <p className="text-zinc-400 text-sm">Gérez vos flux mensuels simplement.</p>
+                    </div>
+
                     <div className="flex flex-col md:flex-row justify-between items-center gap-6 bg-zinc-900/50 p-4 rounded-3xl border border-zinc-800">
                         <div className="flex items-center gap-4">
                             <Button variant="outline" size="icon" onClick={() => changeMonth(-1)} className="rounded-full border-zinc-700 hover:bg-zinc-800 text-white"><ChevronLeft size={20}/></Button>
@@ -172,15 +187,49 @@ export default function BudgetPage() {
                         <div className="flex items-center gap-4 w-full md:w-auto justify-end">
                             <div className="flex flex-col items-end">
                                 <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">Revenus du mois</span>
-                                <div className="flex items-center gap-2 bg-black px-3 py-1 rounded-lg border border-zinc-800">
-                                    <Input type="number" value={income || ""} onChange={(e) => setIncome(parseFloat(e.target.value))} className="h-8 w-24 bg-transparent border-none text-right text-lg font-bold text-white p-0 focus-visible:ring-0" />
-                                    <span className="text-zinc-500">€</span>
+                                <div className="flex items-center gap-2 bg-black px-3 py-1 rounded-lg border border-zinc-800 relative">
+                                    <Input type="number" value={income || ""} onChange={(e) => setIncome(parseFloat(e.target.value))} className="h-8 w-24 bg-transparent border-none text-right text-lg font-bold text-white p-0 pr-6 focus-visible:ring-0" />
+                                    <span className="text-zinc-500 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">€</span>
                                 </div>
                             </div>
                             <Button onClick={saveCurrentMonth} className="h-12 px-6 bg-emerald-500 hover:bg-emerald-400 text-black font-bold rounded-xl shadow-[0_0_15px_rgba(16,185,129,0.3)]"><Save size={18} className="mr-2"/> Enregistrer</Button>
                         </div>
                     </div>
 
+                    {/* KPI INVESTISSEMENT DYNAMIQUE */}
+                    <div className="relative p-8 rounded-3xl bg-gradient-to-br from-emerald-950 to-zinc-900 border border-emerald-500/20 overflow-hidden text-center md:text-left">
+                        <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-6">
+                            <div className="flex-1">
+                                <p className="text-emerald-500 font-medium text-sm flex items-center justify-center md:justify-start gap-2 mb-1"><Target size={16}/> Capacité d'Investissement (Nette)</p>
+                                
+                                {/* LE CHIFFRE QUI CHANGE SELON LE SLIDER */}
+                                <div className="text-5xl md:text-7xl font-black text-white tracking-tighter">
+                                    <AnimatedNumber value={flowToInvest} />
+                                </div>
+                                
+                                <p className="text-zinc-400 text-sm mt-2 mb-6">
+                                    Disponible pour l'investissement (après <span className="text-orange-400 font-bold">{Math.round(flowToSafety)}€</span> d'épargne de précaution).
+                                </p>
+                                
+                                <Link href="/projection">
+                                    <Button className="bg-emerald-500 hover:bg-emerald-400 text-black font-bold rounded-xl px-6 h-12 shadow-[0_0_20px_rgba(16,185,129,0.2)] hover:scale-105 transition-transform">
+                                        Projeter cette richesse <ArrowRight size={18} className="ml-2"/>
+                                    </Button>
+                                </Link>
+                            </div>
+                            
+                            {/* JAUGE TAUX EPARGNE GLOBAL (Reste sur le total pour montrer l'effort global) */}
+                            <div className="h-40 w-40 rounded-full border-8 border-zinc-800 flex items-center justify-center relative shrink-0">
+                                <div className="absolute inset-0 border-8 border-emerald-500 rounded-full" style={{ clipPath: `inset(0 ${100 - (income > 0 ? (totalSurplus/income)*100 : 0)}% 0 0)` }}></div>
+                                <div className="flex flex-col items-center">
+                                    <span className="text-3xl font-bold text-white">{income > 0 ? ((totalSurplus/income)*100).toFixed(0) : 0}%</span>
+                                    <span className="text-[10px] text-zinc-500 uppercase tracking-wider">Taux d'Épargne</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* CHART */}
                     <div className="hidden md:block p-6 rounded-3xl bg-zinc-900/30 border border-zinc-800 h-[300px]">
                         <div className="flex justify-between items-center mb-4">
                             <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-2"><TrendingUp size={14}/> Évolution & Répartition</h3>
@@ -199,71 +248,72 @@ export default function BudgetPage() {
                         </ResponsiveContainer>
                     </div>
 
-                    <div className="relative p-8 rounded-3xl bg-gradient-to-br from-emerald-950 to-zinc-900 border border-emerald-500/20 overflow-hidden text-center md:text-left">
-                        <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-6">
-                            <div className="flex-1">
-                                <p className="text-emerald-500 font-medium text-sm flex items-center justify-center md:justify-start gap-2 mb-1"><Target size={16}/> Capacité d'Investissement Réelle</p>
-                                <div className="text-5xl md:text-7xl font-black text-white tracking-tighter"><AnimatedNumber value={investCapacity} /></div>
-                                <p className="text-zinc-400 text-sm mt-2 mb-6">Ce qu'il reste vraiment à la fin du mois pour votre futur.</p>
-                                <Link href="/projection">
-                                    <Button className="bg-emerald-500 hover:bg-emerald-400 text-black font-bold rounded-xl px-6 h-12 shadow-[0_0_20px_rgba(16,185,129,0.2)] hover:scale-105 transition-transform">
-                                        Projeter cette richesse <ArrowRight size={18} className="ml-2"/>
-                                    </Button>
-                                </Link>
-                            </div>
-                            <div className="h-40 w-40 rounded-full border-8 border-zinc-800 flex items-center justify-center relative shrink-0">
-                                <div className="absolute inset-0 border-8 border-emerald-500 rounded-full" style={{ clipPath: `inset(0 ${100 - (income > 0 ? (investCapacity/income)*100 : 0)}% 0 0)` }}></div>
-                                <div className="flex flex-col items-center">
-                                    <span className="text-3xl font-bold text-white">{income > 0 ? ((investCapacity/income)*100).toFixed(0) : 0}%</span>
-                                    <span className="text-[10px] text-zinc-500 uppercase tracking-wider">Taux d'Épargne</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                        
                         <div className="space-y-8">
-                            <div className="bg-zinc-900 border border-zinc-800 p-4 rounded-2xl">
-                                <h3 className="text-xs font-bold text-white uppercase mb-3">Ajouter une dépense</h3>
-                                <div className="flex gap-2">
-                                    <Input placeholder="Nom..." value={newItemName} onChange={(e) => setNewItemName(e.target.value)} className="bg-black border-zinc-700 text-white h-10" />
-                                    <div className="w-28"><Input type="number" placeholder="€" value={newItemAmount} onChange={(e) => setNewItemAmount(e.target.value)} className="bg-black border-zinc-700 text-white text-right h-10 font-bold" /></div>
-                                    <Button onClick={addExpense} className="bg-white text-black hover:bg-zinc-200 h-10 w-10"><Plus size={20} /></Button>
-                                </div>
-                            </div>
+                            
+                            {/* BESOINS */}
                             <div className="space-y-4">
                                 <h3 className="font-bold text-blue-400 flex items-center gap-2"><Home size={18}/> Charges Fixes & Besoins</h3>
+                                <div className="flex gap-2 mb-2 p-2 bg-blue-500/5 rounded-xl border border-blue-500/10">
+                                    <Input placeholder="Loyer, Crédit..." value={newNeedName} onChange={(e) => setNewNeedName(e.target.value)} className="bg-transparent border-none text-white h-10 placeholder:text-zinc-600 focus-visible:ring-0" />
+                                    <div className="w-24 bg-black/40 rounded-lg flex items-center px-2 border border-zinc-800 relative">
+                                        <Input type="number" placeholder="0" value={newNeedAmount} onChange={(e) => setNewNeedAmount(e.target.value)} className="bg-transparent border-none text-white text-right h-10 font-bold p-0 pr-5 focus-visible:ring-0" />
+                                        <span className="text-zinc-500 text-sm absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none">€</span>
+                                    </div>
+                                    <Button onClick={addNeed} className="bg-blue-600 hover:bg-blue-500 text-white h-10 w-10 p-0 rounded-lg"><Plus size={20} /></Button>
+                                </div>
                                 <div className="space-y-2">
                                     {needsList.map((item) => (
-                                        <div key={item.id} className="flex justify-between items-center p-3 bg-zinc-900/30 rounded-xl border border-zinc-800/30 border-l-4 border-l-blue-500">
-                                            <div><p className="text-zinc-200 text-sm font-medium">{item.name}</p></div>
-                                            <div className="flex items-center gap-3"><span className="font-bold text-white">{item.amount} €</span><button onClick={() => removeExpense(item.id)} className="text-zinc-600 hover:text-red-500 p-2"><Trash2 size={14}/></button></div>
+                                        <div key={item.id} className="flex justify-between items-center p-2 bg-zinc-900/30 rounded-xl border border-zinc-800/30 border-l-4 border-l-blue-500">
+                                            <div className="pl-2"><p className="text-zinc-200 text-sm font-medium">{item.name}</p></div>
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-24 relative">
+                                                    <Input type="number" value={item.amount} onChange={(e) => updateAmount(item.id, e.target.value)} className="bg-transparent border-none text-right text-white font-bold h-8 p-0 pr-5 focus-visible:ring-0" />
+                                                    <span className="absolute right-0 top-1/2 -translate-y-1/2 text-zinc-500 text-xs pointer-events-none pr-1">€</span>
+                                                </div>
+                                                <button onClick={() => removeExpense(item.id)} className="text-zinc-600 hover:text-red-500 p-2"><Trash2 size={14}/></button>
+                                            </div>
                                         </div>
                                     ))}
-                                    {needsList.length === 0 && <p className="text-xs text-zinc-600 italic">Aucune charge fixe.</p>}
                                 </div>
                             </div>
+
+                            {/* LOISIRS */}
                             <div className="space-y-4">
                                 <h3 className="font-bold text-yellow-400 flex items-center gap-2"><Coffee size={18}/> Loisirs & Exceptionnel</h3>
+                                <div className="flex gap-2 mb-2 p-2 bg-yellow-500/5 rounded-xl border border-yellow-500/10">
+                                    <Input placeholder="Resto, Vacances..." value={newWantName} onChange={(e) => setNewWantName(e.target.value)} className="bg-transparent border-none text-white h-10 placeholder:text-zinc-600 focus-visible:ring-0" />
+                                    <div className="w-24 bg-black/40 rounded-lg flex items-center px-2 border border-zinc-800 relative">
+                                        <Input type="number" placeholder="0" value={newWantAmount} onChange={(e) => setNewWantAmount(e.target.value)} className="bg-transparent border-none text-white text-right h-10 font-bold p-0 pr-5 focus-visible:ring-0" />
+                                        <span className="text-zinc-500 text-sm absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none">€</span>
+                                    </div>
+                                    <Button onClick={addWant} className="bg-yellow-600 hover:bg-yellow-500 text-white h-10 w-10 p-0 rounded-lg"><Plus size={20} /></Button>
+                                </div>
                                 <div className="space-y-2">
                                     {wantsList.map((item) => (
-                                        <div key={item.id} className="flex justify-between items-center p-3 bg-zinc-900/30 rounded-xl border border-zinc-800/30 border-l-4 border-l-yellow-500">
-                                            <div><p className="text-zinc-200 text-sm font-medium">{item.name}</p></div>
-                                            <div className="flex items-center gap-3"><span className="font-bold text-white">{item.amount} €</span><button onClick={() => removeExpense(item.id)} className="text-zinc-600 hover:text-red-500 p-2"><Trash2 size={14}/></button></div>
+                                        <div key={item.id} className="flex justify-between items-center p-2 bg-zinc-900/30 rounded-xl border border-zinc-800/30 border-l-4 border-l-yellow-500">
+                                            <div className="pl-2"><p className="text-zinc-200 text-sm font-medium">{item.name}</p></div>
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-24 relative">
+                                                    <Input type="number" value={item.amount} onChange={(e) => updateAmount(item.id, e.target.value)} className="bg-transparent border-none text-right text-white font-bold h-8 p-0 pr-5 focus-visible:ring-0" />
+                                                    <span className="absolute right-0 top-1/2 -translate-y-1/2 text-zinc-500 text-xs pointer-events-none pr-1">€</span>
+                                                </div>
+                                                <button onClick={() => removeExpense(item.id)} className="text-zinc-600 hover:text-red-500 p-2"><Trash2 size={14}/></button>
+                                            </div>
                                         </div>
                                     ))}
-                                    {wantsList.length === 0 && <p className="text-xs text-zinc-600 italic">Aucun loisir ce mois-ci.</p>}
                                 </div>
                             </div>
                         </div>
 
+                        {/* STRATEGIE */}
                         <div className="space-y-6">
                             <div className={`p-5 rounded-2xl border ${isSafe ? 'bg-emerald-950/20 border-emerald-500/20' : 'bg-orange-950/20 border-orange-500/20'}`}>
                                 <div className="flex justify-between mb-2">
                                     <div className="flex items-center gap-2 font-bold text-sm text-white"><ShieldCheck size={16} className={isSafe ? "text-emerald-500" : "text-orange-500"}/> Matelas Sécurité</div>
                                     <span className="text-xs text-zinc-500">Cible: {Math.round(safetyTarget)}€ (6 mois)</span>
                                 </div>
-                                {/* CORRECTION : Suppression du € manuel */}
                                 <div className="text-2xl font-bold text-white mb-2"><AnimatedNumber value={currentCash}/></div>
                                 <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
                                     <motion.div initial={{width:0}} animate={{width: `${Math.min(100, (currentCash/(safetyTarget || 1))*100)}%`}} className={`h-full ${isSafe ? 'bg-emerald-500':'bg-orange-500'}`} />
@@ -272,8 +322,13 @@ export default function BudgetPage() {
                             </div>
 
                             <div className="p-6 rounded-2xl bg-zinc-900 border border-zinc-800">
-                                <h3 className="font-bold text-white text-sm mb-4">Répartition du Surplus ({Math.round(investCapacity)}€)</h3>
-                                <input type="range" min="0" max="100" step="10" value={safetyAllocation} onChange={(e) => setSafetyAllocation(Number(e.target.value))} disabled={isSafe} className="w-full h-2 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-emerald-500 disabled:opacity-50"/>
+                                <h3 className="font-bold text-white text-sm mb-4">Répartition du Surplus ({Math.round(totalSurplus)}€)</h3>
+                                <input 
+                                    type="range" min="0" max="100" step="10" 
+                                    value={safetyAllocation} onChange={(e) => setSafetyAllocation(Number(e.target.value))} 
+                                    disabled={isSafe}
+                                    className="w-full h-2 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-emerald-500 disabled:opacity-50"
+                                />
                                 <div className="flex justify-between mt-2 text-[10px] font-bold uppercase tracking-wider">
                                     <span className="text-emerald-500">Investir {100-safetyAllocation}% ({Math.round(flowToInvest)}€)</span>
                                     <span className={isSafe ? "text-zinc-600" : "text-orange-500"}>Sécuriser {safetyAllocation}% ({Math.round(flowToSafety)}€)</span>
