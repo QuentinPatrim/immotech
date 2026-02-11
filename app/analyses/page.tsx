@@ -5,98 +5,57 @@ import Sidebar from "@/components/Sidebar";
 import { motion } from "framer-motion";
 import { 
   Brain, ShieldCheck, TrendingUp, AlertTriangle, Loader2, CheckCircle, 
-  Sparkles, RefreshCw, Layers, TrendingDown, Zap, BarChart2, Scale, 
-  Info, FileText, Target, BookOpen, ArrowRight, HelpCircle,
-  Clock
+  Sparkles, RefreshCw, Layers, TrendingDown, Zap, BarChart2, Target, 
+  Info, Rocket, Percent
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { 
   Radar, RadarChart, PolarGrid, PolarAngleAxis, ResponsiveContainer, 
-  AreaChart, Area, XAxis, Tooltip, BarChart, Bar, Legend, CartesianGrid, 
-  YAxis
+  AreaChart, Area, XAxis, Tooltip, BarChart, Bar, Legend, CartesianGrid, ReferenceLine 
 } from "recharts";
 import { supabase } from "@/lib/supabaseClient";
-import { Slider } from "@/components/ui/slider";
+import AnimatedNumber from "@/components/AnimatedNumber";
 
-// --- UTILITAIRES DE FORMATAGE ---
+// --- UTILITAIRES ---
 const formatEuro = (val: number) => new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(val);
-const formatPercent = (val: number) => new Intl.NumberFormat("fr-FR", { style: "percent", minimumFractionDigits: 1 }).format(val / 100);
 
-// --- MOTEUR D'ANALYSE (LE "CERVEAU") ---
+// --- MOTEUR D'ANALYSE ---
 const analyzePortfolio = (assets: any[], budget: any) => {
     const totalAssets = assets.reduce((acc, a) => acc + a.value, 0);
-    
-    // Segmentation des actifs
     const cash = assets.filter(a => a.type === 'Cash').reduce((acc, a) => acc + a.value, 0);
     const risky = assets.filter(a => a.type === 'Bourse' || a.type === 'Crypto').reduce((acc, a) => acc + a.value, 0);
     const immo = assets.filter(a => a.type === 'Immobilier').reduce((acc, a) => acc + a.value, 0);
     
-    // Budget & Flux
     const income = budget.income || 0;
     const expenses = budget.expenses || 2000; 
     const cashFlow = Math.max(0, income - expenses);
     const savingsRate = income > 0 ? (cashFlow / income) * 100 : 0;
 
-    // Ratios Clés
     const monthsOfSafety = cash / (expenses || 1);
     const riskExposure = risky / (totalAssets || 1);
-    const diversificationScore = 1 - Math.max(cash, risky, immo) / (totalAssets || 1); // 0 = concentré, 1 = hyper diversifié
+    const diversificationScore = 1 - (Math.max(cash, risky, immo) / (totalAssets || 1));
 
-    // --- ALGORITHME DE SCORING (Max 100) ---
     let score = 0;
-    const roadmap = []; // Liste des actions pour atteindre 100
+    const roadmap = [];
 
-    // 1. Sécurité (30 pts) - La base de la pyramide
-    if (monthsOfSafety >= 6) { 
-        score += 30; 
-        roadmap.push({ done: true, text: "Matelas de sécurité > 6 mois", points: 30 });
-    } else if (monthsOfSafety >= 3) { 
-        score += 15; 
-        roadmap.push({ done: true, text: "Matelas de sécurité > 3 mois", points: 15 });
-        roadmap.push({ done: false, text: "Sécuriser 3 mois de charges supplémentaires", points: "+15 pts" });
-    } else { 
-        score += 5;
-        roadmap.push({ done: false, text: "Urgence : Constituer 3 mois de sécurité", points: "+25 pts" });
-    }
+    // Scoring Logique
+    if (monthsOfSafety >= 6) { score += 25; roadmap.push({ done: true, text: "Matelas de sécurité > 6 mois", points: 25 }); }
+    else { score += 5; roadmap.push({ done: false, text: "Sécuriser 6 mois de charges", points: "+20 pts" }); }
 
-    // 2. Flux & Croissance (30 pts) - Le moteur
-    if (savingsRate >= 20) {
-        score += 30;
-        roadmap.push({ done: true, text: "Taux d'épargne 'Machine de Guerre' (>20%)", points: 30 });
-    } else if (savingsRate >= 10) {
-        score += 15;
-        roadmap.push({ done: true, text: "Taux d'épargne sain (>10%)", points: 15 });
-        roadmap.push({ done: false, text: "Optimiser les dépenses pour atteindre 20% d'épargne", points: "+15 pts" });
-    } else {
-        roadmap.push({ done: false, text: "Dégager un cashflow positif mensuel", points: "+30 pts" });
-    }
+    if (savingsRate >= 20) { score += 25; roadmap.push({ done: true, text: "Machine à épargner (>20%)", points: 25 }); }
+    else { roadmap.push({ done: false, text: "Booster l'épargne vers 20%", points: "+15 pts" }); }
 
-    // 3. Allocation d'Actifs (20 pts) - L'équilibre
-    if (riskExposure >= 0.3 && riskExposure <= 0.8) {
-        score += 20;
-        roadmap.push({ done: true, text: "Exposition aux actifs productifs équilibrée (30-80%)", points: 20 });
-    } else if (riskExposure < 0.3) {
-        score += 10;
-        roadmap.push({ done: false, text: "Trop défensif. Augmenter l'exposition actions/immo (Inflation risk)", points: "+10 pts" });
-    } else {
-        score += 10;
-        roadmap.push({ done: false, text: "Trop agressif. Sécuriser une partie des gains", points: "+10 pts" });
-    }
+    if (riskExposure >= 0.3) { score += 25; roadmap.push({ done: true, text: "Moteur de croissance actif", points: 25 }); }
+    else { score += 5; roadmap.push({ done: false, text: "Investir pour l'indépendance", points: "+20 pts" }); }
 
-    // 4. Diversification (20 pts) - Ne pas mettre tous ses oeufs
-    if (diversificationScore > 0.4) { // Au moins 2 classes d'actifs majeures
-        score += 20;
-        roadmap.push({ done: true, text: "Patrimoine diversifié sur plusieurs piliers", points: 20 });
-    } else {
-        score += 5;
-        roadmap.push({ done: false, text: "Investir dans une nouvelle classe d'actif (Immo/Bourse)", points: "+15 pts" });
-    }
+    if (diversificationScore > 0.3) { score += 25; roadmap.push({ done: true, text: "Patrimoine diversifié", points: 25 }); }
+    else { score += 5; roadmap.push({ done: false, text: "Diversifier les piliers", points: "+20 pts" }); }
 
     return { 
         score: Math.min(100, Math.round(score)), 
-        stats: { monthsOfSafety, riskExposure, savingsRate, diversificationScore },
+        stats: { monthsOfSafety, riskExposure, savingsRate, diversificationScore, expenses },
         roadmap,
-        totals: { wealth: totalAssets, risky, cash }
+        totals: { wealth: totalAssets, risky, cash, cashFlow }
     };
 };
 
@@ -104,38 +63,27 @@ export default function AnalysesPage() {
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
   const [showResults, setShowResults] = useState(false);
-  const [scanStep, setScanStep] = useState("Initialisation...");
+  const [scanStep, setScanStep] = useState("Initialisation du Core...");
   
   const [analysis, setAnalysis] = useState<any>(null);
   const [radarData, setRadarData] = useState<any[]>([]);
   
-  // DATA SIMULATIONS
+  // SIMULATIONS
   const [scenario, setScenario] = useState<"KRACH" | "INFLATION">("KRACH");
   const [simData, setSimData] = useState<any[]>([]);
-  const [taxData, setTaxData] = useState<any[]>([]);
-  const [taxDuration, setTaxDuration] = useState(20);
-  const [taxGap, setTaxGap] = useState(0);
+  const [compoundData, setCompoundData] = useState<any[]>([]); // Pour l'intérêt composé
+  const [fireProgress, setFireProgress] = useState(0); // % d'atteinte FIRE
 
   useEffect(() => {
     setTimeout(() => { setLoading(false); runAudit(); }, 1000);
   }, []);
-
-  // Recalcul fiscal dynamique
-  useEffect(() => {
-      if (analysis?.totals?.risky) runTaxSimulation(analysis.totals.risky, taxDuration);
-  }, [taxDuration, analysis]);
 
   const runAudit = async () => {
     setAnalyzing(true);
     setShowResults(false);
 
     const steps = [
-        "Récupération des données brutes...",
-        "Calcul du ratio de liquidité...",
-        "Analyse de la diversification...",
-        "Stress-test Monte Carlo (5000 itérations)...",
-        "Comparaison fiscale PEA/CTO...",
-        "Génération du rapport stratégique..."
+        "Scan des actifs...", "Calculs de risque...", "Stress-test...", "Projection Indépendance...", "Génération du rapport..."
     ];
 
     for (const step of steps) {
@@ -155,42 +103,45 @@ export default function AnalysesPage() {
         const result = analyzePortfolio(assets, budget);
         setAnalysis(result);
 
-        // Radar Data Normalisée
+        // DATA RADAR (Corrigé pour affichage)
         setRadarData([
-            { subject: 'Sécurité', A: Math.min(100, result.stats.monthsOfSafety * 15), fullMark: 100 },
-            { subject: 'Rendement', A: Math.min(100, result.stats.riskExposure * 150), fullMark: 100 },
-            { subject: 'Flux', A: Math.min(100, result.stats.savingsRate * 3), fullMark: 100 },
-            { subject: 'Diversif.', A: Math.min(100, result.stats.diversificationScore * 180), fullMark: 100 },
-            { subject: 'Liquidité', A: Math.min(100, (result.stats.monthsOfSafety / 12) * 100), fullMark: 100 },
+            { subject: 'SÉCURITÉ', A: Math.min(100, result.stats.monthsOfSafety * 15), fullMark: 100 },
+            { subject: 'CROISSANCE', A: Math.min(100, result.stats.riskExposure * 150), fullMark: 100 },
+            { subject: 'FLUX', A: Math.min(100, result.stats.savingsRate * 3), fullMark: 100 },
+            { subject: 'DIVERSIF.', A: Math.min(100, result.stats.diversificationScore * 180), fullMark: 100 },
+            { subject: 'LIQUIDITÉ', A: Math.min(100, (result.stats.monthsOfSafety / 12) * 100), fullMark: 100 },
         ]);
 
+        // CALCUL FIRE (Règle des 4%)
+        // Objectif = Dépenses Annuelles / 0.04 (ou x 25)
+        const fireNumber = result.stats.expenses * 12 * 25;
+        const progress = Math.min(100, (result.totals.wealth / (fireNumber || 1)) * 100);
+        setFireProgress(progress);
+
         runCrashTest(result.totals.wealth, "KRACH", result.stats.riskExposure);
-        runTaxSimulation(result.totals.risky > 0 ? result.totals.risky : 10000, 20); // Par défaut 10k si pas d'invest
+        
+        // PROJECTION INTÉRÊTS COMPOSÉS (15 ans)
+        // On projette le patrimoine financier actuel + épargne mensuelle
+        runCompoundSimulation(result.totals.risky + result.totals.cash, result.totals.cashFlow);
     }
     setAnalyzing(false);
     setShowResults(true);
   };
 
-  // --- 1. MOTEUR CRASH TEST (PÉDAGOGIQUE) ---
   const runCrashTest = (wealth: number, type: "KRACH" | "INFLATION", riskExposure: number) => {
       const data = [];
       let current = wealth;
       let benchmark = wealth;
-
-      // Un portefeuille 100% actions perd 40% en crise. 
-      // Un portefeuille diversifié perd moins.
-      // Formule : Impact = ImpactMarché * ExpositionRisque
-      const marketImpact = type === 'KRACH' ? -0.40 : -0.15; // Krach violent ou Inflation cumulée
+      const marketImpact = type === 'KRACH' ? -0.40 : -0.15;
       const userImpact = marketImpact * riskExposure; // Amortisseur
 
       for (let i = 0; i <= 5; i++) {
           data.push({ year: `An ${i}`, Portfolio: Math.round(current), Market: Math.round(benchmark) });
-          // Scénario en V (Chute an 1, récupération lente)
           if (i === 1) { 
               current = current * (1 + userImpact);
               benchmark = benchmark * (1 + marketImpact);
           } else if (i > 1) {
-              current = current * 1.06; // Rebond
+              current = current * 1.06;
               benchmark = benchmark * 1.08; 
           }
       }
@@ -198,113 +149,121 @@ export default function AnalysesPage() {
       setScenario(type);
   };
 
-  // --- 2. MOTEUR FISCAL (LONG TERME) ---
-  const runTaxSimulation = (amount: number, years: number) => {
-      const annualReturn = 0.08; // 8% MSCI World historique
-      
-      const futureValue = amount * Math.pow(1 + annualReturn, years);
-      const totalGain = futureValue - amount;
+  const runCompoundSimulation = (initial: number, monthly: number) => {
+      const data = [];
+      let total = initial;
+      let capital = initial;
+      const rate = 0.08 / 12; // 8% annuel
 
-      // CTO : 30% sur les gains (Flat Tax)
-      const netCTO = amount + (totalGain * 0.70);
-      
-      // PEA : 17.2% sur les gains (CSG-CRDS)
-      const netPEA = amount + (totalGain * 0.828);
-
-      setTaxGap(netPEA - netCTO);
-      setTaxData([
-          { name: "Compte Titres (CTO)", Net: Math.round(netCTO), Taxe: Math.round(totalGain * 0.30), fill: "#ef4444" },
-          { name: "PEA Optimisé", Net: Math.round(netPEA), Taxe: Math.round(totalGain * 0.172), fill: "#10b981" }
-      ]);
+      for (let y = 0; y <= 15; y++) {
+          data.push({
+              name: `An ${y}`,
+              Total: Math.round(total),
+              Capital: Math.round(capital),
+              Interets: Math.round(total - capital)
+          });
+          
+          for(let m=0; m<12; m++) {
+              total = (total + monthly) * (1 + rate);
+              capital += monthly;
+          }
+      }
+      setCompoundData(data);
   };
 
-  if (loading) return <div className="min-h-screen bg-black" />;
+  if (loading) return <div className="min-h-screen bg-black flex items-center justify-center"><Loader2 className="animate-spin text-emerald-500 w-10 h-10"/></div>;
 
   return (
-    <div className="min-h-screen bg-black text-zinc-100 font-sans pb-24 md:pb-8">
+    <div className="min-h-screen bg-[#050505] text-zinc-100 font-sans pb-24 md:pb-8 selection:bg-emerald-500/30 selection:text-emerald-200">
       <Sidebar />
-      <main className="md:ml-64 flex-1 w-auto max-w-full p-4 md:p-8">
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-[1600px] mx-auto space-y-8">
+      <main className="md:ml-64 flex-1 w-auto max-w-full p-4 md:p-8 relative overflow-hidden">
+        
+        {/* AMBIENT GLOWS */}
+        <div className="fixed top-0 left-64 w-[600px] h-[600px] bg-purple-900/10 rounded-full blur-[120px] pointer-events-none"></div>
+        <div className="fixed bottom-0 right-0 w-[500px] h-[500px] bg-emerald-900/10 rounded-full blur-[120px] pointer-events-none"></div>
+
+        <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }} className="max-w-[1800px] mx-auto space-y-10 relative z-10">
           
-          <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          {/* HEADER */}
+          <header className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 border-l-4 border-purple-500 pl-6 py-2">
             <div>
-              <h1 className="text-3xl font-bold text-white flex items-center gap-3">
-                Nexus AI <span className="bg-gradient-to-r from-emerald-500 to-blue-500 text-white text-xs px-3 py-1 rounded-full font-bold tracking-wide shadow-lg shadow-emerald-500/20">PRO</span>
+              <h1 className="text-4xl md:text-5xl font-black text-white tracking-tight uppercase">
+                Nexus <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-emerald-400">Intelligence</span>
               </h1>
-              <p className="text-zinc-400 text-sm mt-1">L'intelligence artificielle au service de votre indépendance financière.</p>
+              <p className="text-zinc-400 text-lg font-light tracking-wide mt-2">Audit patrimonial algorithmique & Stress-tests.</p>
             </div>
-            <Button onClick={runAudit} disabled={analyzing} className="bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-white gap-2 w-full md:w-auto">
-                {analyzing ? <Loader2 className="animate-spin" size={16}/> : <RefreshCw size={16}/>} Relancer l'audit
+            <Button onClick={runAudit} disabled={analyzing} className="h-12 px-8 rounded-full bg-zinc-900 border border-zinc-700 hover:border-emerald-500/50 hover:bg-emerald-950/20 text-white font-bold tracking-wide transition-all shadow-lg shadow-black/50">
+                {analyzing ? <Loader2 className="animate-spin mr-2" size={18}/> : <RefreshCw className="mr-2" size={18}/>} 
+                {analyzing ? "SCAN EN COURS..." : "LANCER L'AUDIT"}
             </Button>
           </header>
 
           {analyzing ? (
               <div className="h-[60vh] flex flex-col items-center justify-center space-y-8">
                   <div className="relative">
-                      <div className="h-32 w-32 rounded-full border-t-2 border-r-2 border-emerald-500 animate-spin"></div>
-                      <div className="absolute inset-0 flex items-center justify-center"><Brain className="text-emerald-500 animate-pulse" size={48}/></div>
+                      <div className="h-40 w-40 rounded-full border-t-2 border-r-2 border-purple-500 animate-spin"></div>
+                      <div className="absolute inset-0 flex items-center justify-center"><Brain className="text-purple-500 animate-pulse" size={60}/></div>
                   </div>
                   <div className="text-center space-y-2">
-                      <p className="text-white font-bold text-lg tracking-wide">{scanStep}</p>
-                      <p className="text-zinc-500 text-sm">Analyse de {analysis?.totals?.wealth ? formatEuro(analysis.totals.wealth) : "vos données"} en cours...</p>
+                      <p className="text-white font-bold text-xl tracking-widest uppercase">{scanStep}</p>
+                      <p className="text-zinc-500 text-sm font-mono">Traitement des données...</p>
                   </div>
               </div>
           ) : showResults && analysis ? (
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-12">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-12">
                 
-                {/* 1. SCORING & ROADMAP (L'élément central) */}
+                {/* 1. SCORING & ROADMAP */}
                 <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
                     
-                    {/* LE SCORE */}
-                    <div className="p-8 rounded-[32px] bg-gradient-to-b from-zinc-900 to-black border border-zinc-800 flex flex-col items-center justify-center text-center relative overflow-hidden">
-                        <div className="absolute top-0 right-0 p-40 bg-emerald-500/5 blur-[100px] rounded-full"></div>
-                        <h2 className="text-zinc-500 text-xs font-bold uppercase tracking-[0.2em] mb-8">NEXUS SCORE</h2>
+                    {/* SCORE CIRCULAIRE */}
+                    <div className="p-8 rounded-[32px] bg-zinc-900/40 backdrop-blur-xl border border-white/5 flex flex-col items-center justify-center text-center relative overflow-hidden group shadow-2xl">
+                        <div className="absolute top-0 right-0 p-40 bg-purple-500/10 blur-[100px] rounded-full group-hover:bg-purple-500/20 transition-all"></div>
+                        <h2 className="text-zinc-500 text-xs font-bold uppercase tracking-[0.3em] mb-8">SCORE DE SANTÉ</h2>
                         
-                        <div className="relative h-56 w-56 flex items-center justify-center mb-8">
-                            <svg className="absolute w-full h-full transform -rotate-90 drop-shadow-[0_0_15px_rgba(16,185,129,0.3)]">
-                                <circle cx="112" cy="112" r="90" stroke="#27272a" strokeWidth="16" fill="transparent" />
+                        <div className="relative h-64 w-64 flex items-center justify-center mb-8">
+                            <svg className="absolute w-full h-full transform -rotate-90 drop-shadow-[0_0_20px_rgba(168,85,247,0.4)]">
+                                <circle cx="128" cy="128" r="100" stroke="#18181b" strokeWidth="20" fill="transparent" />
                                 <motion.circle 
-                                    initial={{ strokeDasharray: "565", strokeDashoffset: "565" }} animate={{ strokeDashoffset: 565 - (565 * analysis.score) / 100 }} transition={{ duration: 2, ease: "easeOut" }}
-                                    cx="112" cy="112" r="90" stroke="url(#gradientScore)" strokeWidth="16" fill="transparent" strokeLinecap="round" 
+                                    initial={{ strokeDasharray: "628", strokeDashoffset: "628" }} animate={{ strokeDashoffset: 628 - (628 * analysis.score) / 100 }} transition={{ duration: 2, ease: "easeOut" }}
+                                    cx="128" cy="128" r="100" stroke="url(#gradientScore)" strokeWidth="20" fill="transparent" strokeLinecap="round" 
                                 />
                                 <defs>
                                     <linearGradient id="gradientScore" x1="0%" y1="0%" x2="100%" y2="0%">
                                         <stop offset="0%" stopColor="#ef4444" />
                                         <stop offset="50%" stopColor="#eab308" />
-                                        <stop offset="100%" stopColor="#10b981" />
+                                        <stop offset="100%" stopColor="#8b5cf6" />
                                     </linearGradient>
                                 </defs>
                             </svg>
                             <div className="flex flex-col items-center">
-                                <span className="text-7xl font-black text-white tracking-tighter">{analysis.score}</span>
-                                <span className="text-sm text-zinc-500 font-bold uppercase mt-1">/ 100</span>
+                                <span className="text-8xl font-black text-white tracking-tighter">{analysis.score}</span>
+                                <span className="text-sm text-zinc-500 font-bold uppercase mt-2 tracking-widest">/ 100</span>
                             </div>
                         </div>
-                        <p className="text-sm text-zinc-400 max-w-xs italic">
-                            {analysis.score > 80 ? "Une forteresse financière digne des plus grands." : analysis.score > 50 ? "Des fondations solides, mais le potentiel de croissance est sous-exploité." : "Structure fragile. Priorité : Sécuriser les bases."}
-                        </p>
                     </div>
 
-                    {/* ROADMAP TO 100 (Checklist) */}
-                    <div className="xl:col-span-2 p-8 rounded-[32px] bg-zinc-900/50 border border-zinc-800 flex flex-col">
-                        <div className="flex items-center gap-3 mb-6">
-                            <Target className="text-emerald-500" size={24}/>
+                    {/* ROADMAP TO 100 */}
+                    <div className="xl:col-span-2 p-8 rounded-[32px] bg-zinc-900/40 backdrop-blur-xl border border-white/5 flex flex-col shadow-2xl">
+                        <div className="flex items-center gap-4 mb-8">
+                            <div className="h-10 w-10 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-500 border border-emerald-500/20">
+                                <Target size={20}/>
+                            </div>
                             <div>
-                                <h3 className="text-xl font-bold text-white">Roadmap vers les 100 points</h3>
-                                <p className="text-xs text-zinc-400">Plan d'action personnalisé généré par l'IA.</p>
+                                <h3 className="text-xl font-bold text-white uppercase tracking-wide">Roadmap vers l'Excellence</h3>
+                                <p className="text-xs text-zinc-400 font-mono mt-1">Actions recommandées pour sécuriser et propulser votre avenir.</p>
                             </div>
                         </div>
 
-                        <div className="space-y-3 flex-1 overflow-y-auto pr-2 custom-scrollbar">
+                        <div className="space-y-4 flex-1 overflow-y-auto pr-2 custom-scrollbar">
                             {analysis.roadmap.map((step: any, idx: number) => (
-                                <div key={idx} className={`flex items-center justify-between p-4 rounded-xl border transition-all ${step.done ? "bg-emerald-950/10 border-emerald-500/20 opacity-60" : "bg-zinc-900 border-zinc-700 hover:border-zinc-500"}`}>
+                                <div key={idx} className={`flex items-center justify-between p-5 rounded-2xl border transition-all hover:scale-[1.01] ${step.done ? "bg-emerald-950/20 border-emerald-500/20" : "bg-black/40 border-white/5 hover:border-white/20"}`}>
                                     <div className="flex items-center gap-4">
-                                        <div className={`h-6 w-6 rounded-full flex items-center justify-center border ${step.done ? "bg-emerald-500 border-emerald-500 text-black" : "border-zinc-500 text-transparent"}`}>
-                                            {step.done && <CheckCircle size={14}/>}
+                                        <div className={`h-6 w-6 rounded-full flex items-center justify-center border-2 ${step.done ? "bg-emerald-500 border-emerald-500 text-black" : "border-zinc-600 text-transparent"}`}>
+                                            {step.done && <CheckCircle size={14} strokeWidth={4}/>}
                                         </div>
-                                        <span className={`text-sm font-medium ${step.done ? "text-emerald-400 line-through" : "text-white"}`}>{step.text}</span>
+                                        <span className={`text-sm font-bold ${step.done ? "text-emerald-400/80 line-through decoration-emerald-500/50" : "text-white"}`}>{step.text}</span>
                                     </div>
-                                    <span className={`text-xs font-bold px-2 py-1 rounded ${step.done ? "bg-emerald-500/10 text-emerald-500" : "bg-blue-500/20 text-blue-400"}`}>
+                                    <span className={`text-[10px] font-black uppercase px-3 py-1 rounded-full border ${step.done ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-500" : "bg-blue-500/10 border-blue-500/30 text-blue-400"}`}>
                                         {step.done ? "ACQUIS" : step.points}
                                     </span>
                                 </div>
@@ -313,115 +272,128 @@ export default function AnalysesPage() {
                     </div>
                 </div>
 
-                {/* 2. ANALYSE MACRO (Radar + Explications) */}
+                {/* 2. ANALYSE MACRO (RADAR) & FIRE PROGRESS */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                    <div className="p-6 rounded-[32px] bg-zinc-900 border border-zinc-800">
-                        <h4 className="text-sm font-bold text-white mb-6 flex items-center gap-2"><Layers size={16} className="text-blue-500"/> Équilibre Patrimonial</h4>
-                        <div className="h-[300px] w-full">
+                    
+                    {/* RADAR CHART CORRIGÉ */}
+                    <div className="p-8 rounded-[32px] bg-zinc-900/40 backdrop-blur-xl border border-white/5">
+                        <h4 className="text-sm font-bold text-white mb-8 flex items-center gap-3 uppercase tracking-widest"><Layers size={18} className="text-blue-500"/> Matrice d'Équilibre</h4>
+                        <div className="h-[350px] w-full">
                             <ResponsiveContainer width="100%" height="100%">
                                 <RadarChart cx="50%" cy="50%" outerRadius="70%" data={radarData}>
-                                    <PolarGrid stroke="#3f3f46" />
-                                    <PolarAngleAxis dataKey="subject" tick={{ fill: '#a1a1aa', fontSize: 11, fontWeight: 'bold' }} />
-                                    <Radar name="Votre Profil" dataKey="A" stroke="#3b82f6" strokeWidth={3} fill="#3b82f6" fillOpacity={0.3} />
-                                    <Tooltip contentStyle={{ backgroundColor: '#09090b', borderColor: '#27272a', color: '#fff', borderRadius: '12px' }}/>
+                                    <PolarGrid stroke="#3f3f46" strokeWidth={0.5} />
+                                    {/* FIX: TICK FILL EN BLANC */}
+                                    <PolarAngleAxis 
+                                        dataKey="subject" 
+                                         
+                                    />
+                                    <Radar name="Votre Profil" dataKey="A" stroke="#8b5cf6" strokeWidth={3} fill="#8b5cf6" fillOpacity={0.4} />
+                                    <Tooltip contentStyle={{ backgroundColor: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(10px)', borderColor: '#333', borderRadius: '12px', color: '#fff' }}/>
                                 </RadarChart>
                             </ResponsiveContainer>
                         </div>
                     </div>
 
-                    <div className="p-6 rounded-[32px] bg-zinc-900 border border-zinc-800 flex flex-col justify-center">
-                        <h4 className="text-sm font-bold text-white mb-4 flex items-center gap-2"><BookOpen size={16} className="text-purple-500"/> L'Analyse de l'Architecte</h4>
-                        <div className="space-y-4 text-sm text-zinc-300 leading-relaxed">
-                            <p>
-                                <strong className="text-white">1. Sécurité :</strong> Vous avez {formatEuro(analysis.totals.cash)} de liquidités, soit environ <strong className="text-white">{(analysis.stats.monthsOfSafety).toFixed(1)} mois</strong> de dépenses. 
-                                {analysis.stats.monthsOfSafety < 6 ? " C'est un peu juste. Visez 6 mois pour une sérénité totale." : " C'est très solide."}
+                    {/* FIRE PROGRESS & INSIGHTS */}
+                    <div className="p-8 rounded-[32px] bg-zinc-900/40 backdrop-blur-xl border border-white/5 flex flex-col justify-center">
+                        <h4 className="text-sm font-bold text-white mb-6 flex items-center gap-3 uppercase tracking-widest"><Rocket size={18} className="text-emerald-500"/> Objectif Indépendance</h4>
+                        
+                        <div className="mb-8">
+                            <div className="flex justify-between items-end mb-2">
+                                <span className="text-xs font-bold text-zinc-400">Progression FIRE (Règle des 4%)</span>
+                                <span className="text-2xl font-black text-white">{fireProgress.toFixed(1)}%</span>
+                            </div>
+                            <div className="h-4 w-full bg-zinc-800 rounded-full overflow-hidden border border-white/5">
+                                <motion.div 
+                                    initial={{ width: 0 }} 
+                                    animate={{ width: `${fireProgress}%` }} 
+                                    transition={{ duration: 1.5, ease: "easeOut" }}
+                                    className="h-full bg-gradient-to-r from-emerald-600 to-emerald-400"
+                                />
+                            </div>
+                            <p className="text-[10px] text-zinc-500 mt-2">
+                                Basé sur vos dépenses de {formatEuro(analysis.stats.expenses)}/mois. Vous devez accumuler encore {formatEuro((analysis.stats.expenses * 12 * 25) - analysis.totals.wealth)} pour être libre.
                             </p>
-                            <p>
-                                <strong className="text-white">2. Moteur de Performance :</strong> {(analysis.stats.riskExposure * 100).toFixed(0)}% de votre patrimoine est investi en actifs de rendement (Bourse/Crypto).
-                                {analysis.stats.riskExposure < 0.3 ? " Votre patrimoine dort trop. L'inflation vous grignote chaque année." : " C'est un bon niveau pour générer de la richesse à long terme."}
-                            </p>
-                            <div className="p-3 bg-zinc-950 rounded-xl border border-zinc-800 mt-4">
-                                <p className="text-xs text-zinc-500 italic">
-                                    <Info size={12} className="inline mr-1"/>
-                                    "La diversification est une protection contre l'ignorance. Si vous savez ce que vous faites, concentrez-vous." — Warren Buffett.
-                                    <br/>Actuellement, votre profil est plutôt <strong>{analysis.stats.diversificationScore > 0.5 ? "Diversifié" : "Concentré"}</strong>.
+                        </div>
+
+                        <div className="space-y-4">
+                            <div className="p-4 rounded-2xl bg-black/40 border border-white/5 flex gap-3">
+                                <Zap className="text-yellow-500 shrink-0" size={18}/>
+                                <p className="text-sm text-zinc-300 leading-relaxed">
+                                    <strong className="text-white">Le moteur est allumé :</strong> Vous épargnez {formatEuro(analysis.totals.cashFlow)}/mois. C'est le carburant principal de votre liberté future.
                                 </p>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                {/* 3. SIMULATIONS AVANCÉES (CRASH + TAX) */}
-                <div className="space-y-6">
-                    <div className="flex items-center gap-2 mb-2">
-                        <div className="h-6 w-1 bg-gradient-to-b from-red-500 to-orange-500 rounded-full"></div>
-                        <h3 className="text-xl font-bold text-white">Laboratoire de Stress & Optimisation</h3>
+                {/* 3. SIMULATIONS (CRASH + INTÉRÊTS COMPOSÉS) */}
+                <div className="space-y-8">
+                    <div className="flex items-center gap-4">
+                        <div className="h-8 w-1 bg-gradient-to-b from-blue-500 to-emerald-500 rounded-full shadow-[0_0_15px_rgba(16,185,129,0.5)]"></div>
+                        <h3 className="text-2xl font-black text-white uppercase tracking-tight">Simulations Avancées</h3>
                     </div>
 
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                         
-                        {/* A. CRASH TEST */}
-                        <div className="p-6 rounded-[32px] bg-zinc-900 border border-zinc-800">
-                            <div className="flex justify-between items-center mb-6">
-                                <div className="flex items-center gap-2 text-white font-bold text-sm"><TrendingDown size={16} className="text-red-500"/> Résistance aux Crises</div>
-                                <div className="flex gap-2">
-                                    <button onClick={() => runCrashTest(analysis.totals.wealth, "KRACH", analysis.stats.riskExposure)} className={`px-3 py-1 rounded-lg text-[10px] font-bold transition-colors ${scenario === 'KRACH' ? 'bg-red-500 text-white' : 'bg-zinc-800 text-zinc-400'}`}>KRACH 2008</button>
-                                    <button onClick={() => runCrashTest(analysis.totals.wealth, "INFLATION", analysis.stats.riskExposure)} className={`px-3 py-1 rounded-lg text-[10px] font-bold transition-colors ${scenario === 'INFLATION' ? 'bg-yellow-500 text-black' : 'bg-zinc-800 text-zinc-400'}`}>INFLATION</button>
+                        {/* CRASH TEST (Pédagogie Risque) */}
+                        <div className="p-8 rounded-[32px] bg-zinc-900/40 backdrop-blur-xl border border-white/5">
+                            <div className="flex justify-between items-center mb-8">
+                                <div className="flex items-center gap-2 text-white font-bold text-sm uppercase tracking-widest"><TrendingDown size={18} className="text-red-500"/> Résistance Crise</div>
+                                <div className="flex gap-2 bg-black/50 p-1 rounded-lg border border-white/5">
+                                    <button onClick={() => runCrashTest(analysis.totals.wealth, "KRACH", analysis.stats.riskExposure)} className={`px-4 py-1.5 rounded-md text-[10px] font-bold transition-all ${scenario === 'KRACH' ? 'bg-red-500/20 text-red-500 border border-red-500/30' : 'text-zinc-500 hover:text-white'}`}>KRACH 2008</button>
+                                    <button onClick={() => runCrashTest(analysis.totals.wealth, "INFLATION", analysis.stats.riskExposure)} className={`px-4 py-1.5 rounded-md text-[10px] font-bold transition-all ${scenario === 'INFLATION' ? 'bg-yellow-500/20 text-yellow-500 border border-yellow-500/30' : 'text-zinc-500 hover:text-white'}`}>INFLATION</button>
                                 </div>
                             </div>
                             
-                            <div className="h-[200px] w-full mb-4">
+                            <div className="h-[250px] w-full mb-4">
                                 <ResponsiveContainer width="100%" height="100%">
                                     <AreaChart data={simData}>
                                         <defs>
-                                            <linearGradient id="colorP" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/><stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/></linearGradient>
+                                            <linearGradient id="colorP" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#ef4444" stopOpacity={0.3}/><stop offset="95%" stopColor="#ef4444" stopOpacity={0}/></linearGradient>
                                         </defs>
                                         <XAxis dataKey="year" stroke="#52525b" fontSize={10} tickLine={false} axisLine={false} />
-                                        <Tooltip contentStyle={{ backgroundColor: '#09090b', borderColor: '#27272a', borderRadius: '12px', color:'#fff' }} formatter={(val: any) => formatEuro(Number(val))}/>
-                                        <Area type="monotone" dataKey="Portfolio" stroke="#3b82f6" strokeWidth={3} fill="url(#colorP)" name="Votre Patrimoine" />
-                                        <Area type="monotone" dataKey="Market" stroke="#ef4444" strokeWidth={2} strokeDasharray="5 5" fill="transparent" name="Le Marché" />
+                                        <Tooltip contentStyle={{ backgroundColor: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(10px)', borderColor: '#333', borderRadius: '12px', color:'#fff' }} formatter={(val: any) => formatEuro(Number(val))}/>
+                                        <Area type="monotone" dataKey="Portfolio" stroke="#ef4444" strokeWidth={3} fill="url(#colorP)" name="Votre Patrimoine" />
+                                        <Area type="monotone" dataKey="Market" stroke="#52525b" strokeWidth={2} strokeDasharray="5 5" fill="transparent" name="Le Marché" />
                                     </AreaChart>
                                 </ResponsiveContainer>
                             </div>
-                            <p className="text-xs text-zinc-400 bg-black/30 p-3 rounded-lg border border-white/5">
-                                <strong className="text-white">Analyse :</strong> {scenario === 'KRACH' ? "En 2008, le marché a perdu -40%. Grâce à votre diversification (Cash/Immo), votre chute serait amortie. Vous perdriez moins que l'indice de référence." : "En période d'inflation forte, le cash est votre ennemi (-6% réel/an). Vos actifs investis sont votre bouclier."}
+                            <p className="text-xs text-zinc-400 italic text-center">
+                                {scenario === 'KRACH' ? "En 2008, le marché a perdu 40%. Grâce à votre diversification, vous amortiriez le choc." : "L'inflation est un impôt invisible. Seuls vos actifs réels (Immo/Bourse) vous protègent."}
                             </p>
                         </div>
 
-                        {/* B. OPTIMISATION FISCALE */}
-                        <div className="p-6 rounded-[32px] bg-gradient-to-br from-zinc-900 to-emerald-950/30 border border-emerald-500/20">
-                            <div className="flex justify-between items-center mb-6">
-                                <div className="flex items-center gap-2 text-white font-bold text-sm"><Scale size={16} className="text-emerald-500"/> Optimisation Fiscale</div>
-                                <div className="flex items-center gap-2 text-xs text-zinc-400"><Clock size={12}/> Projection {taxDuration} ans</div>
+                        {/* PUISSANCE INTÉRÊTS COMPOSÉS (Pédagogie Gain) */}
+                        <div className="p-8 rounded-[32px] bg-gradient-to-br from-zinc-900/40 to-emerald-950/10 backdrop-blur-xl border border-white/5">
+                            <div className="flex justify-between items-center mb-8">
+                                <div className="flex items-center gap-2 text-white font-bold text-sm uppercase tracking-widest"><TrendingUp size={18} className="text-emerald-500"/> Accélération Patrimoniale</div>
+                                <div className="text-xs text-zinc-500 font-mono">Projection 15 ans</div>
                             </div>
 
-                            <div className="mb-4">
-                                <Slider value={[taxDuration]} min={5} max={30} step={5} onValueChange={(v) => setTaxDuration(v[0])} />
-                            </div>
-
-                            <div className="h-[180px] w-full mb-4">
+                            <div className="h-[250px] w-full mb-4">
                                 <ResponsiveContainer width="100%" height="100%">
-                                    <BarChart data={taxData} layout="vertical" barSize={24}>
-                                        <XAxis type="number" hide />
-                                        <YAxis dataKey="name" type="category" width={110} tick={{fill: '#a1a1aa', fontSize: 10}} />
-                                        <Tooltip contentStyle={{ backgroundColor: '#09090b', borderColor: '#27272a', borderRadius: '12px', color:'#fff' }} formatter={(val: any) => formatEuro(Number(val))}/>
-                                        <Bar dataKey="Net" stackId="a" fill="#10b981" radius={[0,0,0,0]} name="Net Pocket" />
-                                        <Bar dataKey="Taxe" stackId="a" fill="#ef4444" radius={[0,4,4,0]} name="Impôts" />
-                                    </BarChart>
+                                    <AreaChart data={compoundData}>
+                                        <defs>
+                                            <linearGradient id="colorInt" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#10b981" stopOpacity={0.6}/><stop offset="95%" stopColor="#10b981" stopOpacity={0}/></linearGradient>
+                                        </defs>
+                                        <XAxis dataKey="name" stroke="#52525b" fontSize={10} tickLine={false} axisLine={false} interval={2} />
+                                        <Tooltip contentStyle={{ backgroundColor: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(10px)', borderColor: '#333', borderRadius: '12px', color:'#fff' }} formatter={(val: any) => formatEuro(Number(val))}/>
+                                        <Area type="monotone" dataKey="Total" stroke="#10b981" strokeWidth={3} fill="url(#colorInt)" name="Patrimoine Total" stackId="1"/>
+                                        <Area type="monotone" dataKey="Capital" stroke="#3f3f46" strokeWidth={2} fill="transparent" name="Votre Effort (Capital)" stackId="2"/>
+                                    </AreaChart>
                                 </ResponsiveContainer>
                             </div>
 
-                            <div className="flex items-center justify-between p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl">
+                            <div className="flex items-center justify-between p-4 bg-black/40 border border-emerald-500/20 rounded-2xl">
                                 <div>
-                                    <p className="text-xs font-bold text-emerald-400 uppercase">Gain Potentiel</p>
-                                    <p className="text-[10px] text-zinc-400">Si PEA vs Compte Titres</p>
+                                    <p className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">Effet Boule de Neige</p>
+                                    <p className="text-[10px] text-zinc-500">L'écart qui se creuse est votre richesse passive.</p>
                                 </div>
-                                <div className="text-2xl font-black text-white">+{formatEuro(taxGap)}</div>
-                            </div>
-                            
-                            <div className="mt-4 pt-4 border-t border-white/5 text-[10px] text-zinc-500 space-y-1">
-                                <p><strong>Méthodologie :</strong> Simulation basée sur un rendement annuel moyen de <strong>8%</strong> (Moyenne historique MSCI World).</p>
-                                <p>Hypothèse fiscale : CTO (Flat Tax 30%) vs PEA (17.2% Prélèvements sociaux). L'écart représente la richesse détruite par la fiscalité sur la durée choisie.</p>
+                                <div className="flex items-center gap-2">
+                                    <Percent size={16} className="text-white"/>
+                                    <div className="text-2xl font-black text-white">8% <span className="text-xs font-normal text-zinc-500">Moyen/An</span></div>
+                                </div>
                             </div>
                         </div>
 
