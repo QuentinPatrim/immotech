@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { 
   TrendingUp, 
   Wallet, 
@@ -29,6 +30,7 @@ const getNextMilestone = (current: number) => {
 };
 
 export default function Dashboard() {
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [userName, setUserName] = useState("Investisseur");
   
@@ -44,6 +46,12 @@ export default function Dashboard() {
     const fetchData = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       
+      // Sécurité : Redirection si pas connecté
+      if (!session) {
+        router.push("/login"); 
+        return;
+      }
+
       if (session?.user) {
         if (session.user.user_metadata?.full_name) {
             setUserName(session.user.user_metadata.full_name.split(' ')[0]);
@@ -93,7 +101,11 @@ export default function Dashboard() {
       setLoading(false);
     };
     fetchData();
-  }, []);
+  }, [router]);
+
+  if (loading) {
+      return <div className="min-h-screen bg-black" />; // Écran noir pendant le chargement
+  }
 
   return (
     <div className="min-h-screen bg-black text-zinc-100 font-sans pb-24 md:pb-8">
@@ -116,11 +128,13 @@ export default function Dashboard() {
             </div>
             <div className="hidden md:block text-right">
                 <p className="text-xs text-zinc-500 font-bold uppercase">Patrimoine Brut Total</p>
-                {/* CORRECTION : Suppression du € manuel */}
-                <p className="text-2xl font-black text-white"><AnimatedNumber value={totalNetWorth}/></p>
+                <div className="text-2xl font-black text-white flex justify-end gap-1">
+                    <AnimatedNumber value={totalNetWorth}/> <span>€</span>
+                </div>
             </div>
           </header>
 
+          {/* GROS BLOC PATRIMOINE (SÉPARÉ) */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             
             {/* CARTE 1 : FINANCIER */}
@@ -135,9 +149,8 @@ export default function Dashboard() {
                             <ArrowUpRight className="text-zinc-600 group-hover:text-white transition-colors" size={20}/>
                         </div>
                         <div>
-                            {/* CORRECTION : Suppression du € manuel */}
-                            <div className="text-5xl font-black text-white tracking-tighter mb-2">
-                                <AnimatedNumber value={financialWealth} />
+                            <div className="text-5xl font-black text-white tracking-tighter mb-2 flex gap-2">
+                                <AnimatedNumber value={financialWealth} /> <span>€</span>
                             </div>
                             <p className="text-zinc-400 text-sm">Bourse, Crypto, Cash. <span className="text-zinc-500">(Disponible)</span></p>
                         </div>
@@ -157,9 +170,8 @@ export default function Dashboard() {
                             <ArrowUpRight className="text-zinc-600 group-hover:text-white transition-colors" size={20}/>
                         </div>
                         <div>
-                            {/* CORRECTION : Suppression du € manuel */}
-                            <div className="text-5xl font-black text-white tracking-tighter mb-2">
-                                <AnimatedNumber value={realEstateWealth} />
+                            <div className="text-5xl font-black text-white tracking-tighter mb-2 flex gap-2">
+                                <AnimatedNumber value={realEstateWealth} /> <span>€</span>
                             </div>
                             <p className="text-zinc-400 text-sm">Résidence principale & Investissements.</p>
                         </div>
@@ -168,7 +180,9 @@ export default function Dashboard() {
             </Link>
           </div>
 
+          {/* KPI BUDGET & OBJECTIFS */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            
             {/* EPARGNE MENSUELLE */}
             <Link href="/budget" className="group md:col-span-1">
                 <div className="p-6 rounded-3xl bg-zinc-900 border border-zinc-800 hover:bg-zinc-800/50 transition-colors h-full flex flex-col justify-center">
@@ -178,8 +192,9 @@ export default function Dashboard() {
                             {savingsRate.toFixed(0)}% Taux
                         </span>
                     </div>
-                    {/* CORRECTION : Suppression du € manuel */}
-                    <p className="text-3xl font-black text-white">+<AnimatedNumber value={monthlySavings}/><span className="text-lg text-zinc-500 font-normal"> /mois</span></p>
+                    <div className="text-3xl font-black text-white flex gap-1">
+                        +<AnimatedNumber value={monthlySavings}/> <span>€</span> <span className="text-lg text-zinc-500 font-normal self-end mb-1">/mois</span>
+                    </div>
                 </div>
             </Link>
 
@@ -188,11 +203,12 @@ export default function Dashboard() {
                 <div className="flex justify-between items-end mb-4">
                     <div>
                         <p className="text-xs font-bold text-emerald-500 uppercase mb-1">Prochain Cap</p>
-                        {/* CORRECTION : Suppression du € manuel */}
-                        <p className="text-2xl font-black text-white">Objectif <AnimatedNumber value={milestone}/></p>
+                        <div className="text-2xl font-black text-white flex gap-2">
+                            Objectif <AnimatedNumber value={milestone}/> <span>€</span>
+                        </div>
                     </div>
                     <div className="text-right">
-                        <p className="text-xs text-zinc-500">{((totalNetWorth / milestone) * 100).toFixed(1)}%</p>
+                        <p className="text-xs text-zinc-500">{milestone > 0 ? ((totalNetWorth / milestone) * 100).toFixed(1) : 0}%</p>
                     </div>
                 </div>
                 <div className="h-4 w-full bg-black rounded-full overflow-hidden border border-zinc-800">
@@ -203,10 +219,9 @@ export default function Dashboard() {
                         className="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 rounded-full shadow-[0_0_15px_rgba(16,185,129,0.5)]"
                     />
                 </div>
-                {/* CORRECTION : Suppression du € manuel */}
-                <p className="text-xs text-zinc-500 mt-3 text-center">
-                    Encore <strong><AnimatedNumber value={milestone - totalNetWorth}/></strong> pour atteindre ce palier symbolique.
-                </p>
+                <div className="text-xs text-zinc-500 mt-3 text-center flex justify-center gap-1">
+                    Encore <strong><AnimatedNumber value={milestone - totalNetWorth}/> €</strong> pour atteindre ce palier symbolique.
+                </div>
             </div>
           </div>
 
