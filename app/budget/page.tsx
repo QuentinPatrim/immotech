@@ -4,12 +4,13 @@ import { useState, useEffect } from "react";
 import Sidebar from "@/components/Sidebar";
 import { motion } from "framer-motion";
 import { BarChart, Bar, XAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Legend } from "recharts";
-import { Plus, Trash2, ShoppingBag, Home, Target, ShieldCheck, Loader2, ChevronLeft, ChevronRight, Save, TrendingUp, AlertTriangle, Coffee } from "lucide-react";
+import { Plus, Trash2, ShoppingBag, Home, Target, ShieldCheck, Loader2, ChevronLeft, ChevronRight, Save, TrendingUp, AlertTriangle, Coffee, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { triggerHaptic } from "@/lib/haptics";
 import AnimatedNumber from "@/components/AnimatedNumber";
 import { supabase } from "@/lib/supabaseClient";
+import Link from "next/link"; // <--- AJOUT IMPORTANT
 
 // --- UTILITAIRES ---
 const formatMonth = (date: Date) => {
@@ -25,7 +26,7 @@ const detectCategory = (name: string) => {
   };
   if (keywords.besoin.some(k => n.includes(k))) return "BESOIN";
   if (keywords.epargne.some(k => n.includes(k))) return "EPARGNE";
-  return "ENVIE"; // Par défaut, tout le reste est du loisir/exceptionnel
+  return "ENVIE"; 
 };
 
 export default function BudgetPage() {
@@ -105,14 +106,12 @@ export default function BudgetPage() {
         
         if (hist && hist.length > 0) {
             const formatted = hist.map(h => {
-                // On recalcule la répartition Besoins/Envies depuis le JSON stocké
                 let needs = 0;
                 let wants = 0;
                 if (h.details_json && Array.isArray(h.details_json)) {
                     needs = h.details_json.filter((e:any) => e.category === 'BESOIN').reduce((acc:number, i:any) => acc + i.amount, 0);
                     wants = h.details_json.filter((e:any) => e.category !== 'BESOIN').reduce((acc:number, i:any) => acc + i.amount, 0);
                 } else {
-                    // Fallback si pas de détail (anciennes données)
                     needs = Number(h.expenses) || 0;
                 }
 
@@ -157,7 +156,6 @@ export default function BudgetPage() {
         if (!error) {
             triggerHaptic("success");
             setIsExistingMonth(true);
-            // Update profile template if current month
             const now = new Date();
             if (now.getMonth() === selectedDate.getMonth() && now.getFullYear() === selectedDate.getFullYear()) {
                  await supabase.from('profiles').update({ budget_json: { income: income, expenses: totalExp, details: expenses }}).eq('id', user.id);
@@ -178,7 +176,7 @@ export default function BudgetPage() {
     };
     const removeExpense = (id: string) => setExpenses(expenses.filter(e => e.id !== id));
 
-    // Calculs et Listes séparées
+    // Calculs
     const needsList = expenses.filter(e => e.category === 'BESOIN');
     const wantsList = expenses.filter(e => e.category !== 'BESOIN' && e.category !== 'EPARGNE');
 
@@ -223,7 +221,7 @@ export default function BudgetPage() {
                         </div>
                     </div>
 
-                    {/* --- GRAPHIQUE ÉVOLUTION (AMÉLIORÉ) --- */}
+                    {/* --- GRAPHIQUE ÉVOLUTION --- */}
                     <div className="hidden md:block p-6 rounded-3xl bg-zinc-900/30 border border-zinc-800 h-[300px]">
                         <div className="flex justify-between items-center mb-4">
                             <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-2"><TrendingUp size={14}/> Évolution & Répartition</h3>
@@ -242,31 +240,35 @@ export default function BudgetPage() {
                                     wrapperStyle={{ paddingTop: '15px', fontSize: '12px' }}
                                     formatter={(value) => <span className="text-zinc-400 ml-1">{value}</span>}
                                 />
-                                {/* REVENUS (Blanc/Gris clair pour visibilité) */}
                                 <Bar dataKey="Revenus" fill="#e4e4e7" radius={[4, 4, 0, 0]} barSize={16} />
-                                {/* BESOINS (Bleu) */}
                                 <Bar dataKey="Besoins" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={16} />
-                                {/* LOISIRS (Jaune) */}
                                 <Bar dataKey="Loisirs" fill="#eab308" radius={[4, 4, 0, 0]} barSize={16} />
-                                {/* INVESTI (Vert) */}
                                 <Bar dataKey="Investi" fill="#10b981" radius={[4, 4, 0, 0]} barSize={16} />
                             </BarChart>
                         </ResponsiveContainer>
                     </div>
 
-                    {/* --- KPI INVESTISSEMENT --- */}
+                    {/* --- KPI INVESTISSEMENT + BOUTON PROJECTION (AJOUTÉ ICI) --- */}
                     <div className="relative p-8 rounded-3xl bg-gradient-to-br from-emerald-950 to-zinc-900 border border-emerald-500/20 overflow-hidden text-center md:text-left">
                         <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-6">
-                            <div>
+                            <div className="flex-1">
                                 <p className="text-emerald-500 font-medium text-sm flex items-center justify-center md:justify-start gap-2 mb-1"><Target size={16}/> Capacité d'Investissement Réelle</p>
                                 <div className="text-5xl md:text-7xl font-black text-white tracking-tighter"><AnimatedNumber value={investCapacity} /></div>
-                                <p className="text-zinc-400 text-sm mt-2">Ce qu'il reste vraiment à la fin du mois.</p>
+                                <p className="text-zinc-400 text-sm mt-2 mb-6">Ce qu'il reste vraiment à la fin du mois pour votre futur.</p>
+                                
+                                {/* LE BOUTON MAGIQUE */}
+                                <Link href="/projection">
+                                    <Button className="bg-emerald-500 hover:bg-emerald-400 text-black font-bold rounded-xl px-6 h-12 shadow-[0_0_20px_rgba(16,185,129,0.2)] hover:scale-105 transition-transform">
+                                        Projeter cette richesse <ArrowRight size={18} className="ml-2"/>
+                                    </Button>
+                                </Link>
                             </div>
-                            <div className="h-32 w-32 rounded-full border-8 border-zinc-800 flex items-center justify-center relative shrink-0">
+                            
+                            <div className="h-40 w-40 rounded-full border-8 border-zinc-800 flex items-center justify-center relative shrink-0">
                                 <div className="absolute inset-0 border-8 border-emerald-500 rounded-full" style={{ clipPath: `inset(0 ${100 - (income > 0 ? (investCapacity/income)*100 : 0)}% 0 0)` }}></div>
                                 <div className="flex flex-col items-center">
-                                    <span className="text-2xl font-bold text-white">{income > 0 ? ((investCapacity/income)*100).toFixed(0) : 0}%</span>
-                                    <span className="text-[10px] text-zinc-500 uppercase">Taux Épargne</span>
+                                    <span className="text-3xl font-bold text-white">{income > 0 ? ((investCapacity/income)*100).toFixed(0) : 0}%</span>
+                                    <span className="text-[10px] text-zinc-500 uppercase tracking-wider">Taux d'Épargne</span>
                                 </div>
                             </div>
                         </div>
