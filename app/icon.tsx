@@ -1,6 +1,8 @@
 import { ImageResponse } from 'next/og'
 
-// Taille de l'image (haute qualité pour les écrans rétina)
+// AJOUTEZ CETTE LIGNE ICI :
+export const dynamic = 'force-static';
+
 export const size = {
   width: 512,
   height: 512,
@@ -10,7 +12,6 @@ export const contentType = 'image/png'
 export default function Icon() {
   return new ImageResponse(
     (
-      // Fond noir de l'application (style carré arrondi type iOS)
       <div
         style={{
           fontSize: 24,
@@ -20,10 +21,9 @@ export default function Icon() {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          borderRadius: '22%', // Arrondi style App mobile
+          borderRadius: '22%',
         }}
       >
-        {/* Le Logo SVG intégré directement ici */}
         <svg
           width="300"
           height="300"
@@ -38,8 +38,6 @@ export default function Icon() {
               <stop offset="100%" stopColor="#8b5cf6" />
             </linearGradient>
           </defs>
-
-          {/* Forme du N */}
           <path
             d="M25 80 L25 30 L75 80 L75 20"
             stroke="url(#nexusGradient)"
@@ -47,8 +45,6 @@ export default function Icon() {
             strokeLinecap="round"
             strokeLinejoin="round"
           />
-          
-          {/* Point accent */}
           <circle cx="75" cy="20" r="8" fill="#3b82f6" />
         </svg>
       </div>

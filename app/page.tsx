@@ -6,7 +6,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { TrendingUp, Wallet, ArrowUpRight, Lock, Building, PieChart, Calculator, Activity, Target } from "lucide-react";
 import AnimatedNumber from "@/components/AnimatedNumber";
-import Sidebar from "@/components/Sidebar"; // <--- SIDEBAR PRÉSENTE
+import Sidebar from "@/components/Sidebar";
+import { NexusLogo } from "@/components/NexusLogo"; 
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -105,13 +106,11 @@ export default function Dashboard() {
   if (loading) return <div className="min-h-screen bg-[#050505]" />;
 
   return (
-    <div className="min-h-screen bg-[#050505] text-zinc-100 font-sans pb-24 md:pb-8 selection:bg-emerald-500/30 selection:text-emerald-200">
+    <div className="min-h-screen bg-[#050505] text-zinc-100 font-sans selection:bg-emerald-500/30 selection:text-emerald-200">
       
-      {/* 1. LA SIDEBAR EST ICI */}
       <Sidebar />
 
-      {/* 2. LA MARGE md:ml-64 EST ICI */}
-      <main className="md:ml-64 flex-1 w-auto max-w-full p-4 md:p-8 relative overflow-hidden">
+      <main className="md:ml-64 flex-1 w-auto max-w-full p-4 pt-6 pb-24 md:p-8 relative overflow-hidden">
         
         {/* AMBIENT GLOWS */}
         <div className="fixed top-0 left-64 w-[500px] h-[500px] bg-emerald-900/10 rounded-full blur-[120px] pointer-events-none"></div>
@@ -123,28 +122,34 @@ export default function Dashboard() {
           className="max-w-[1800px] mx-auto space-y-12 relative z-10"
         >
           
-          {/* HEADER PREMIUM */}
+          {/* HEADER MOBILE (LOGO CORRIGÉ) */}
           <header className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 border-l-4 border-emerald-500 pl-6 py-2">
             <div>
+                {/* BLOC LOGO MOBILE */}
+                <div className="flex items-center gap-3 mb-5 md:hidden">
+                    {/* J'ai mis w-12 h-12 (48px) pour qu'il soit bien visible */}
+                    <NexusLogo className="w-12 h-12" /> 
+                    <span className="text-2xl font-black text-white tracking-tighter uppercase font-sans opacity-90">NEXUS</span>
+                </div>
+
                 <p className="text-zinc-500 text-xs font-bold uppercase tracking-[0.2em] mb-2">VUE D'ENSEMBLE</p>
                 <h1 className="text-4xl md:text-6xl font-black text-white tracking-tighter uppercase">
                     Bonjour, <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-teal-500">{userName}</span>
                 </h1>
             </div>
             {!isNewUser && (
-                <div className="bg-zinc-900/50 backdrop-blur-md p-4 rounded-2xl border border-white/5 shadow-xl">
+                <div className="bg-zinc-900/50 backdrop-blur-md p-4 rounded-2xl border border-white/5 shadow-xl w-full md:w-auto">
                     <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider mb-1 flex items-center gap-2">
                         <Wallet size={12} className="text-emerald-500"/> Patrimoine Net
                     </p>
                     <div className="text-3xl font-black text-white tracking-tight">
-                        <AnimatedNumber value={totalNetWorth}/> {/* SANS DOUBLE € */}
+                        <AnimatedNumber value={totalNetWorth}/>
                     </div>
                 </div>
             )}
           </header>
 
-          {/* ... Le reste est identique, avec les € en trop supprimés ... */}
-          {/* Je remets le bloc complet pour être sûr */}
+          {/* ... RESTE INCHANGÉ ... */}
           {isNewUser ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-12">
                   <Link href="/patrimoine" className="group">
@@ -206,7 +211,7 @@ export default function Dashboard() {
                             </div>
                             <div>
                                 <div className="text-6xl lg:text-7xl font-black text-white tracking-tighter mb-3 group-hover:translate-x-2 transition-transform">
-                                    <AnimatedNumber value={financialWealth} /> {/* SANS DOUBLE € */}
+                                    <AnimatedNumber value={financialWealth} />
                                 </div>
                                 <div className="h-1 w-24 bg-emerald-500 rounded-full group-hover:w-full transition-all duration-700 ease-out"></div>
                             </div>
@@ -232,7 +237,7 @@ export default function Dashboard() {
                             </div>
                             <div>
                                 <div className="text-6xl lg:text-7xl font-black text-white tracking-tighter mb-3 group-hover:translate-x-2 transition-transform">
-                                    <AnimatedNumber value={realEstateWealth} /> {/* SANS DOUBLE € */}
+                                    <AnimatedNumber value={realEstateWealth} />
                                 </div>
                                 <div className="h-1 w-24 bg-blue-500 rounded-full group-hover:w-full transition-all duration-700 ease-out"></div>
                             </div>
@@ -253,7 +258,7 @@ export default function Dashboard() {
                                 <span className="text-[10px] font-black px-3 py-1 rounded-full bg-yellow-500/10 text-yellow-500 border border-yellow-500/20">{savingsRate.toFixed(0)}% TAUX</span>
                             </div>
                             <div className="text-5xl font-black text-white tracking-tighter">
-                                +<AnimatedNumber value={monthlySavings}/> {/* SANS DOUBLE € */}
+                                +<AnimatedNumber value={monthlySavings}/>
                             </div>
                             <p className="text-xs text-zinc-500 mt-2 font-medium">Épargne disponible ce mois-ci</p>
                         </div>
@@ -267,7 +272,7 @@ export default function Dashboard() {
                         <div>
                             <p className="text-xs font-bold text-purple-400 uppercase mb-3 tracking-[0.2em] flex items-center gap-2"><Target size={14}/> Prochain Palier</p>
                             <div className="text-4xl lg:text-5xl font-black text-white flex items-center gap-3 tracking-tighter">
-                                <AnimatedNumber value={milestone}/> {/* SANS DOUBLE € */}
+                                <AnimatedNumber value={milestone}/>
                             </div>
                         </div>
                         <div className="text-right">
@@ -287,7 +292,7 @@ export default function Dashboard() {
                     
                     <div className="flex justify-between mt-4 text-[10px] uppercase font-bold tracking-widest text-zinc-500">
                         <span>Progression Actuelle</span>
-                        <span>Manque <AnimatedNumber value={milestone - totalNetWorth}/></span> {/* SANS DOUBLE € */}
+                        <span>Manque <AnimatedNumber value={milestone - totalNetWorth}/></span>
                     </div>
                 </div>
               </div>
