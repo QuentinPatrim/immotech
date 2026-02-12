@@ -1,34 +1,36 @@
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
-import AppLayout from "@/components/AppLayout"; // On importe notre nouveau composant
+import ClientLayout from "@/components/ClientLayout"; // Important : On importe le gestionnaire d'anim
 
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Nexus | Gestion de Patrimoine",
-  description: "Analysez et optimisez votre patrimoine.",
+  title: "ImmoTech",
+  description: "Gestion de patrimoine personnel",
+  manifest: "/manifest.json",
 };
 
 export const viewport: Viewport = {
-  themeColor: "#050505",
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
+  userScalable: false,
+  themeColor: "#000000",
 };
 
 export default function RootLayout({
   children,
-}: {
+}: Readonly<{
   children: React.ReactNode;
-}) {
+}>) {
   return (
-    <html lang="fr" className="dark">
-      <body className={`${inter.className} bg-[#050505] text-white overflow-x-hidden`}>
-        {/* On enveloppe tout le contenu dans notre AppLayout Client */}
-        <AppLayout>
-            {children}
-        </AppLayout>
+    <html lang="fr">
+      <body className={`${inter.className} bg-black text-zinc-100 overflow-x-hidden`}>
+        {/* On enveloppe l'application avec ClientLayout qui gère le Splash Screen */}
+        <ClientLayout>
+          {children}
+        </ClientLayout>
       </body>
     </html>
   );
