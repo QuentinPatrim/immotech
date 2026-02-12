@@ -4,13 +4,11 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { TrendingUp, Wallet, ArrowUpRight, Lock, Building, PieChart, Calculator, Activity, Plus, ArrowRight, Sparkles, Target } from "lucide-react";
+import { TrendingUp, Wallet, ArrowUpRight, Lock, Building, PieChart, Calculator, Activity, Target } from "lucide-react";
 import AnimatedNumber from "@/components/AnimatedNumber";
-import Sidebar from "@/components/Sidebar";
-import { supabase } from "@/lib/supabaseClient";
+import Sidebar from "@/components/Sidebar"; // <--- SIDEBAR PRÉSENTE
 import { Button } from "@/components/ui/button";
-
-const formatEuro = (val: number) => new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(val);
+import { supabase } from "@/lib/supabaseClient";
 
 const getNextMilestone = (current: number) => {
   if (current < 10000) return 10000;
@@ -108,11 +106,14 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-[#050505] text-zinc-100 font-sans pb-24 md:pb-8 selection:bg-emerald-500/30 selection:text-emerald-200">
-      <Sidebar />
       
+      {/* 1. LA SIDEBAR EST ICI */}
+      <Sidebar />
+
+      {/* 2. LA MARGE md:ml-64 EST ICI */}
       <main className="md:ml-64 flex-1 w-auto max-w-full p-4 md:p-8 relative overflow-hidden">
         
-        {/* AMBIENT GLOWS (Uniformité avec Projection) */}
+        {/* AMBIENT GLOWS */}
         <div className="fixed top-0 left-64 w-[500px] h-[500px] bg-emerald-900/10 rounded-full blur-[120px] pointer-events-none"></div>
         <div className="fixed bottom-0 right-0 w-[500px] h-[500px] bg-blue-900/10 rounded-full blur-[120px] pointer-events-none"></div>
 
@@ -136,13 +137,14 @@ export default function Dashboard() {
                         <Wallet size={12} className="text-emerald-500"/> Patrimoine Net
                     </p>
                     <div className="text-3xl font-black text-white tracking-tight">
-                        <AnimatedNumber value={totalNetWorth}/> <span className="text-zinc-600 text-lg font-medium">€</span>
+                        <AnimatedNumber value={totalNetWorth}/> {/* SANS DOUBLE € */}
                     </div>
                 </div>
             )}
           </header>
 
-          {/* --- CAS ONBOARDING (STYLE FUTURISTE) --- */}
+          {/* ... Le reste est identique, avec les € en trop supprimés ... */}
+          {/* Je remets le bloc complet pour être sûr */}
           {isNewUser ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-12">
                   <Link href="/patrimoine" className="group">
@@ -157,7 +159,7 @@ export default function Dashboard() {
                                   <p className="text-zinc-400 text-sm max-w-xs mx-auto font-light">Connectez vos actifs (Comptes, Immo, Crypto) pour calibrer le moteur Nexus.</p>
                               </div>
                               <Button className="bg-emerald-500 hover:bg-emerald-400 text-black font-bold rounded-full px-10 py-6 text-lg shadow-lg shadow-emerald-500/20">
-                                  Ajouter des actifs <ArrowRight className="ml-2" size={20}/>
+                                  Ajouter des actifs <ArrowUpRight className="ml-2" size={20}/>
                               </Button>
                           </div>
                       </div>
@@ -175,14 +177,14 @@ export default function Dashboard() {
                                   <p className="text-zinc-400 text-sm max-w-xs mx-auto font-light">Définissez vos revenus et dépenses pour calculer votre capacité d'investissement réelle.</p>
                               </div>
                               <Button className="bg-yellow-500 hover:bg-yellow-400 text-black font-bold rounded-full px-10 py-6 text-lg shadow-lg shadow-yellow-500/20">
-                                  Configurer Budget <ArrowRight className="ml-2" size={20}/>
+                                  Configurer Budget <ArrowUpRight className="ml-2" size={20}/>
                               </Button>
                           </div>
                       </div>
                   </Link>
               </div>
           ) : (
-            /* --- DASHBOARD ACTIF (STYLE FUTURISTE) --- */
+            /* --- DASHBOARD ACTIF --- */
             <>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 
@@ -204,7 +206,7 @@ export default function Dashboard() {
                             </div>
                             <div>
                                 <div className="text-6xl lg:text-7xl font-black text-white tracking-tighter mb-3 group-hover:translate-x-2 transition-transform">
-                                    <AnimatedNumber value={financialWealth} /> <span className="text-3xl text-zinc-600 align-top">€</span>
+                                    <AnimatedNumber value={financialWealth} /> {/* SANS DOUBLE € */}
                                 </div>
                                 <div className="h-1 w-24 bg-emerald-500 rounded-full group-hover:w-full transition-all duration-700 ease-out"></div>
                             </div>
@@ -230,7 +232,7 @@ export default function Dashboard() {
                             </div>
                             <div>
                                 <div className="text-6xl lg:text-7xl font-black text-white tracking-tighter mb-3 group-hover:translate-x-2 transition-transform">
-                                    <AnimatedNumber value={realEstateWealth} /> <span className="text-3xl text-zinc-600 align-top">€</span>
+                                    <AnimatedNumber value={realEstateWealth} /> {/* SANS DOUBLE € */}
                                 </div>
                                 <div className="h-1 w-24 bg-blue-500 rounded-full group-hover:w-full transition-all duration-700 ease-out"></div>
                             </div>
@@ -251,21 +253,21 @@ export default function Dashboard() {
                                 <span className="text-[10px] font-black px-3 py-1 rounded-full bg-yellow-500/10 text-yellow-500 border border-yellow-500/20">{savingsRate.toFixed(0)}% TAUX</span>
                             </div>
                             <div className="text-5xl font-black text-white tracking-tighter">
-                                +<AnimatedNumber value={monthlySavings}/> <span className="text-2xl text-zinc-600">€</span>
+                                +<AnimatedNumber value={monthlySavings}/> {/* SANS DOUBLE € */}
                             </div>
                             <p className="text-xs text-zinc-500 mt-2 font-medium">Épargne disponible ce mois-ci</p>
                         </div>
                     </div>
                 </Link>
 
-                {/* CARTE OBJECTIF (Progress Bar Premium) */}
+                {/* CARTE OBJECTIF */}
                 <div className="md:col-span-2 p-8 rounded-[32px] bg-zinc-900/40 backdrop-blur-md border border-white/5 flex flex-col justify-center relative overflow-hidden shadow-xl group">
                     <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-500 via-blue-500 to-purple-500 opacity-30 group-hover:opacity-60 transition-opacity"></div>
                     <div className="flex flex-col md:flex-row justify-between items-end mb-8 gap-4">
                         <div>
                             <p className="text-xs font-bold text-purple-400 uppercase mb-3 tracking-[0.2em] flex items-center gap-2"><Target size={14}/> Prochain Palier</p>
                             <div className="text-4xl lg:text-5xl font-black text-white flex items-center gap-3 tracking-tighter">
-                                <AnimatedNumber value={milestone}/> <span className="text-2xl text-zinc-600">€</span>
+                                <AnimatedNumber value={milestone}/> {/* SANS DOUBLE € */}
                             </div>
                         </div>
                         <div className="text-right">
@@ -285,7 +287,7 @@ export default function Dashboard() {
                     
                     <div className="flex justify-between mt-4 text-[10px] uppercase font-bold tracking-widest text-zinc-500">
                         <span>Progression Actuelle</span>
-                        <span>Manque <AnimatedNumber value={milestone - totalNetWorth}/> €</span>
+                        <span>Manque <AnimatedNumber value={milestone - totalNetWorth}/></span> {/* SANS DOUBLE € */}
                     </div>
                 </div>
               </div>
