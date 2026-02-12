@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Sidebar from "@/components/Sidebar";
 import { motion } from "framer-motion";
-import { TrendingUp, Target, Sparkles, Loader2, Info, Coins, Scale, AlertTriangle, Calendar, CheckCircle, ArrowRight } from "lucide-react";
+import { TrendingUp, Target, Sparkles, Loader2, Info, Coins, Scale, AlertTriangle, Calendar, CheckCircle, ArrowRight, Percent } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Input } from "@/components/ui/input";
@@ -12,7 +12,6 @@ import { AreaChart, Area, XAxis, Tooltip, ResponsiveContainer, CartesianGrid, Re
 import AnimatedNumber from "@/components/AnimatedNumber";
 import { supabase } from "@/lib/supabaseClient";
 
-// --- UTILITAIRES ---
 const formatEuro = (val: number) => new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(val);
 
 export default function ProjectionPage() {
@@ -24,8 +23,8 @@ export default function ProjectionPage() {
   const [monthlyExpenses, setMonthlyExpenses] = useState(0); 
   
   // --- PARAMÈTRES SIMULATION ---
-  const [totalReturn, setTotalReturn] = useState(8); 
-  const [dividendYield, setDividendYield] = useState(2); 
+  const [stockGrowth, setStockGrowth] = useState(6); // Croissance du prix de l'action
+  const [dividendYield, setDividendYield] = useState(3); // Cash versé
   const [years, setYears] = useState(20);
   const [isDividendStrategy, setIsDividendStrategy] = useState(false); 
 
@@ -66,7 +65,7 @@ export default function ProjectionPage() {
     fetchData();
   }, []);
 
-  // --- 2. MOTEUR DE SIMULATION ---
+  // --- 2. MOTEUR DE SIMULATION (GROWTH + DIVIDENDES CUMULÉS) ---
   useEffect(() => {
       if (loading) return;
 
@@ -75,16 +74,28 @@ export default function ProjectionPage() {
       let currentCTO = initialCapital;
       let totalInvested = initialCapital;
       
-      const growthRate = (totalReturn - (isDividendStrategy ? dividendYield : 0)) / 100 / 12; 
-      const divRateMonthly = ((isDividendStrategy ? dividendYield : 0) / 100) / 12;
+      // Taux mensuels
+      const growthRate = stockGrowth / 100 / 12; // Croissance intrinsèque
+      
+      // Si stratégie dividende activée, on ajoute le yield. Sinon 0.
+      const divRateAnnual = isDividendStrategy ? (dividendYield / 100) : 0;
+      const divRateMonthly = divRateAnnual / 12;
       
       let foundFire = false;
       const target = monthlyExpenses * 12 * 25; 
       setFireTarget(target);
 
       for (let year = 0; year <= years; year++) {
+          
+          // --- CALCUL VALEUR DE SORTIE (NETTE D'IMPÔT SUR PV) ---
+          
+          // PEA : Impôt 17.2% sur la PV globale à la sortie
           const gainPEA = currentPEA - totalInvested;
           const netPEA = currentPEA - (gainPEA > 0 ? gainPEA * 0.172 : 0);
+
+          // CTO : Impôt 30% sur la PV "Capitalisation" à la sortie
+          // Note : Les dividendes ont DÉJÀ été taxés au fil de l'eau (voir boucle mensuelle)
+          // On taxe donc la différence entre la valeur finale et le capital investi
           const gainCTO = currentCTO - totalInvested;
           const netCTO = currentCTO - (gainCTO > 0 ? gainCTO * 0.30 : 0);
 
@@ -101,10 +112,16 @@ export default function ProjectionPage() {
               foundFire = true;
           }
 
+          // Simulation Mensuelle
           for (let m = 0; m < 12; m++) {
+              // PEA : Le dividende est réinvesti BRUT (100%)
               currentPEA = currentPEA * (1 + growthRate + divRateMonthly) + monthlyContribution;
+              
+              // CTO : Le dividende est taxé à 30% AVANT réinvestissement
+              // La croissance (growthRate) n'est pas taxée tant qu'on ne vend pas
               const dividendNet = divRateMonthly * (1 - 0.30); 
               currentCTO = currentCTO * (1 + growthRate + dividendNet) + monthlyContribution;
+
               if(year < years) totalInvested += monthlyContribution;
           }
       }
@@ -113,10 +130,12 @@ export default function ProjectionPage() {
       setChartData(data);
       setFinalPEA(data[years].PEA);
       setTaxDragCost(data[years].PEA - data[years].CTO);
+      
+      // Rente estimée
       const withdrawalRate = isDividendStrategy ? (dividendYield / 100) : 0.04;
       setPassiveIncome(data[years].PEA * withdrawalRate);
 
-  }, [initialCapital, monthlyContribution, monthlyExpenses, totalReturn, dividendYield, years, isDividendStrategy, loading]);
+  }, [initialCapital, monthlyContribution, monthlyExpenses, stockGrowth, dividendYield, years, isDividendStrategy, loading]);
 
   if (loading) return <div className="min-h-screen bg-black flex items-center justify-center"><Loader2 className="animate-spin text-emerald-500 w-10 h-10"/></div>;
 
@@ -131,36 +150,30 @@ export default function ProjectionPage() {
 
         <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }} className="max-w-[1800px] mx-auto space-y-10 relative z-10">
           
-          {/* HEADER */}
           <header className="flex flex-col gap-2 border-l-4 border-emerald-500 pl-6 py-2">
             <h1 className="text-4xl md:text-5xl font-black text-white tracking-tight uppercase">
-              Projection <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-blue-500">Nexus</span>
+              Ma <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-blue-500">Projection</span>
             </h1>
             <p className="text-zinc-400 text-lg font-light tracking-wide">Projection financière haute fidélité & Optimisation fiscale.</p>
           </header>
 
           <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
               
-              {/* --- GAUCHE : PANNEAU DE CONTRÔLE (Styke Cockpit) --- */}
+              {/* --- GAUCHE : PANNEAU DE CONTRÔLE --- */}
               <div className="xl:col-span-3 space-y-6">
                   
                   {/* Carte Paramètres */}
                   <div className="p-6 rounded-[30px] bg-zinc-900/40 backdrop-blur-xl border border-white/5 hover:border-white/10 transition-all shadow-2xl">
                       <div className="flex items-center gap-3 mb-6">
                           <div className="h-8 w-1 bg-yellow-500 rounded-full shadow-[0_0_10px_rgba(234,179,8,0.5)]"></div>
-                          <h3 className="text-sm font-bold text-white uppercase tracking-widest">Paramètres d'Entrée</h3>
+                          <h3 className="text-sm font-bold text-white uppercase tracking-widest">Entrées</h3>
                       </div>
                       
                       <div className="space-y-6">
                           <div className="space-y-2 group">
-                              <label className="text-[10px] uppercase font-bold text-zinc-500 group-hover:text-white transition-colors">Capital Départ (Liquidité)</label>
+                              <label className="text-[10px] uppercase font-bold text-zinc-500 group-hover:text-white transition-colors">Capital Départ</label>
                               <div className="relative">
-                                  <Input 
-                                    type="number" 
-                                    value={initialCapital} 
-                                    onChange={(e) => setInitialCapital(parseFloat(e.target.value) || 0)} 
-                                    className="bg-black/50 border-white/10 text-white font-mono text-lg h-14 pr-10 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all rounded-xl"
-                                  />
+                                  <Input type="number" value={initialCapital} onChange={(e) => setInitialCapital(parseFloat(e.target.value) || 0)} className="bg-black/50 border-white/10 text-white font-mono text-lg h-14 pr-10 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all rounded-xl"/>
                                   <span className="absolute right-4 top-4 text-zinc-600 font-mono">€</span>
                               </div>
                           </div>
@@ -168,27 +181,19 @@ export default function ProjectionPage() {
                           <div className="space-y-2 group">
                               <label className="text-[10px] uppercase font-bold text-zinc-500 group-hover:text-white transition-colors">Épargne Mensuelle</label>
                               <div className="relative">
-                                  <Input 
-                                    type="number" 
-                                    value={monthlyContribution} 
-                                    onChange={(e) => setMonthlyContribution(parseFloat(e.target.value) || 0)} 
-                                    className="bg-black/50 border-white/10 text-white font-mono text-lg h-14 pr-14 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all rounded-xl"
-                                  />
+                                  <Input type="number" value={monthlyContribution} onChange={(e) => setMonthlyContribution(parseFloat(e.target.value) || 0)} className="bg-black/50 border-white/10 text-white font-mono text-lg h-14 pr-14 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all rounded-xl"/>
                                   <span className="absolute right-4 top-4 text-zinc-600 font-mono">€/m</span>
                               </div>
                           </div>
 
                           <div className="space-y-4 pt-4 border-t border-white/5">
-                              <div className="flex justify-between items-end">
-                                  <label className="text-[10px] uppercase font-bold text-zinc-500">Horizon</label>
-                                  <span className="text-2xl font-black text-white">{years} <span className="text-sm text-zinc-500 font-normal">Ans</span></span>
-                              </div>
-                              <Slider value={[years]} min={5} max={40} step={1} onValueChange={(v) => setYears(v[0])} className="cursor-pointer" />
+                              <div className="flex justify-between items-end"><label className="text-[10px] uppercase font-bold text-zinc-500">Horizon</label><span className="text-2xl font-black text-white">{years} <span className="text-sm text-zinc-500 font-normal">Ans</span></span></div>
+                              <Slider value={[years]} min={5} max={40} step={1} onValueChange={(v) => setYears(v[0])} />
                           </div>
                       </div>
                   </div>
 
-                  {/* Carte Stratégie */}
+                  {/* Carte Stratégie AVANCÉE */}
                   <div className="p-6 rounded-[30px] bg-zinc-900/40 backdrop-blur-xl border border-white/5 hover:border-white/10 transition-all shadow-2xl">
                       <div className="flex items-center justify-between mb-6">
                           <div className="flex items-center gap-3">
@@ -202,21 +207,27 @@ export default function ProjectionPage() {
                       </div>
                       
                       <div className="space-y-6">
+                          {/* Croissance Action */}
                           <div className="space-y-4">
                               <div className="flex justify-between items-end">
-                                  <label className="text-[10px] uppercase font-bold text-zinc-500">Rendement Cible</label>
-                                  <span className="text-2xl font-black text-emerald-400 shadow-emerald-500/20 drop-shadow-sm">{totalReturn}%</span>
+                                  <label className="text-[10px] uppercase font-bold text-zinc-500">Croissance Prix</label>
+                                  <span className="text-xl font-black text-emerald-400">{stockGrowth}%</span>
                               </div>
-                              <Slider value={[totalReturn]} min={2} max={15} step={0.5} onValueChange={(v) => setTotalReturn(v[0])} />
+                              <Slider value={[stockGrowth]} min={0} max={15} step={0.5} onValueChange={(v) => setStockGrowth(v[0])} />
                           </div>
                           
+                          {/* Rendement Dividende */}
                           {isDividendStrategy && (
                               <div className="space-y-4 pt-4 border-t border-white/5 animate-in fade-in slide-in-from-top-2">
                                   <div className="flex justify-between items-end">
-                                      <label className="text-[10px] uppercase font-bold text-zinc-500">Dont Dividende</label>
+                                      <label className="text-[10px] uppercase font-bold text-zinc-500">Rendement Dividende</label>
                                       <span className="text-xl font-bold text-blue-400">{dividendYield}%</span>
                                   </div>
-                                  <Slider value={[dividendYield]} min={0} max={totalReturn} step={0.5} onValueChange={(v) => setDividendYield(v[0])} />
+                                  <Slider value={[dividendYield]} min={0} max={10} step={0.5} onValueChange={(v) => setDividendYield(v[0])} />
+                                  <div className="text-[10px] text-zinc-500 bg-black/40 p-3 rounded-lg border border-white/5">
+                                    <div className="flex justify-between mb-1"><span>Total Brut :</span><span className="text-white font-bold">{stockGrowth + dividendYield}%</span></div>
+                                    <div className="flex justify-between text-red-400"><span>Impact CTO :</span><span>-{(dividendYield * 0.3).toFixed(2)}% /an</span></div>
+                                  </div>
                               </div>
                           )}
                       </div>
@@ -226,7 +237,7 @@ export default function ProjectionPage() {
               {/* --- DROITE : VISUALISATION --- */}
               <div className="xl:col-span-9 space-y-8">
                   
-                  {/* KPI CARDS (HUD STYLE) */}
+                  {/* KPI CARDS */}
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                       
                       {/* 1. FIRE */}
@@ -240,9 +251,7 @@ export default function ProjectionPage() {
                               {fireYear ? (
                                   <>
                                       <div className="text-4xl font-black text-white mb-1">Dans {fireYear} ans</div>
-                                      <div className="h-1 w-full bg-emerald-900/50 rounded-full mt-2 overflow-hidden">
-                                          <div className="h-full bg-emerald-500 w-full animate-pulse"></div>
-                                      </div>
+                                      <div className="h-1 w-full bg-emerald-900/50 rounded-full mt-2 overflow-hidden"><div className="h-full bg-emerald-500 w-full animate-pulse"></div></div>
                                   </>
                               ) : (
                                   <div className="text-3xl font-bold text-zinc-500">Non atteinte</div>
@@ -250,7 +259,7 @@ export default function ProjectionPage() {
                           </div>
                       </div>
 
-                      {/* 2. NET WORTH */}
+                      {/* 2. NET WORTH - CORRECTION € */}
                       <div className="p-6 rounded-[26px] bg-zinc-900/40 backdrop-blur-md border border-white/5 flex flex-col justify-between h-40 group hover:border-white/10 transition-all">
                           <div className="flex justify-between items-start">
                               <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">Patrimoine Final (Net)</p>
@@ -258,7 +267,7 @@ export default function ProjectionPage() {
                           </div>
                           <div>
                               <div className="text-3xl lg:text-4xl font-black text-white tracking-tighter group-hover:scale-105 transition-transform origin-left">
-                                <AnimatedNumber value={finalPEA} /> €
+                                <AnimatedNumber value={finalPEA} />
                               </div>
                               <p className="text-[10px] text-emerald-400 mt-2 font-bold">+ Optimisation PEA Active</p>
                           </div>
@@ -274,7 +283,7 @@ export default function ProjectionPage() {
                               <div className="text-3xl lg:text-4xl font-black text-white tracking-tighter">
                                 ~{formatEuro(passiveIncome / 12)}
                               </div>
-                              <p className="text-[10px] text-zinc-500 mt-2">Règle des 4% (SWR)</p>
+                              <p className="text-[10px] text-zinc-500 mt-2">Basé sur Rendement {isDividendStrategy ? "Dividende" : "4%"}</p>
                           </div>
                       </div>
 
@@ -287,23 +296,22 @@ export default function ProjectionPage() {
                           </div>
                           <div className="relative z-10">
                               <div className="text-3xl lg:text-4xl font-black text-red-500 tracking-tighter">
-                                -<AnimatedNumber value={taxDragCost} /> €
+                                -<AnimatedNumber value={taxDragCost} />
                               </div>
-                              <p className="text-[10px] text-red-400/70 mt-2">Impact fiscal sur {years} ans</p>
+                              <p className="text-[10px] text-red-400/70 mt-2">Impôt sur dividendes & PV</p>
                           </div>
                       </div>
                   </div>
 
-                  {/* MAIN CHART */}
+                  {/* CHART */}
                   <div className="p-1 rounded-[32px] bg-gradient-to-b from-white/10 to-transparent">
                     <div className="p-8 rounded-[30px] bg-[#0A0A0A] border border-white/5 h-[500px] relative overflow-hidden">
-                        {/* Header Chart */}
                         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 relative z-10">
                             <div>
-                                <h3 className="text-lg font-black text-white flex items-center gap-2">
-                                    <TrendingUp size={20} className="text-emerald-500"/> PROTOCOLE DE RICHESSE
-                                </h3>
-                                <p className="text-xs text-zinc-500 font-mono mt-1">Simulation Monte Carlo simplifiée • Taux {totalReturn}%</p>
+                                <h3 className="text-lg font-black text-white flex items-center gap-2"><TrendingUp size={20} className="text-emerald-500"/> PROTOCOLE DE RICHESSE</h3>
+                                <p className="text-xs text-zinc-500 font-mono mt-1">
+                                    Croissance {stockGrowth}% + {isDividendStrategy ? `Dividende ${dividendYield}%` : "Capitalisation"}
+                                </p>
                             </div>
                             {fireYear && (
                                 <div className="flex items-center gap-2 bg-emerald-500/10 px-4 py-2 rounded-full border border-emerald-500/20 animate-pulse">
@@ -313,46 +321,24 @@ export default function ProjectionPage() {
                             )}
                         </div>
                         
-                        {/* Chart Area */}
                         <div className="absolute inset-0 pt-24 pb-4 px-4">
                             <ResponsiveContainer width="100%" height="100%">
                                 <AreaChart data={chartData} margin={{ top: 10, right: 0, left: 0, bottom: 0 }}>
                                     <defs>
-                                        <linearGradient id="colorPEA" x1="0" y1="0" x2="0" y2="1">
-                                            <stop offset="0%" stopColor="#10b981" stopOpacity={0.4}/>
-                                            <stop offset="100%" stopColor="#10b981" stopOpacity={0}/>
-                                        </linearGradient>
-                                        <linearGradient id="colorCTO" x1="0" y1="0" x2="0" y2="1">
-                                            <stop offset="0%" stopColor="#ef4444" stopOpacity={0.1}/>
-                                            <stop offset="100%" stopColor="#ef4444" stopOpacity={0}/>
-                                        </linearGradient>
+                                        <linearGradient id="colorPEA" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#10b981" stopOpacity={0.4}/><stop offset="100%" stopColor="#10b981" stopOpacity={0}/></linearGradient>
+                                        <linearGradient id="colorCTO" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#ef4444" stopOpacity={0.1}/><stop offset="100%" stopColor="#ef4444" stopOpacity={0}/></linearGradient>
                                     </defs>
-                                    
                                     <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
-                                    
-                                    <XAxis 
-                                        dataKey="name" 
-                                        stroke="#52525b" 
-                                        fontSize={10} 
-                                        tickLine={false} 
-                                        axisLine={false} 
-                                        tickMargin={15} 
-                                        interval={'preserveStartEnd'} 
-                                    />
+                                    <XAxis dataKey="name" stroke="#52525b" fontSize={10} tickLine={false} axisLine={false} tickMargin={15} interval={'preserveStartEnd'} />
                                     <YAxis hide />
-                                    
                                     <Tooltip 
                                         contentStyle={{ backgroundColor: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(10px)', borderColor: '#333', borderRadius: '16px', color:'#fff', boxShadow: '0 10px 40px rgba(0,0,0,0.5)' }} 
                                         itemStyle={{ fontSize: '12px', fontWeight: 'bold' }}
                                         formatter={(val: any) => formatEuro(Number(val))}
                                         cursor={{ stroke: '#ffffff20', strokeWidth: 1 }}
                                     />
-                                    
-                                    {/* Courbes */}
                                     <Area type="monotone" dataKey="PEA" stroke="#10b981" strokeWidth={4} fill="url(#colorPEA)" name="Patrimoine Net (PEA)" animationDuration={1500} />
                                     <Area type="monotone" dataKey="CTO" stroke="#ef4444" strokeWidth={2} strokeDasharray="4 4" fill="url(#colorCTO)" name="Via CTO (Fiscalisé)" animationDuration={1500} />
-                                    
-                                    {/* Ligne FIRE */}
                                     <ReferenceLine y={fireTarget} stroke="#3b82f6" strokeDasharray="3 3" label={{ position: 'top',  value: 'Cible Liberté', fill: '#3b82f6', fontSize: 10, fontWeight: 'bold' }} />
                                 </AreaChart>
                             </ResponsiveContainer>
@@ -360,18 +346,16 @@ export default function ProjectionPage() {
                     </div>
                   </div>
 
-                  {/* VERDICT BOX */}
+                  {/* VERDICT */}
                   <div className="p-6 rounded-[26px] bg-blue-600/5 border border-blue-500/20 flex items-start gap-4">
-                      <div className="h-10 w-10 rounded-full bg-blue-500/10 flex items-center justify-center shrink-0">
-                          <Info className="text-blue-400" size={20}/>
-                      </div>
+                      <div className="h-10 w-10 rounded-full bg-blue-500/10 flex items-center justify-center shrink-0"><Info className="text-blue-400" size={20}/></div>
                       <div className="space-y-2">
                           <h4 className="text-sm font-bold text-blue-400 uppercase tracking-wide">Analyse Stratégique</h4>
                           <p className="text-sm text-zinc-300 leading-relaxed font-light">
-                              Pour couvrir vos dépenses actuelles de <strong className="text-white">{formatEuro(monthlyExpenses)}/mois</strong> sans travailler, vous devez accumuler <strong className="text-white">{formatEuro(fireTarget)}</strong>. 
-                              {fireYear 
-                                ? <> Selon la simulation, ce point de bascule sera atteint dans <strong className="text-emerald-400">{fireYear} ans</strong>. Ensuite, vos intérêts généreront plus que votre salaire.</> 
-                                : " Ce cap n'est pas atteint dans la période simulée. Augmentez votre épargne ou le rendement pour accélérer le processus."}
+                              {isDividendStrategy 
+                                ? "En stratégie dividende, l'impact fiscal du CTO est immédiat : chaque année, 30% de vos gains dividendes sont confisqués avant d'être réinvestis. Le PEA est vital pour laisser les intérêts composés agir à 100%."
+                                : "Même en stratégie de capitalisation (Growth), l'avantage fiscal final du PEA (17.2%) contre le CTO (30%) crée un écart de richesse significatif à long terme."
+                              }
                           </p>
                       </div>
                   </div>

@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Sidebar from "@/components/Sidebar";
 import { motion } from "framer-motion";
 import { BarChart, Bar, XAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Legend } from "recharts";
-import { Plus, Trash2, Home, Target, ShieldCheck, Loader2, ChevronLeft, ChevronRight, Save, TrendingUp, AlertTriangle, Coffee, ArrowRight } from "lucide-react";
+import { Plus, Trash2, Home, Target, ShieldCheck, Loader2, ChevronLeft, ChevronRight, Save, TrendingUp, AlertTriangle, Coffee, ArrowRight, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { triggerHaptic } from "@/lib/haptics";
@@ -44,9 +44,8 @@ export default function BudgetPage() {
         const user = session.user;
         const startOfMonth = new Date(Date.UTC(date.getFullYear(), date.getMonth(), 1)).toISOString().split('T')[0];
 
-        // 1. On récupère TOUJOURS le profil pour avoir le Cash à jour (Lien Patrimoine)
+        // 1. Get Profile (Cash)
         const { data: profile } = await supabase.from('profiles').select('budget_json, assets_json').eq('id', user.id).single();
-        
         if (profile && Array.isArray(profile.assets_json)) {
             const cash = (profile.assets_json as any[])
                 .filter(a => a.type === "Cash" || (a.type && a.type.includes("Livret")))
@@ -54,7 +53,7 @@ export default function BudgetPage() {
             setCurrentCash(cash);
         }
 
-        // 2. On regarde si on a un historique pour ce mois
+        // 2. Get History
         const { data: history } = await supabase.from('monthly_history').select('*').eq('user_id', user.id).eq('month', startOfMonth).maybeSingle();
 
         if (history) {
@@ -69,7 +68,6 @@ export default function BudgetPage() {
                 if (Array.isArray(b.details)) setExpenses(b.details);
             }
         }
-        
         fetchHistoryGraph(user.id);
         setLoading(false);
     };
@@ -97,25 +95,21 @@ export default function BudgetPage() {
         setSelectedDate(newDate);
     };
 
-    // --- CALCULS DU FLUX (CORRIGÉS) ---
     const totalExp = expenses.reduce((acc, i) => acc + i.amount, 0);
-    const totalSurplus = Math.max(0, income - totalExp); // Le surplus total brut
+    const totalSurplus = Math.max(0, income - totalExp); 
     
-    // Matelas
     const safetyTarget = totalExp * 6;
     const safetyGap = Math.max(0, safetyTarget - currentCash);
     const isSafe = currentCash >= safetyTarget && safetyTarget > 0;
     
-    // Répartition dynamique
     const effectiveSafetyRate = isSafe ? 0 : (safetyAllocation / 100);
     const flowToSafety = totalSurplus * effectiveSafetyRate;
-    const flowToInvest = totalSurplus - flowToSafety; // C'est CE chiffre qui doit être affiché en haut
+    const flowToInvest = totalSurplus - flowToSafety; 
 
     const saveCurrentMonth = async () => {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
         setLoading(true);
-        
         const saveDate = new Date(Date.UTC(selectedDate.getFullYear(), selectedDate.getMonth(), 1)).toISOString().split('T')[0];
 
         const { error } = await supabase.from('monthly_history').upsert({
@@ -123,8 +117,8 @@ export default function BudgetPage() {
             month: saveDate, 
             income: income, 
             expenses: totalExp,
-            invested: flowToInvest, // On sauvegarde la vraie part investie
-            saved: flowToSafety,    // On sauvegarde la part sécurisée
+            invested: flowToInvest,
+            saved: flowToSafety,
             details_json: expenses,
         }, { onConflict: 'user_id, month' });
 
@@ -140,7 +134,6 @@ export default function BudgetPage() {
         setLoading(false);
     };
 
-    // Actions UI (Add/Remove/Update)
     const addNeed = () => {
         if (!newNeedName || !newNeedAmount) return;
         const val = parseFloat(newNeedAmount); if (isNaN(val)) return;
@@ -162,144 +155,129 @@ export default function BudgetPage() {
     const needsList = expenses.filter(e => e.category === 'BESOIN');
     const wantsList = expenses.filter(e => e.category !== 'BESOIN');
 
-    if (loading && expenses.length === 0) return <div className="min-h-screen bg-black flex items-center justify-center"><Loader2 className="animate-spin text-emerald-500"/></div>;
+    if (loading && expenses.length === 0) return <div className="min-h-screen bg-[#050505] flex items-center justify-center"><Loader2 className="animate-spin text-emerald-500"/></div>;
 
     return (
-        <div className="min-h-screen bg-black text-zinc-100 font-sans pb-24 md:pb-8">
+        <div className="min-h-screen bg-[#050505] text-zinc-100 font-sans pb-24 md:pb-8 selection:bg-emerald-500/30 selection:text-emerald-200">
             <Sidebar />
-            <main className="md:ml-64 flex-1 w-auto max-w-full p-4 md:p-8">
-                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="max-w-6xl mx-auto space-y-8">
-                    
-                    <div className="flex flex-col gap-2">
-                        <h1 className="text-3xl font-bold text-white">Mon Budget<span className="text-emerald-500">.</span></h1>
-                        <p className="text-zinc-400 text-sm">Gérez vos flux mensuels simplement.</p>
-                    </div>
+            <main className="md:ml-64 flex-1 w-auto max-w-full p-4 md:p-8 relative overflow-hidden">
+                
+                {/* AMBIENT GLOWS */}
+                <div className="fixed top-0 left-64 w-[600px] h-[600px] bg-emerald-900/5 rounded-full blur-[120px] pointer-events-none"></div>
+                <div className="fixed bottom-0 right-0 w-[500px] h-[500px] bg-yellow-900/5 rounded-full blur-[120px] pointer-events-none"></div>
 
-                    <div className="flex flex-col md:flex-row justify-between items-center gap-6 bg-zinc-900/50 p-4 rounded-3xl border border-zinc-800">
-                        <div className="flex items-center gap-4">
-                            <Button variant="outline" size="icon" onClick={() => changeMonth(-1)} className="rounded-full border-zinc-700 hover:bg-zinc-800 text-white"><ChevronLeft size={20}/></Button>
-                            <div className="text-center min-w-[150px]">
-                                <h2 className="text-2xl font-bold text-white capitalize">{formatMonth(selectedDate)}</h2>
-                                <p className="text-xs text-zinc-500">{isExistingMonth ? "Données enregistrées" : "Mode Édition"}</p>
+                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="max-w-[1800px] mx-auto space-y-10 relative z-10">
+                    
+                    <header className="flex flex-col gap-2 border-l-4 border-yellow-500 pl-6 py-2">
+                        <h1 className="text-4xl md:text-5xl font-black text-white tracking-tight uppercase">
+                            Mon <span className="text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-orange-500">Budget</span>
+                        </h1>
+                        <p className="text-zinc-400 text-lg font-light tracking-wide">Gestion des flux mensuels & Épargne.</p>
+                    </header>
+
+                    {/* MOIS & REVENUS (NAVBAR) */}
+                    <div className="flex flex-col md:flex-row justify-between items-center gap-6 bg-zinc-900/40 backdrop-blur-xl p-6 rounded-[30px] border border-white/5 shadow-2xl">
+                        <div className="flex items-center gap-6">
+                            <Button variant="outline" size="icon" onClick={() => changeMonth(-1)} className="rounded-full border-white/10 hover:bg-white/10 text-white w-12 h-12"><ChevronLeft size={24}/></Button>
+                            <div className="text-center min-w-[200px]">
+                                <h2 className="text-3xl font-black text-white capitalize tracking-wide">{formatMonth(selectedDate)}</h2>
+                                <p className="text-xs text-zinc-500 font-bold uppercase tracking-widest mt-1">{isExistingMonth ? "Données enregistrées" : "Mode Édition"}</p>
                             </div>
-                            <Button variant="outline" size="icon" onClick={() => changeMonth(1)} className="rounded-full border-zinc-700 hover:bg-zinc-800 text-white"><ChevronRight size={20}/></Button>
+                            <Button variant="outline" size="icon" onClick={() => changeMonth(1)} className="rounded-full border-white/10 hover:bg-white/10 text-white w-12 h-12"><ChevronRight size={24}/></Button>
                         </div>
-                        <div className="flex items-center gap-4 w-full md:w-auto justify-end">
+                        <div className="flex items-center gap-6 w-full md:w-auto justify-end">
                             <div className="flex flex-col items-end">
-                                <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">Revenus du mois</span>
-                                <div className="flex items-center gap-2 bg-black px-3 py-1 rounded-lg border border-zinc-800 relative">
-                                    <Input type="number" value={income || ""} onChange={(e) => setIncome(parseFloat(e.target.value))} className="h-8 w-24 bg-transparent border-none text-right text-lg font-bold text-white p-0 pr-6 focus-visible:ring-0" />
-                                    <span className="text-zinc-500 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">€</span>
+                                <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest mb-1">Revenus du mois</span>
+                                <div className="flex items-center gap-2 bg-black/50 px-4 py-2 rounded-xl border border-white/10 relative">
+                                    <Input type="number" value={income || ""} onChange={(e) => setIncome(parseFloat(e.target.value))} className="h-10 w-32 bg-transparent border-none text-right text-2xl font-black text-white p-0 pr-6 focus-visible:ring-0" />
+                                    <span className="text-zinc-500 absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-lg">€</span>
                                 </div>
                             </div>
-                            <Button onClick={saveCurrentMonth} className="h-12 px-6 bg-emerald-500 hover:bg-emerald-400 text-black font-bold rounded-xl shadow-[0_0_15px_rgba(16,185,129,0.3)]"><Save size={18} className="mr-2"/> Enregistrer</Button>
+                            <Button onClick={saveCurrentMonth} className="h-14 px-8 bg-emerald-500 hover:bg-emerald-400 text-black font-bold rounded-2xl shadow-lg shadow-emerald-500/20 text-lg"><Save size={20} className="mr-2"/> Sauvegarder</Button>
                         </div>
                     </div>
 
                     {/* KPI INVESTISSEMENT DYNAMIQUE */}
-                    <div className="relative p-8 rounded-3xl bg-gradient-to-br from-emerald-950 to-zinc-900 border border-emerald-500/20 overflow-hidden text-center md:text-left">
-                        <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-6">
+                    <div className="relative p-10 rounded-[40px] bg-gradient-to-br from-emerald-950 to-black border border-emerald-500/20 overflow-hidden text-center md:text-left shadow-2xl group">
+                        <div className="absolute top-0 right-0 p-64 bg-emerald-500/10 blur-[120px] rounded-full group-hover:bg-emerald-500/15 transition-all"></div>
+                        <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-10">
                             <div className="flex-1">
-                                <p className="text-emerald-500 font-medium text-sm flex items-center justify-center md:justify-start gap-2 mb-1"><Target size={16}/> Capacité d'Investissement (Nette)</p>
-                                
-                                {/* LE CHIFFRE QUI CHANGE SELON LE SLIDER */}
-                                <div className="text-5xl md:text-7xl font-black text-white tracking-tighter">
+                                <p className="text-emerald-500 font-bold text-xs uppercase tracking-[0.2em] flex items-center justify-center md:justify-start gap-2 mb-4"><Target size={16}/> Capacité d'Investissement Nette</p>
+                                <div className="text-7xl md:text-9xl font-black text-white tracking-tighter drop-shadow-2xl">
                                     <AnimatedNumber value={flowToInvest} />
                                 </div>
-                                
-                                <p className="text-zinc-400 text-sm mt-2 mb-6">
+                                <p className="text-zinc-400 text-sm mt-4 mb-8 font-light">
                                     Disponible pour l'investissement (après <span className="text-orange-400 font-bold">{Math.round(flowToSafety)}€</span> d'épargne de précaution).
                                 </p>
-                                
                                 <Link href="/projection">
-                                    <Button className="bg-emerald-500 hover:bg-emerald-400 text-black font-bold rounded-xl px-6 h-12 shadow-[0_0_20px_rgba(16,185,129,0.2)] hover:scale-105 transition-transform">
+                                    <Button className="bg-white text-black hover:bg-zinc-200 font-bold rounded-full px-8 h-12 shadow-lg hover:scale-105 transition-transform">
                                         Projeter cette richesse <ArrowRight size={18} className="ml-2"/>
                                     </Button>
                                 </Link>
                             </div>
                             
-                            {/* JAUGE TAUX EPARGNE GLOBAL (Reste sur le total pour montrer l'effort global) */}
-                            <div className="h-40 w-40 rounded-full border-8 border-zinc-800 flex items-center justify-center relative shrink-0">
-                                <div className="absolute inset-0 border-8 border-emerald-500 rounded-full" style={{ clipPath: `inset(0 ${100 - (income > 0 ? (totalSurplus/income)*100 : 0)}% 0 0)` }}></div>
+                            <div className="h-48 w-48 rounded-full border-8 border-zinc-900 bg-zinc-950 flex items-center justify-center relative shrink-0 shadow-2xl">
+                                <div className="absolute inset-0 rounded-full border-8 border-emerald-500" style={{ clipPath: `inset(0 ${100 - (income > 0 ? (totalSurplus/income)*100 : 0)}% 0 0)` }}></div>
                                 <div className="flex flex-col items-center">
-                                    <span className="text-3xl font-bold text-white">{income > 0 ? ((totalSurplus/income)*100).toFixed(0) : 0}%</span>
-                                    <span className="text-[10px] text-zinc-500 uppercase tracking-wider">Taux d'Épargne</span>
+                                    <span className="text-4xl font-black text-white">{income > 0 ? ((totalSurplus/income)*100).toFixed(0) : 0}%</span>
+                                    <span className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold mt-1">Taux d'Épargne</span>
                                 </div>
                             </div>
                         </div>
-                    </div>
-
-                    {/* CHART */}
-                    <div className="hidden md:block p-6 rounded-3xl bg-zinc-900/30 border border-zinc-800 h-[300px]">
-                        <div className="flex justify-between items-center mb-4">
-                            <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-2"><TrendingUp size={14}/> Évolution & Répartition</h3>
-                        </div>
-                        <ResponsiveContainer width="100%" height="85%">
-                            <BarChart data={historyData} barGap={4}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
-                                <XAxis dataKey="name" stroke="#52525b" fontSize={10} tickLine={false} axisLine={false} />
-                                <RechartsTooltip cursor={{fill: '#ffffff05'}} contentStyle={{ backgroundColor: '#09090b', borderColor: '#27272a', borderRadius: '12px', fontSize:'12px', color: '#fff' }} itemStyle={{ color: '#fff' }} />
-                                <Legend iconType="circle" wrapperStyle={{ paddingTop: '15px', fontSize: '12px' }} formatter={(value) => <span className="text-zinc-400 ml-1">{value}</span>} />
-                                <Bar dataKey="Revenus" fill="#e4e4e7" radius={[4, 4, 0, 0]} barSize={16} />
-                                <Bar dataKey="Besoins" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={16} />
-                                <Bar dataKey="Loisirs" fill="#eab308" radius={[4, 4, 0, 0]} barSize={16} />
-                                <Bar dataKey="Investi" fill="#10b981" radius={[4, 4, 0, 0]} barSize={16} />
-                            </BarChart>
-                        </ResponsiveContainer>
                     </div>
 
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                         
                         <div className="space-y-8">
                             
-                            {/* BESOINS */}
-                            <div className="space-y-4">
-                                <h3 className="font-bold text-blue-400 flex items-center gap-2"><Home size={18}/> Charges Fixes & Besoins</h3>
-                                <div className="flex gap-2 mb-2 p-2 bg-blue-500/5 rounded-xl border border-blue-500/10">
-                                    <Input placeholder="Loyer, Crédit..." value={newNeedName} onChange={(e) => setNewNeedName(e.target.value)} className="bg-transparent border-none text-white h-10 placeholder:text-zinc-600 focus-visible:ring-0" />
-                                    <div className="w-24 bg-black/40 rounded-lg flex items-center px-2 border border-zinc-800 relative">
-                                        <Input type="number" placeholder="0" value={newNeedAmount} onChange={(e) => setNewNeedAmount(e.target.value)} className="bg-transparent border-none text-white text-right h-10 font-bold p-0 pr-5 focus-visible:ring-0" />
-                                        <span className="text-zinc-500 text-sm absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none">€</span>
+                            {/* BESOINS (Card Glass Blue) */}
+                            <div className="p-8 rounded-[32px] bg-zinc-900/30 border border-blue-500/10 backdrop-blur-md">
+                                <h3 className="font-black text-blue-400 uppercase tracking-widest flex items-center gap-3 mb-6"><Home size={20}/> Charges Fixes & Besoins</h3>
+                                <div className="flex gap-3 mb-4 p-2 bg-blue-500/5 rounded-2xl border border-blue-500/10">
+                                    <Input placeholder="Loyer, Crédit..." value={newNeedName} onChange={(e) => setNewNeedName(e.target.value)} className="bg-transparent border-none text-white h-12 placeholder:text-zinc-600 focus-visible:ring-0 text-lg" />
+                                    <div className="w-32 bg-black/40 rounded-xl flex items-center px-3 border border-white/5 relative">
+                                        <Input type="number" placeholder="0" value={newNeedAmount} onChange={(e) => setNewNeedAmount(e.target.value)} className="bg-transparent border-none text-white text-right h-12 font-bold p-0 pr-6 focus-visible:ring-0 text-lg" />
+                                        <span className="text-zinc-500 text-sm absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">€</span>
                                     </div>
-                                    <Button onClick={addNeed} className="bg-blue-600 hover:bg-blue-500 text-white h-10 w-10 p-0 rounded-lg"><Plus size={20} /></Button>
+                                    <Button onClick={addNeed} className="bg-blue-600 hover:bg-blue-500 text-white h-12 w-12 p-0 rounded-xl"><Plus size={24} /></Button>
                                 </div>
-                                <div className="space-y-2">
+                                <div className="space-y-3">
                                     {needsList.map((item) => (
-                                        <div key={item.id} className="flex justify-between items-center p-2 bg-zinc-900/30 rounded-xl border border-zinc-800/30 border-l-4 border-l-blue-500">
-                                            <div className="pl-2"><p className="text-zinc-200 text-sm font-medium">{item.name}</p></div>
+                                        <div key={item.id} className="flex justify-between items-center p-3 bg-black/30 rounded-2xl border border-white/5 hover:border-blue-500/30 transition-colors">
+                                            <div className="pl-3"><p className="text-zinc-200 font-bold">{item.name}</p></div>
                                             <div className="flex items-center gap-2">
-                                                <div className="w-24 relative">
-                                                    <Input type="number" value={item.amount} onChange={(e) => updateAmount(item.id, e.target.value)} className="bg-transparent border-none text-right text-white font-bold h-8 p-0 pr-5 focus-visible:ring-0" />
-                                                    <span className="absolute right-0 top-1/2 -translate-y-1/2 text-zinc-500 text-xs pointer-events-none pr-1">€</span>
+                                                <div className="w-28 relative">
+                                                    <Input type="number" value={item.amount} onChange={(e) => updateAmount(item.id, e.target.value)} className="bg-transparent border-none text-right text-white font-bold h-10 p-0 pr-6 focus-visible:ring-0" />
+                                                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 text-xs pointer-events-none pr-1">€</span>
                                                 </div>
-                                                <button onClick={() => removeExpense(item.id)} className="text-zinc-600 hover:text-red-500 p-2"><Trash2 size={14}/></button>
+                                                <button onClick={() => removeExpense(item.id)} className="text-zinc-600 hover:text-red-500 p-2"><Trash2 size={16}/></button>
                                             </div>
                                         </div>
                                     ))}
                                 </div>
                             </div>
 
-                            {/* LOISIRS */}
-                            <div className="space-y-4">
-                                <h3 className="font-bold text-yellow-400 flex items-center gap-2"><Coffee size={18}/> Loisirs & Exceptionnel</h3>
-                                <div className="flex gap-2 mb-2 p-2 bg-yellow-500/5 rounded-xl border border-yellow-500/10">
-                                    <Input placeholder="Resto, Vacances..." value={newWantName} onChange={(e) => setNewWantName(e.target.value)} className="bg-transparent border-none text-white h-10 placeholder:text-zinc-600 focus-visible:ring-0" />
-                                    <div className="w-24 bg-black/40 rounded-lg flex items-center px-2 border border-zinc-800 relative">
-                                        <Input type="number" placeholder="0" value={newWantAmount} onChange={(e) => setNewWantAmount(e.target.value)} className="bg-transparent border-none text-white text-right h-10 font-bold p-0 pr-5 focus-visible:ring-0" />
-                                        <span className="text-zinc-500 text-sm absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none">€</span>
+                            {/* LOISIRS (Card Glass Yellow) */}
+                            <div className="p-8 rounded-[32px] bg-zinc-900/30 border border-yellow-500/10 backdrop-blur-md">
+                                <h3 className="font-black text-yellow-400 uppercase tracking-widest flex items-center gap-3 mb-6"><Coffee size={20}/> Loisirs & Plaisirs</h3>
+                                <div className="flex gap-3 mb-4 p-2 bg-yellow-500/5 rounded-2xl border border-yellow-500/10">
+                                    <Input placeholder="Resto, Vacances..." value={newWantName} onChange={(e) => setNewWantName(e.target.value)} className="bg-transparent border-none text-white h-12 placeholder:text-zinc-600 focus-visible:ring-0 text-lg" />
+                                    <div className="w-32 bg-black/40 rounded-xl flex items-center px-3 border border-white/5 relative">
+                                        <Input type="number" placeholder="0" value={newWantAmount} onChange={(e) => setNewWantAmount(e.target.value)} className="bg-transparent border-none text-white text-right h-12 font-bold p-0 pr-6 focus-visible:ring-0 text-lg" />
+                                        <span className="text-zinc-500 text-sm absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">€</span>
                                     </div>
-                                    <Button onClick={addWant} className="bg-yellow-600 hover:bg-yellow-500 text-white h-10 w-10 p-0 rounded-lg"><Plus size={20} /></Button>
+                                    <Button onClick={addWant} className="bg-yellow-600 hover:bg-yellow-500 text-white h-12 w-12 p-0 rounded-xl"><Plus size={24} /></Button>
                                 </div>
-                                <div className="space-y-2">
+                                <div className="space-y-3">
                                     {wantsList.map((item) => (
-                                        <div key={item.id} className="flex justify-between items-center p-2 bg-zinc-900/30 rounded-xl border border-zinc-800/30 border-l-4 border-l-yellow-500">
-                                            <div className="pl-2"><p className="text-zinc-200 text-sm font-medium">{item.name}</p></div>
+                                        <div key={item.id} className="flex justify-between items-center p-3 bg-black/30 rounded-2xl border border-white/5 hover:border-yellow-500/30 transition-colors">
+                                            <div className="pl-3"><p className="text-zinc-200 font-bold">{item.name}</p></div>
                                             <div className="flex items-center gap-2">
-                                                <div className="w-24 relative">
-                                                    <Input type="number" value={item.amount} onChange={(e) => updateAmount(item.id, e.target.value)} className="bg-transparent border-none text-right text-white font-bold h-8 p-0 pr-5 focus-visible:ring-0" />
-                                                    <span className="absolute right-0 top-1/2 -translate-y-1/2 text-zinc-500 text-xs pointer-events-none pr-1">€</span>
+                                                <div className="w-28 relative">
+                                                    <Input type="number" value={item.amount} onChange={(e) => updateAmount(item.id, e.target.value)} className="bg-transparent border-none text-right text-white font-bold h-10 p-0 pr-6 focus-visible:ring-0" />
+                                                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 text-xs pointer-events-none pr-1">€</span>
                                                 </div>
-                                                <button onClick={() => removeExpense(item.id)} className="text-zinc-600 hover:text-red-500 p-2"><Trash2 size={14}/></button>
+                                                <button onClick={() => removeExpense(item.id)} className="text-zinc-600 hover:text-red-500 p-2"><Trash2 size={16}/></button>
                                             </div>
                                         </div>
                                     ))}
@@ -308,31 +286,46 @@ export default function BudgetPage() {
                         </div>
 
                         {/* STRATEGIE */}
-                        <div className="space-y-6">
-                            <div className={`p-5 rounded-2xl border ${isSafe ? 'bg-emerald-950/20 border-emerald-500/20' : 'bg-orange-950/20 border-orange-500/20'}`}>
-                                <div className="flex justify-between mb-2">
-                                    <div className="flex items-center gap-2 font-bold text-sm text-white"><ShieldCheck size={16} className={isSafe ? "text-emerald-500" : "text-orange-500"}/> Matelas Sécurité</div>
-                                    <span className="text-xs text-zinc-500">Cible: {Math.round(safetyTarget)}€ (6 mois)</span>
+                        <div className="space-y-8">
+                            <div className={`p-8 rounded-[32px] border flex flex-col justify-center min-h-[200px] ${isSafe ? 'bg-emerald-950/20 border-emerald-500/20' : 'bg-orange-950/20 border-orange-500/20'}`}>
+                                <div className="flex justify-between mb-4">
+                                    <div className="flex items-center gap-3 font-bold text-sm text-white uppercase tracking-widest"><ShieldCheck size={20} className={isSafe ? "text-emerald-500" : "text-orange-500"}/> Matelas Sécurité</div>
+                                    <span className="text-xs text-zinc-500 font-mono">Cible: {Math.round(safetyTarget)}€ (6 mois)</span>
                                 </div>
-                                <div className="text-2xl font-bold text-white mb-2"><AnimatedNumber value={currentCash}/></div>
-                                <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
+                                <div className="text-5xl font-black text-white mb-6 tracking-tight"><AnimatedNumber value={currentCash}/> <span className="text-2xl text-zinc-600">€</span></div>
+                                <div className="h-3 bg-zinc-900 rounded-full overflow-hidden border border-white/5">
                                     <motion.div initial={{width:0}} animate={{width: `${Math.min(100, (currentCash/(safetyTarget || 1))*100)}%`}} className={`h-full ${isSafe ? 'bg-emerald-500':'bg-orange-500'}`} />
                                 </div>
-                                {!isSafe && <div className="mt-3 text-xs text-orange-300 flex gap-2"><AlertTriangle size={12}/> <span>Manque {Math.round(safetyGap)}€.</span></div>}
+                                {!isSafe && <div className="mt-4 text-xs text-orange-400 flex gap-2 font-bold bg-orange-500/10 p-3 rounded-xl border border-orange-500/20"><AlertTriangle size={14}/> <span>Attention : Il manque {Math.round(safetyGap)}€ pour être serein.</span></div>}
                             </div>
 
-                            <div className="p-6 rounded-2xl bg-zinc-900 border border-zinc-800">
-                                <h3 className="font-bold text-white text-sm mb-4">Répartition du Surplus ({Math.round(totalSurplus)}€)</h3>
+                            <div className="p-8 rounded-[32px] bg-zinc-900/40 border border-white/5 backdrop-blur-xl">
+                                <h3 className="font-black text-white text-sm uppercase tracking-widest mb-6">Répartition du Surplus ({Math.round(totalSurplus)}€)</h3>
                                 <input 
                                     type="range" min="0" max="100" step="10" 
                                     value={safetyAllocation} onChange={(e) => setSafetyAllocation(Number(e.target.value))} 
                                     disabled={isSafe}
-                                    className="w-full h-2 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-emerald-500 disabled:opacity-50"
+                                    className="w-full h-3 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-emerald-500 disabled:opacity-50"
                                 />
-                                <div className="flex justify-between mt-2 text-[10px] font-bold uppercase tracking-wider">
-                                    <span className="text-emerald-500">Investir {100-safetyAllocation}% ({Math.round(flowToInvest)}€)</span>
-                                    <span className={isSafe ? "text-zinc-600" : "text-orange-500"}>Sécuriser {safetyAllocation}% ({Math.round(flowToSafety)}€)</span>
+                                <div className="flex justify-between mt-4 text-[10px] font-black uppercase tracking-widest">
+                                    <div className="p-3 rounded-xl bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">Investir {100-safetyAllocation}% ({Math.round(flowToInvest)}€)</div>
+                                    <div className={`p-3 rounded-xl border ${isSafe ? "bg-zinc-800 text-zinc-600 border-zinc-700" : "bg-orange-500/10 text-orange-500 border-orange-500/20"}`}>Sécuriser {safetyAllocation}% ({Math.round(flowToSafety)}€)</div>
                                 </div>
+                            </div>
+
+                            {/* CHART HISTORY */}
+                            <div className="p-6 rounded-[32px] bg-zinc-900/40 border border-white/5 h-[250px]">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <BarChart data={historyData} barGap={4}>
+                                        <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
+                                        <XAxis dataKey="name" stroke="#52525b" fontSize={10} tickLine={false} axisLine={false} />
+                                        <RechartsTooltip cursor={{fill: '#ffffff05'}} contentStyle={{ backgroundColor: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(10px)', borderColor: '#333', borderRadius: '12px', fontSize:'12px', color: '#fff' }} itemStyle={{ color: '#fff' }} />
+                                        <Legend iconType="circle" wrapperStyle={{ fontSize: '10px', textTransform: 'uppercase', fontWeight: 'bold' }} />
+                                        <Bar dataKey="Revenus" fill="#e4e4e7" radius={[4, 4, 0, 0]} barSize={12} />
+                                        <Bar dataKey="Besoins" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={12} />
+                                        <Bar dataKey="Investi" fill="#10b981" radius={[4, 4, 0, 0]} barSize={12} />
+                                    </BarChart>
+                                </ResponsiveContainer>
                             </div>
                         </div>
                     </div>
