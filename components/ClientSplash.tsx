@@ -18,7 +18,7 @@ export default function ClientSplash() {
 
   return (
     <AnimatePresence>
-      {show && <SplashScreen />}
+      {show && <SplashScreen onComplete={() => setShow(false)} />}
     </AnimatePresence>
   );
 }

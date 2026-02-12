@@ -2,17 +2,22 @@
 
 import { motion, AnimatePresence } from "framer-motion";
 import { useEffect, useState } from "react";
-import { NexusLogo } from "./NexusLogo"; // On importe notre nouveau logo
+import { NexusLogo } from "./NexusLogo"; 
 
-export default function SplashScreen({ onComplete }: { onComplete: () => void }) {
+export default function SplashScreen({ onComplete }: { onComplete?: () => void }) {
   const [isVisible, setIsVisible] = useState(true);
 
   useEffect(() => {
-    // Durée totale de l'animation avant de laisser la main
+    // 1. On lance le timer pour faire disparaître le splash après 2,5s
     const timer = setTimeout(() => {
       setIsVisible(false);
-      setTimeout(onComplete, 500); // Laisse le temps au fade-out de finir
+      
+      // 2. On attend la fin de l'animation de sortie (500ms) avant d'appeler onComplete
+      if (onComplete) {
+        setTimeout(onComplete, 500);
+      }
     }, 2500);
+
     return () => clearTimeout(timer);
   }, [onComplete]);
 
@@ -21,6 +26,7 @@ export default function SplashScreen({ onComplete }: { onComplete: () => void })
       {isVisible && (
         <motion.div
           className="fixed inset-0 z-[9999] flex items-center justify-center bg-[#050505]"
+          initial={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.8, ease: "easeInOut" }}
         >
@@ -42,7 +48,7 @@ export default function SplashScreen({ onComplete }: { onComplete: () => void })
               <NexusLogo className="w-24 h-24 md:w-32 md:h-32" />
             </motion.div>
 
-            {/* Texte NEXUS qui se dévoile */}
+            {/* Texte NEXUS */}
             <motion.h1
               initial={{ opacity: 0, letterSpacing: "0.5em" }}
               animate={{ opacity: 1, letterSpacing: "0.2em" }}
@@ -52,7 +58,7 @@ export default function SplashScreen({ onComplete }: { onComplete: () => void })
               NEXUS
             </motion.h1>
             
-            {/* Barre de chargement fine */}
+            {/* Barre de chargement */}
             <motion.div 
                 initial={{ width: 0 }}
                 animate={{ width: 100 }}
