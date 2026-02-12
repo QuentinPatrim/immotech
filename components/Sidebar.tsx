@@ -12,7 +12,7 @@ import {
   BrainCircuit,
   LogOut 
 } from "lucide-react";
-import { NexusLogo } from "@/components/NexusLogo"; // <--- L'IMPORT IMPORTANT
+import { NexusLogo } from "@/components/NexusLogo"; // Assure-toi que ce fichier existe
 import { supabase } from "@/lib/supabaseClient";
 
 const menuItems = [
@@ -36,19 +36,21 @@ export default function Sidebar() {
   return (
     <aside className="fixed left-0 top-0 z-40 h-screen w-64 border-r border-white/5 bg-[#050505] hidden md:flex flex-col">
       
-      {/* --- HEADER LOGO --- */}
-      <div className="flex items-center gap-3 px-6 py-8 mb-6">
-        {/* Le Logo Vectoriel Animé */}
-        <NexusLogo className="w-10 h-10" />
+      {/* --- HEADER IDENTITÉ (Logo + Nom) --- */}
+      <div className="flex items-center gap-4 px-8 py-10 mb-2">
+        {/* Le Logo Graphique (L'emblème) */}
+        <div className="shrink-0">
+            <NexusLogo className="w-9 h-9" />
+        </div>
         
-        {/* Le Texte de la Marque */}
-        <span className="text-2xl font-black text-white tracking-widest uppercase">
-          Nexus
+        {/* Le Nom de la Marque (Typographie pure) */}
+        <span className="text-3xl font-black text-white tracking-tighter uppercase font-sans">
+          NEXUS
         </span>
       </div>
 
       {/* --- NAVIGATION --- */}
-      <nav className="flex-1 px-4 space-y-2 overflow-y-auto">
+      <nav className="flex-1 px-4 space-y-2 overflow-y-auto mt-4">
         {menuItems.map((item) => {
           const isActive = pathname === item.href;
           return (
@@ -72,7 +74,7 @@ export default function Sidebar() {
           );
         })}
 
-        {/* LIEN ANALYSE IA (Spécial) */}
+        {/* LIEN ANALYSE IA (Mise en avant) */}
         <Link
           href="/analyses"
           className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 mt-6 group ${
@@ -100,11 +102,11 @@ export default function Sidebar() {
           <LogOut size={20} className="group-hover:translate-x-1 transition-transform" />
           <span className="font-bold text-sm">Déconnexion</span>
         </button>
-        <div className="mt-4 px-4">
-            <div className="flex items-center gap-2 opacity-30">
-                <div className="h-6 w-6 rounded-full border border-white flex items-center justify-center text-[10px] text-white">N</div>
-                <span className="text-[10px] text-zinc-500">Nexus App</span>
-            </div>
+        
+        {/* Version App en petit en bas */}
+        <div className="mt-4 px-4 flex justify-between items-center opacity-30">
+            <span className="text-[10px] text-zinc-500">v1.0 • Beta</span>
+            <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></div>
         </div>
       </div>
     </aside>
