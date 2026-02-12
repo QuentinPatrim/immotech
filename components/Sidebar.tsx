@@ -81,7 +81,7 @@ export default function Sidebar() {
         </div>
 
         <nav className="flex-1 px-4 space-y-2 overflow-y-auto mt-4">
-          {[...menuItems, { name: "Réglages", href: "/reglages", icon: Settings }].map((item) => {
+          {[...menuItems, { name: "Réglages", href: "/parametres", icon: Settings }].map((item) => {
             const isActive = pathname === item.href;
             return (
               <Link

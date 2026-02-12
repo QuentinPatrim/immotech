@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import Sidebar from "@/components/Sidebar"; // <--- SIDEBAR PRÉSENTE
+import Sidebar from "@/components/Sidebar"; 
 import { motion, AnimatePresence } from "framer-motion";
 import { Wallet, Building, Bitcoin, Landmark, Plus, Trash2, TrendingUp, PieChart as PieIcon, ArrowUpRight, ShieldCheck, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -140,13 +140,15 @@ export default function PatrimoinePage() {
             {/* VALEUR NETTE */}
             <div className="lg:col-span-2 relative overflow-hidden rounded-[32px] border border-white/5 bg-zinc-900/40 backdrop-blur-xl p-10 flex flex-col justify-center min-h-[240px] shadow-2xl group hover:border-emerald-500/20 transition-all">
                 <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-500/10 blur-[120px] rounded-full group-hover:bg-emerald-500/20 transition-all duration-700"></div>
-                <div className="relative z-10 flex flex-col md:flex-row justify-between items-end gap-6">
+                
+                {/* CORRECTION ALIGNEMENT ICI : items-start sur mobile, md:items-end sur Desktop */}
+                <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
                     <div>
                         <p className="text-zinc-400 text-xs font-bold uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
                             <Wallet size={16} className="text-emerald-500"/> Valeur Nette
                         </p>
                         <div className="text-6xl lg:text-8xl font-black text-white tracking-tighter drop-shadow-2xl">
-                            <AnimatedNumber value={netWorth} /> {/* SANS DOUBLE € */}
+                            <AnimatedNumber value={netWorth} />
                         </div>
                     </div>
                     <div className="bg-black/40 backdrop-blur-md px-6 py-3 rounded-2xl flex items-center gap-4 border border-white/5">
@@ -165,7 +167,7 @@ export default function PatrimoinePage() {
                     <ShieldCheck size={18}/> Épargne & Liquidité
                 </div>
                 <div className="text-5xl font-black text-white mb-2">
-                    <AnimatedNumber value={liquidCash} /> {/* SANS DOUBLE € */}
+                    <AnimatedNumber value={liquidCash} />
                 </div>
                 <div className="mt-auto pt-6 border-t border-yellow-500/10">
                     <p className="text-xs text-zinc-400 leading-relaxed font-light">
@@ -175,9 +177,6 @@ export default function PatrimoinePage() {
             </div>
           </div>
 
-          {/* ... La suite du fichier reste identique ... */}
-          {/* Je le remets complet pour le copier coller */}
-          
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
             
             {/* FORMULAIRE AJOUT */}

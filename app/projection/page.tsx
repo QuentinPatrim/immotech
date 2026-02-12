@@ -14,12 +14,15 @@ import { supabase } from "@/lib/supabaseClient";
 
 const formatEuro = (val: number) => new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(val);
 
+// Helper : Convertit la saisie (texte ou nombre) en nombre pur pour les calculs
+const getVal = (v: number | string) => (typeof v === 'string' ? parseFloat(v) : v) || 0;
+
 export default function ProjectionPage() {
   const [loading, setLoading] = useState(true);
   
-  // --- PARAMÈTRES UTILISATEUR ---
-  const [initialCapital, setInitialCapital] = useState(0); 
-  const [monthlyContribution, setMonthlyContribution] = useState(0);
+  // --- PARAMÈTRES UTILISATEUR (modif: string | number pour gérer le champ vide) ---
+  const [initialCapital, setInitialCapital] = useState<number | string>(0); 
+  const [monthlyContribution, setMonthlyContribution] = useState<number | string>(0);
   const [monthlyExpenses, setMonthlyExpenses] = useState(0); 
   
   // --- PARAMÈTRES SIMULATION ---
@@ -69,10 +72,14 @@ export default function ProjectionPage() {
   useEffect(() => {
       if (loading) return;
 
+      // Conversion sécurisée pour le calcul
+      const startCap = getVal(initialCapital);
+      const monthlyAdd = getVal(monthlyContribution);
+
       const data = [];
-      let currentPEA = initialCapital;
-      let currentCTO = initialCapital;
-      let totalInvested = initialCapital;
+      let currentPEA = startCap;
+      let currentCTO = startCap;
+      let totalInvested = startCap;
       
       // Taux mensuels
       const growthRate = stockGrowth / 100 / 12; // Croissance intrinsèque
@@ -115,14 +122,14 @@ export default function ProjectionPage() {
           // Simulation Mensuelle
           for (let m = 0; m < 12; m++) {
               // PEA : Le dividende est réinvesti BRUT (100%)
-              currentPEA = currentPEA * (1 + growthRate + divRateMonthly) + monthlyContribution;
+              currentPEA = currentPEA * (1 + growthRate + divRateMonthly) + monthlyAdd;
               
               // CTO : Le dividende est taxé à 30% AVANT réinvestissement
               // La croissance (growthRate) n'est pas taxée tant qu'on ne vend pas
               const dividendNet = divRateMonthly * (1 - 0.30); 
-              currentCTO = currentCTO * (1 + growthRate + dividendNet) + monthlyContribution;
+              currentCTO = currentCTO * (1 + growthRate + dividendNet) + monthlyAdd;
 
-              if(year < years) totalInvested += monthlyContribution;
+              if(year < years) totalInvested += monthlyAdd;
           }
       }
 
@@ -137,7 +144,7 @@ export default function ProjectionPage() {
 
   }, [initialCapital, monthlyContribution, monthlyExpenses, stockGrowth, dividendYield, years, isDividendStrategy, loading]);
 
-  if (loading) return <div className="min-h-screen bg-black flex items-center justify-center"><Loader2 className="animate-spin text-emerald-500 w-10 h-10"/></div>;
+  if (loading) return <div className="min-h-screen bg-[#050505] flex items-center justify-center"><Loader2 className="animate-spin text-emerald-500 w-10 h-10"/></div>;
 
   return (
     <div className="min-h-screen bg-[#050505] text-zinc-100 font-sans pb-24 md:pb-8 selection:bg-emerald-500/30 selection:text-emerald-200">
@@ -173,7 +180,12 @@ export default function ProjectionPage() {
                           <div className="space-y-2 group">
                               <label className="text-[10px] uppercase font-bold text-zinc-500 group-hover:text-white transition-colors">Capital Départ</label>
                               <div className="relative">
-                                  <Input type="number" value={initialCapital} onChange={(e) => setInitialCapital(parseFloat(e.target.value) || 0)} className="bg-black/50 border-white/10 text-white font-mono text-lg h-14 pr-10 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all rounded-xl"/>
+                                  <Input 
+                                    type="number" 
+                                    value={initialCapital} 
+                                    onChange={(e) => setInitialCapital(e.target.value)} 
+                                    className="bg-black/50 border-white/10 text-white font-mono text-lg h-14 pr-10 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all rounded-xl"
+                                  />
                                   <span className="absolute right-4 top-4 text-zinc-600 font-mono">€</span>
                               </div>
                           </div>
@@ -181,7 +193,12 @@ export default function ProjectionPage() {
                           <div className="space-y-2 group">
                               <label className="text-[10px] uppercase font-bold text-zinc-500 group-hover:text-white transition-colors">Épargne Mensuelle</label>
                               <div className="relative">
-                                  <Input type="number" value={monthlyContribution} onChange={(e) => setMonthlyContribution(parseFloat(e.target.value) || 0)} className="bg-black/50 border-white/10 text-white font-mono text-lg h-14 pr-14 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all rounded-xl"/>
+                                  <Input 
+                                    type="number" 
+                                    value={monthlyContribution} 
+                                    onChange={(e) => setMonthlyContribution(e.target.value)} 
+                                    className="bg-black/50 border-white/10 text-white font-mono text-lg h-14 pr-14 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all rounded-xl"
+                                  />
                                   <span className="absolute right-4 top-4 text-zinc-600 font-mono">€/m</span>
                               </div>
                           </div>
