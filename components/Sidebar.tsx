@@ -8,9 +8,11 @@ import {
   PieChart, 
   TrendingUp, 
   Calculator, 
-  Settings,
-  BrainCircuit
+  Settings, 
+  BrainCircuit,
+  LogOut
 } from "lucide-react";
+import { NexusLogo } from "@/components/NexusLogo";
 
 export default function Sidebar() {
   const pathname = usePathname();
