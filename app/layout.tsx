@@ -1,37 +1,43 @@
-import type { Metadata, Viewport } from "next";
-import { Inter } from "next/font/google";
+"use client";
+
+import { useState, useEffect } from "react";
 import "./globals.css";
-import ClientLayout from "@/components/ClientLayout"; // Important : On importe le gestionnaire d'anim
+import SplashScreen from "@/components/SplashScreen";
+import Sidebar from "@/components/Sidebar"; // Si tu utilises la sidebar ici
 
-const inter = Inter({ subsets: ["latin"] });
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  const [loading, setLoading] = useState(true);
 
-export const metadata: Metadata = {
-  title: "ImmoTech",
-  description: "Gestion de patrimoine personnel",
-  manifest: "/manifest.json",
-};
+  // On simule un petit délai ou on attend que l'animation finisse
+  const handleSplashComplete = () => {
+    setLoading(false);
+  };
 
-export const viewport: Viewport = {
-  width: "device-width",
-  initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
-  themeColor: "#000000",
-};
-
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
   return (
-    <html lang="fr">
-      <body className={`${inter.className} bg-black text-zinc-100 overflow-x-hidden`}>
-        {/* On enveloppe l'application avec ClientLayout qui gère le Splash Screen */}
-        <ClientLayout>
-          {children}
-        </ClientLayout>
+    <html lang="fr" className="dark">
+      <body className="bg-[#050505] text-white overflow-x-hidden">
+        
+        {/* L'écran de démarrage se superpose à tout */}
+        {loading && <SplashScreen onComplete={handleSplashComplete} />}
+
+        {/* Le contenu de l'app n'apparait (visuellement) qu'après, ou en dessous */}
+        <div className={`transition-opacity duration-700 ${loading ? 'opacity-0' : 'opacity-100'}`}>
+            {/* Ici tu mets ton Layout habituel */}
+            <div className="flex">
+                {/* On cache la sidebar pendant le loading si nécessaire, ou on la laisse apparaitre en fade-in */}
+               {!loading && <SidebarWrapper />} 
+               <div className="flex-1">
+                   {children}
+               </div>
+            </div>
+        </div>
       </body>
     </html>
   );
+}
+
+// Petit wrapper pour éviter les erreurs d'hydratation sur la sidebar
+const SidebarWrapper = () => {
+    // Logique pour afficher la sidebar
+    return null; // À remplacer par <Sidebar /> si c'est ton composant
 }
