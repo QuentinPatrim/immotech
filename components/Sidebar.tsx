@@ -35,8 +35,7 @@ export default function Sidebar() {
   return (
     <>
       {/* ==============================================================
-          1. VERSION MOBILE : JUSTE LA BARRE DU BAS (Tab Bar)
-          -> On a supprimé le Header fixe du haut
+          1. VERSION MOBILE : BARRE DU BAS (Tab Bar)
          ============================================================== */}
       
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-[#050505]/90 backdrop-blur-xl border-t border-white/10 pb-[env(safe-area-inset-bottom)] px-2">
@@ -59,10 +58,11 @@ export default function Sidebar() {
             );
           })}
           
+          {/* CORRECTION ICI : href="/parametres" au lieu de "/reglages" */}
           <Link
-             href="/reglages"
+             href="/parametres"
              className={`flex flex-col items-center justify-center w-full h-full gap-1 active:scale-95 ${
-                pathname === "/reglages" ? "text-emerald-400" : "text-zinc-500"
+                pathname === "/parametres" ? "text-emerald-400" : "text-zinc-500"
              }`}
           >
              <Settings size={20} />
@@ -72,7 +72,7 @@ export default function Sidebar() {
       </nav>
 
       {/* ==============================================================
-          2. VERSION PC : SIDEBAR CLASSIQUE (Inchangée)
+          2. VERSION PC : SIDEBAR CLASSIQUE
          ============================================================== */}
       <aside className="fixed left-0 top-0 z-40 h-screen w-64 border-r border-white/5 bg-[#050505] hidden md:flex flex-col">
         <div className="flex items-center gap-4 px-8 py-10 mb-2">
@@ -81,6 +81,7 @@ export default function Sidebar() {
         </div>
 
         <nav className="flex-1 px-4 space-y-2 overflow-y-auto mt-4">
+          {/* Le lien PC pointait déjà vers /parametres, on le garde */}
           {[...menuItems, { name: "Réglages", href: "/parametres", icon: Settings }].map((item) => {
             const isActive = pathname === item.href;
             return (
