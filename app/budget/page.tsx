@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Sidebar from "@/components/Sidebar";
 import { motion } from "framer-motion";
 import { BarChart, Bar, XAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Legend } from "recharts";
-import { Plus, Trash2, Home, Target, ShieldCheck, Loader2, ChevronLeft, ChevronRight, Save, TrendingUp, AlertTriangle, Coffee, ArrowRight, Wallet } from "lucide-react";
+import { Plus, Trash2, Home, Target, ShieldCheck, Loader2, ChevronLeft, ChevronRight, Save, AlertTriangle, Coffee, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { triggerHaptic } from "@/lib/haptics";
@@ -19,6 +19,8 @@ const formatMonth = (date: Date) => {
 export default function BudgetPage() {
     const [selectedDate, setSelectedDate] = useState(new Date()); 
     const [isExistingMonth, setIsExistingMonth] = useState(false); 
+    
+    // Modification: income peut être 0 sans être NaN
     const [income, setIncome] = useState(0);
     const [expenses, setExpenses] = useState<{id: string, name: string, amount: number, category: string}[]>([]);
     
@@ -44,7 +46,7 @@ export default function BudgetPage() {
         const user = session.user;
         const startOfMonth = new Date(Date.UTC(date.getFullYear(), date.getMonth(), 1)).toISOString().split('T')[0];
 
-        // 1. Get Profile (Cash)
+        // 1. Récupérer le Cash actuel (Profil)
         const { data: profile } = await supabase.from('profiles').select('budget_json, assets_json').eq('id', user.id).single();
         if (profile && Array.isArray(profile.assets_json)) {
             const cash = (profile.assets_json as any[])
@@ -53,19 +55,28 @@ export default function BudgetPage() {
             setCurrentCash(cash);
         }
 
-        // 2. Get History
+        // 2. Vérifier si ce mois a déjà un historique enregistré
         const { data: history } = await supabase.from('monthly_history').select('*').eq('user_id', user.id).eq('month', startOfMonth).maybeSingle();
 
         if (history) {
+            // C'est un vieux mois : on charge tout tel quel
             setIsExistingMonth(true);
             setIncome(history.income || 0);
             if (history.details_json && Array.isArray(history.details_json)) setExpenses(history.details_json);
         } else {
+            // C'est un nouveau mois : on charge le "Squelette" depuis le profil
             setIsExistingMonth(false);
             if (profile && profile.budget_json) {
                 const b = profile.budget_json as any;
                 setIncome(Number(b.income) || 0);
+                
+                // IMPORTANT : Si le profil a bien été sauvegardé avec la nouvelle logique, 
+                // il ne contient QUE les besoins.
                 if (Array.isArray(b.details)) setExpenses(b.details);
+            } else {
+                // Pas de profil, on part de zéro
+                setIncome(0);
+                setExpenses([]);
             }
         }
         fetchHistoryGraph(user.id);
@@ -95,8 +106,10 @@ export default function BudgetPage() {
         setSelectedDate(newDate);
     };
 
-    const totalExp = expenses.reduce((acc, i) => acc + i.amount, 0);
-    const totalSurplus = Math.max(0, income - totalExp); 
+    // Calculs sécurisés (évite NaN)
+    const safeIncome = isNaN(income) ? 0 : income;
+    const totalExp = expenses.reduce((acc, i) => acc + (isNaN(i.amount) ? 0 : i.amount), 0);
+    const totalSurplus = Math.max(0, safeIncome - totalExp); 
     
     const safetyTarget = totalExp * 6;
     const safetyGap = Math.max(0, safetyTarget - currentCash);
@@ -106,16 +119,18 @@ export default function BudgetPage() {
     const flowToSafety = totalSurplus * effectiveSafetyRate;
     const flowToInvest = totalSurplus - flowToSafety; 
 
+    // --- FONCTION DE SAUVEGARDE MODIFIÉE ---
     const saveCurrentMonth = async () => {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
         setLoading(true);
         const saveDate = new Date(Date.UTC(selectedDate.getFullYear(), selectedDate.getMonth(), 1)).toISOString().split('T')[0];
 
+        // 1. On sauvegarde l'historique complet pour ce mois précis (Besoins + Envies)
         const { error } = await supabase.from('monthly_history').upsert({
             user_id: user.id, 
             month: saveDate, 
-            income: income, 
+            income: safeIncome, 
             expenses: totalExp,
             invested: flowToInvest,
             saved: flowToSafety,
@@ -125,31 +140,80 @@ export default function BudgetPage() {
         if (!error) {
             triggerHaptic("success");
             setIsExistingMonth(true);
+            
+            // 2. MISE A JOUR DU PROFIL (TEMPLATE)
+            // On ne met à jour le profil que si on modifie le mois en cours ou un mois futur.
+            // On ne veut pas qu'une modification sur un vieux mois (ex: janvier 2020) change nos charges actuelles.
             const now = new Date();
-            if (now.getMonth() === selectedDate.getMonth() && now.getFullYear() === selectedDate.getFullYear()) {
-                 await supabase.from('profiles').update({ budget_json: { income: income, expenses: totalExp, details: expenses }}).eq('id', user.id);
+            const startOfCurrentMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+            
+            if (selectedDate >= startOfCurrentMonth) {
+                 
+                 // FILTRE MAGIQUE : On ne garde que les BESOINS pour le futur
+                 const recurringExpenses = expenses.filter(e => e.category === 'BESOIN');
+                 const recurringTotal = recurringExpenses.reduce((acc, item) => acc + item.amount, 0);
+
+                 await supabase.from('profiles').update({ 
+                    budget_json: { 
+                        income: safeIncome, 
+                        expenses: recurringTotal, 
+                        details: recurringExpenses // Adieu les loisirs, à bientôt les charges fixes
+                    }
+                 }).eq('id', user.id);
             }
+            
             fetchHistoryGraph(user.id);
         }
         setLoading(false);
     };
 
+    // --- GESTION DES INPUTS SANS BUG NaN ---
+    // Cette fonction permet de vider l'input ("") tout en mettant 0 dans le state
+    const handleAmountChange = (val: string, setter: (v: any) => void) => {
+        if (val === "") {
+            setter(""); // Visuellement vide
+            return;
+        }
+        const num = parseFloat(val);
+        if (!isNaN(num)) {
+            setter(num);
+        }
+    };
+
+    // Pour l'income principal
+    const handleIncomeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const val = e.target.value;
+        if (val === "") {
+            setIncome(0); // 0 pour les calculs
+        } else {
+            const num = parseFloat(val);
+            if (!isNaN(num)) setIncome(num);
+        }
+    };
+
     const addNeed = () => {
         if (!newNeedName || !newNeedAmount) return;
-        const val = parseFloat(newNeedAmount); if (isNaN(val)) return;
+        const val = parseFloat(newNeedAmount); 
+        if (isNaN(val)) return;
         setExpenses([...expenses, { id: Date.now().toString(), name: newNeedName, amount: val, category: "BESOIN" }]);
         setNewNeedName(""); setNewNeedAmount("");
     };
+    
     const addWant = () => {
         if (!newWantName || !newWantAmount) return;
-        const val = parseFloat(newWantAmount); if (isNaN(val)) return;
+        const val = parseFloat(newWantAmount); 
+        if (isNaN(val)) return;
         setExpenses([...expenses, { id: Date.now().toString(), name: newWantName, amount: val, category: "ENVIE" }]);
         setNewWantName(""); setNewWantAmount("");
     };
+
     const updateAmount = (id: string, newAmount: string) => {
-        const val = parseFloat(newAmount); const safeVal = isNaN(val) ? 0 : val;
+        // On accepte la string vide pour l'UX, mais on stocke 0 si vide
+        const val = newAmount === "" ? 0 : parseFloat(newAmount);
+        const safeVal = isNaN(val) ? 0 : val;
         setExpenses(expenses.map(e => e.id === id ? { ...e, amount: safeVal } : e));
     };
+
     const removeExpense = (id: string) => setExpenses(expenses.filter(e => e.id !== id));
 
     const needsList = expenses.filter(e => e.category === 'BESOIN');
@@ -189,7 +253,13 @@ export default function BudgetPage() {
                             <div className="flex flex-col items-end">
                                 <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest mb-1">Revenus du mois</span>
                                 <div className="flex items-center gap-2 bg-black/50 px-4 py-2 rounded-xl border border-white/10 relative">
-                                    <Input type="number" value={income || ""} onChange={(e) => setIncome(parseFloat(e.target.value))} className="h-10 w-32 bg-transparent border-none text-right text-2xl font-black text-white p-0 pr-6 focus-visible:ring-0" />
+                                    {/* FIX INPUT REVENU : Utilisation de income directement ou "" si 0 pour UX */}
+                                    <Input 
+                                        type="number" 
+                                        value={income === 0 ? "" : income} 
+                                        onChange={handleIncomeChange} 
+                                        className="h-10 w-32 bg-transparent border-none text-right text-2xl font-black text-white p-0 pr-6 focus-visible:ring-0" 
+                                    />
                                     <span className="text-zinc-500 absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-lg">€</span>
                                 </div>
                             </div>
@@ -204,10 +274,11 @@ export default function BudgetPage() {
                             <div className="flex-1">
                                 <p className="text-emerald-500 font-bold text-xs uppercase tracking-[0.2em] flex items-center justify-center md:justify-start gap-2 mb-4"><Target size={16}/> Capacité d'Investissement Nette</p>
                                 <div className="text-7xl md:text-9xl font-black text-white tracking-tighter drop-shadow-2xl">
-                                    <AnimatedNumber value={flowToInvest} />
+                                    {/* Protection contre NaN dans l'affichage */}
+                                    <AnimatedNumber value={isNaN(flowToInvest) ? 0 : flowToInvest} />
                                 </div>
                                 <p className="text-zinc-400 text-sm mt-4 mb-8 font-light">
-                                    Disponible pour l'investissement (après <span className="text-orange-400 font-bold">{Math.round(flowToSafety)}€</span> d'épargne de précaution).
+                                    Disponible pour l'investissement (après <span className="text-orange-400 font-bold">{Math.round(isNaN(flowToSafety) ? 0 : flowToSafety)}€</span> d'épargne de précaution).
                                 </p>
                                 <Link href="/projection">
                                     <Button className="bg-white text-black hover:bg-zinc-200 font-bold rounded-full px-8 h-12 shadow-lg hover:scale-105 transition-transform">
@@ -217,9 +288,9 @@ export default function BudgetPage() {
                             </div>
                             
                             <div className="h-48 w-48 rounded-full border-8 border-zinc-900 bg-zinc-950 flex items-center justify-center relative shrink-0 shadow-2xl">
-                                <div className="absolute inset-0 rounded-full border-8 border-emerald-500" style={{ clipPath: `inset(0 ${100 - (income > 0 ? (totalSurplus/income)*100 : 0)}% 0 0)` }}></div>
+                                <div className="absolute inset-0 rounded-full border-8 border-emerald-500" style={{ clipPath: `inset(0 ${100 - (safeIncome > 0 ? (totalSurplus/safeIncome)*100 : 0)}% 0 0)` }}></div>
                                 <div className="flex flex-col items-center">
-                                    <span className="text-4xl font-black text-white">{income > 0 ? ((totalSurplus/income)*100).toFixed(0) : 0}%</span>
+                                    <span className="text-4xl font-black text-white">{safeIncome > 0 ? ((totalSurplus/safeIncome)*100).toFixed(0) : 0}%</span>
                                     <span className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold mt-1">Taux d'Épargne</span>
                                 </div>
                             </div>
@@ -247,7 +318,8 @@ export default function BudgetPage() {
                                             <div className="pl-3"><p className="text-zinc-200 font-bold">{item.name}</p></div>
                                             <div className="flex items-center gap-2">
                                                 <div className="w-28 relative">
-                                                    <Input type="number" value={item.amount} onChange={(e) => updateAmount(item.id, e.target.value)} className="bg-transparent border-none text-right text-white font-bold h-10 p-0 pr-6 focus-visible:ring-0" />
+                                                    {/* FIX INPUT : on autorise le vide */}
+                                                    <Input type="number" value={item.amount === 0 ? "" : item.amount} onChange={(e) => updateAmount(item.id, e.target.value)} className="bg-transparent border-none text-right text-white font-bold h-10 p-0 pr-6 focus-visible:ring-0" />
                                                     <span className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 text-xs pointer-events-none pr-1">€</span>
                                                 </div>
                                                 <button onClick={() => removeExpense(item.id)} className="text-zinc-600 hover:text-red-500 p-2"><Trash2 size={16}/></button>
@@ -274,7 +346,8 @@ export default function BudgetPage() {
                                             <div className="pl-3"><p className="text-zinc-200 font-bold">{item.name}</p></div>
                                             <div className="flex items-center gap-2">
                                                 <div className="w-28 relative">
-                                                    <Input type="number" value={item.amount} onChange={(e) => updateAmount(item.id, e.target.value)} className="bg-transparent border-none text-right text-white font-bold h-10 p-0 pr-6 focus-visible:ring-0" />
+                                                    {/* FIX INPUT : on autorise le vide */}
+                                                    <Input type="number" value={item.amount === 0 ? "" : item.amount} onChange={(e) => updateAmount(item.id, e.target.value)} className="bg-transparent border-none text-right text-white font-bold h-10 p-0 pr-6 focus-visible:ring-0" />
                                                     <span className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 text-xs pointer-events-none pr-1">€</span>
                                                 </div>
                                                 <button onClick={() => removeExpense(item.id)} className="text-zinc-600 hover:text-red-500 p-2"><Trash2 size={16}/></button>

@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Sidebar from "@/components/Sidebar";
 import { motion, AnimatePresence } from "framer-motion";
-import { Calculator, Home, Building, Wallet, Landmark, CheckCircle, XCircle, PieChart as PieIcon, ArrowRight, RefreshCw, Layers, Percent, Euro } from "lucide-react";
+import { Calculator, Home, Building, Wallet, Landmark, CheckCircle, XCircle, PieChart as PieIcon, ArrowRight, RefreshCw, Layers, Percent, Euro, PiggyBank } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
@@ -13,7 +13,6 @@ import AnimatedNumber from "@/components/AnimatedNumber";
 const formatEuro = (val: number) => new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(val);
 
 export default function SimulateurPage() {
-  // FIX: DÉMARRAGE SUR "CAPACITE" PAR DÉFAUT
   const [mode, setMode] = useState<"CAPACITE" | "PROJET">("CAPACITE");
   
   // --- STATE: CAPACITÉ ---
@@ -21,59 +20,73 @@ export default function SimulateurPage() {
   const [credits, setCredits] = useState(0);
   const [duration, setDuration] = useState(25);
   const [rate, setRate] = useState(3.8);
+  const [apportCapacity, setApportCapacity] = useState(30000); // Apport pour la capacité
   const [maxLoan, setMaxLoan] = useState(0);
   const [maxMonthly, setMaxMonthly] = useState(0);
+  const [totalEnvelope, setTotalEnvelope] = useState(0); // Total (Emprunt + Apport)
 
   // --- STATE: PROJET ---
   const [price, setPrice] = useState(200000);
   const [works, setWorks] = useState(0);
   const [apport, setApport] = useState(20000);
   const [notaryRate, setNotaryRate] = useState(8); 
+
   const [rent, setRent] = useState(1200);
   const [charges, setCharges] = useState(100);
   const [tax, setTax] = useState(800); 
 
-  // Résultats
+  // Résultats Projet
   const [cashflow, setCashflow] = useState(0);
   const [yieldNet, setYieldNet] = useState(0);
   const [monthlyPayment, setMonthlyPayment] = useState(0);
   const [totalCost, setTotalCost] = useState(0);
   const [notaryFees, setNotaryFees] = useState(0);
 
-  // --- CALCULS ---
+  // --- CALCULS CAPACITÉ ---
   useEffect(() => {
-    // CAPACITÉ
     const debtRatio = 0.35; 
     const availableIncome = (revenue * debtRatio) - credits;
     const monthlyRate = rate / 100 / 12;
     const months = duration * 12;
     let capacity = 0;
+    
     if (availableIncome > 0) {
         capacity = availableIncome * (1 - Math.pow(1 + monthlyRate, -months)) / monthlyRate;
     }
-    setMaxLoan(Math.max(0, Math.round(capacity)));
+    
+    const calculatedMaxLoan = Math.max(0, Math.round(capacity));
+    setMaxLoan(calculatedMaxLoan);
     setMaxMonthly(Math.max(0, Math.round(availableIncome)));
+    setTotalEnvelope(calculatedMaxLoan + apportCapacity); // On ajoute l'apport
 
-    // PROJET
+  }, [revenue, credits, duration, rate, apportCapacity]);
+
+  // --- CALCULS PROJET ---
+  useEffect(() => {
     const notFees = price * (notaryRate / 100);
     setNotaryFees(notFees);
     const total = price + works + notFees;
     setTotalCost(total);
-
+    
+    // Calcul Mensualité Crédit
+    const monthlyRate = rate / 100 / 12;
+    const months = duration * 12;
     const loanAmount = Math.max(0, total - apport);
+    
     let mensu = 0;
     if (loanAmount > 0) {
         mensu = loanAmount * (monthlyRate / (1 - Math.pow(1 + monthlyRate, -months)));
     }
     setMonthlyPayment(mensu);
 
+    // Calcul Cashflow & Rentabilité
     const totalExpenses = mensu + charges + (tax / 12);
     setCashflow(rent - totalExpenses);
 
     const netIncomeYear = (rent * 12) - (charges * 12) - tax;
     setYieldNet(total > 0 ? (netIncomeYear / total) * 100 : 0);
 
-  }, [revenue, credits, duration, rate, price, works, apport, notaryRate, rent, charges, tax]);
+  }, [price, works, apport, notaryRate, rent, charges, tax, duration, rate]);
 
   const dataCost = [
     { name: 'Prix Net', value: price, color: '#3b82f6' },
@@ -92,8 +105,7 @@ export default function SimulateurPage() {
         
         <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} className="max-w-[1800px] mx-auto space-y-12 relative z-10">
           
-          {/* HEADER & SWITCHER - CORRECTION ALIGNEMENT MOBILE */}
-          {/* Correction ici : items-start (gauche) sur mobile, md:items-end (bas/droite) sur PC */}
+          {/* HEADER */}
           <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-8 pl-2 border-l-4 border-blue-600 py-2">
             <div>
               <h1 className="text-4xl md:text-5xl font-black text-white tracking-tight uppercase">
@@ -143,6 +155,14 @@ export default function SimulateurPage() {
                                     <span className="absolute right-6 top-1/2 -translate-y-1/2 text-zinc-600 font-bold group-hover:text-indigo-500 transition-colors">€</span>
                                 </div>
                             </div>
+                            {/* INPUT APPORT POUR CAPACITÉ */}
+                            <div className="space-y-3 pt-4 border-t border-white/5">
+                                <label className="text-[10px] uppercase font-bold text-emerald-500 tracking-wider ml-1">Apport Personnel</label>
+                                <div className="relative group">
+                                    <Input type="number" value={apportCapacity} onChange={e => setApportCapacity(Number(e.target.value))} className="bg-emerald-900/20 border-emerald-500/20 h-16 text-emerald-400 font-black text-2xl pr-12 focus:border-emerald-500 transition-all rounded-2xl shadow-inner"/>
+                                    <span className="absolute right-6 top-1/2 -translate-y-1/2 text-emerald-600 font-bold transition-colors">€</span>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -168,8 +188,15 @@ export default function SimulateurPage() {
                     
                     <div className="relative z-10 w-full">
                         <p className="text-zinc-500 text-xs font-black uppercase tracking-[0.4em] mb-8">ENVELOPPE D'ACHAT MAX</p>
+                        {/* TOTAL ENVELOPPE (EMPRUNT + APPORT) */}
                         <div className="text-7xl lg:text-[9rem] leading-none font-black text-transparent bg-clip-text bg-gradient-to-b from-white to-zinc-500 tracking-tighter drop-shadow-2xl">
-                            <AnimatedNumber value={maxLoan} />
+                            <AnimatedNumber value={totalEnvelope} />
+                        </div>
+                        
+                        <div className="mt-4 flex gap-4 justify-center text-sm font-bold text-zinc-500">
+                             <span className="flex items-center gap-2"><Landmark size={14}/> Banque: {formatEuro(maxLoan)}</span>
+                             <span className="text-zinc-700">|</span>
+                             <span className="flex items-center gap-2 text-emerald-600"><PiggyBank size={14}/> Apport: {formatEuro(apportCapacity)}</span>
                         </div>
                         
                         <div className="mt-16 grid grid-cols-2 gap-8 max-w-2xl mx-auto">
@@ -186,7 +213,7 @@ export default function SimulateurPage() {
                 </div>
             </motion.div>
           ) : (
-            /* --- VUE PROJET --- */
+            /* --- VUE PROJET (RENTABILITÉ) --- */
             <motion.div 
                 key="projet"
                 initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.98 }} transition={{ duration: 0.4 }}
@@ -204,6 +231,26 @@ export default function SimulateurPage() {
                             <div className="grid grid-cols-2 gap-4">
                                 <div><label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider ml-1">Travaux</label><div className="relative"><Input type="number" value={works} onChange={e => setWorks(Number(e.target.value))} className="bg-black/40 border-white/5 text-white font-bold text-right h-14 pr-10 rounded-xl"/><span className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-600 font-bold">€</span></div></div>
                                 <div><label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider ml-1">Apport</label><div className="relative"><Input type="number" value={apport} onChange={e => setApport(Number(e.target.value))} className="bg-black/40 border-white/5 text-white font-bold text-right h-14 pr-10 rounded-xl"/><span className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-600 font-bold">€</span></div></div>
+                            </div>
+
+                            {/* MODIF : BANQUE DANS RENTABILITÉ (TAUX + DURÉE) */}
+                            <div className="pt-4 border-t border-white/5 space-y-4">
+                                {/* Taux */}
+                                <div>
+                                    <div className="flex justify-between items-end mb-2">
+                                        <label className="text-[10px] font-bold text-blue-400 uppercase tracking-wider ml-1">Taux d'emprunt</label>
+                                        <span className="text-lg font-black text-white">{rate}%</span>
+                                    </div>
+                                    <Slider value={[rate]} min={1} max={6} step={0.05} onValueChange={(v) => setRate(v[0])} className="py-2"/>
+                                </div>
+                                {/* Durée */}
+                                <div>
+                                    <div className="flex justify-between items-end mb-2">
+                                        <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider ml-1">Durée</label>
+                                        <span className="text-lg font-black text-white">{duration} ans</span>
+                                    </div>
+                                    <Slider value={[duration]} min={10} max={30} step={1} onValueChange={(v) => setDuration(v[0])} className="py-2"/>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -273,7 +320,6 @@ export default function SimulateurPage() {
                                     <Pie data={dataCost} innerRadius={70} outerRadius={90} paddingAngle={5} dataKey="value" stroke="none" cornerRadius={10}>
                                         {dataCost.map((entry, index) => (<Cell key={`cell-${index}`} fill={entry.color} />))}
                                     </Pie>
-                                    {/* FIX: itemStyle color white */}
                                     <Tooltip 
                                         contentStyle={{ backgroundColor: 'rgba(0,0,0,0.9)', backdropFilter: 'blur(10px)', borderRadius: '16px', border: '1px solid #333', color:'#fff', boxShadow: '0 10px 40px rgba(0,0,0,0.5)' }} 
                                         itemStyle={{ color: '#fff' }} 
