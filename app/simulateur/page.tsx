@@ -15,7 +15,7 @@ import { NexusLogo } from "@/components/NexusLogo";
 
 const formatEuro = (val: number) => new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(val);
 
-// --- COMPOSANT DOSSIER BANCAIRE (FIX PDF MOBILE) ---
+// --- COMPOSANT DOSSIER BANCAIRE (VERSION FINALE PDF) ---
 const DossierBancaire = ({ data, refProp }: any) => {
     const d = data || {};
     const totalCost = (d.price || 0) + (d.works || 0) + (d.notaryFees || 0);
@@ -29,23 +29,27 @@ const DossierBancaire = ({ data, refProp }: any) => {
 
     return (
       <div className="absolute left-[-9999px] top-0 w-0 h-0 overflow-hidden print:static print:w-auto print:h-auto print:overflow-visible">
-        {/* FIX CRITIQUE : Style global pour forcer le format A4 sans marges navigateur */}
+        {/* CSS GLOBAL POUR NETTOYER L'IMPRESSION */}
         <style type="text/css" media="print">
           {`
             @page { size: A4; margin: 0; }
-            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; background-color: white; }
+            /* Cacher impérativement la sidebar et tout autre élément d'interface */
+            nav, aside, header, .sidebar-mobile, button { display: none !important; }
+            /* S'assurer que le contenu prend toute la place */
+            .print-container { width: 100%; height: 100%; margin: 0; padding: 0; }
           `}
         </style>
 
-        {/* Conteneur A4 ajusté : w-full pour s'adapter à la largeur du PDF généré */}
-        <div ref={refProp} className="bg-white text-black font-sans mx-auto relative print:w-full print:max-w-[210mm] print:min-h-[297mm] print:p-[10mm]">
+        <div ref={refProp} className="print-container bg-white text-black font-sans mx-auto relative print:w-full print:max-w-[210mm] print:min-h-[297mm] print:p-[10mm]">
             
             <div className="flex flex-col h-full justify-between p-8 md:p-12">
                 <div>
-                    {/* Header */}
+                    {/* Header avec Logo Fixé */}
                     <div className="flex justify-between items-center border-b-2 border-black/10 pb-6 mb-8">
                         <div className="flex items-center gap-4">
-                            <div className="text-black"><NexusLogo className="w-12 h-12"/></div>
+                            {/* shrink-0 empêche le logo d'être écrasé */}
+                            <div className="text-black shrink-0 w-12 h-12"><NexusLogo className="w-full h-full"/></div>
                             <div>
                                 <h1 className="text-2xl font-black uppercase tracking-tighter text-black leading-none">NEXUS <span className="text-indigo-600">INVEST</span></h1>
                                 <p className="text-[10px] text-gray-500 uppercase tracking-[0.2em] mt-1">Dossier de Financement</p>
@@ -122,19 +126,36 @@ const DossierBancaire = ({ data, refProp }: any) => {
                         </div>
                     </div>
 
-                    {/* Analyse Stratégique */}
+                    {/* Analyse Stratégique DÉTAILLÉE */}
                     <div className="mb-8 break-inside-avoid">
                         <h3 className="text-sm font-black uppercase text-gray-900 mb-4 border-l-4 border-indigo-600 pl-3">Analyse Stratégique</h3>
                         <div className="p-6 border border-gray-200 rounded-xl bg-white shadow-sm">
                             {isLoc ? (
-                                <p className="text-sm text-gray-700 leading-relaxed">
-                                    Ce projet est structuré pour maximiser la rentabilité nette via le régime 
-                                    <strong className="text-black uppercase"> {d.rentalStrategy === "LMNP" ? "LMNP" : d.rentalStrategy} </strong>.
-                                </p>
+                                <>
+                                    <p className="text-sm text-gray-700 leading-relaxed mb-4">
+                                        Ce projet est structuré pour maximiser la rentabilité nette via le régime 
+                                        <strong className="text-black uppercase"> {d.rentalStrategy === "LMNP" ? "LMNP (Loueur Meublé Non Pro)" : d.rentalStrategy} </strong> 
+                                        au <strong className="text-black uppercase">{d.rentalStrategy !== "NUE" ? "RÉEL" : "FONCIER"}</strong>.
+                                    </p>
+                                    <ul className="grid grid-cols-2 gap-3 text-xs text-gray-600 font-medium">
+                                        <li className="flex items-center gap-2"><CheckCircle size={14} className="text-emerald-500 shrink-0"/> Déductibilité des intérêts</li>
+                                        <li className="flex items-center gap-2"><CheckCircle size={14} className="text-emerald-500 shrink-0"/> Amortissement comptable (Gomme l'impôt)</li>
+                                        <li className="flex items-center gap-2"><CheckCircle size={14} className="text-emerald-500 shrink-0"/> Optimisation du Cashflow</li>
+                                        <li className="flex items-center gap-2"><CheckCircle size={14} className="text-emerald-500 shrink-0"/> Effet de levier bancaire</li>
+                                    </ul>
+                                </>
                             ) : (
-                                <p className="text-sm text-gray-700 leading-relaxed">
-                                    Acquisition patrimoniale à usage de <strong>{isRP ? "RÉSIDENCE PRINCIPALE" : "RÉSIDENCE SECONDAIRE"}</strong>.
-                                </p>
+                                <>
+                                    <p className="text-sm text-gray-700 leading-relaxed mb-4">
+                                        Acquisition patrimoniale à usage de <strong>{isRP ? "RÉSIDENCE PRINCIPALE" : "RÉSIDENCE SECONDAIRE"}</strong>. 
+                                        L'objectif est la sécurisation du logement et la transformation d'un loyer à fonds perdus en épargne forcée.
+                                    </p>
+                                    <ul className="grid grid-cols-2 gap-3 text-xs text-gray-600 font-medium">
+                                        <li className="flex items-center gap-2"><CheckCircle size={14} className="text-amber-500 shrink-0"/> Constitution de Patrimoine</li>
+                                        <li className="flex items-center gap-2"><CheckCircle size={14} className="text-amber-500 shrink-0"/> Protection contre l'inflation</li>
+                                        {isRP && <li className="flex items-center gap-2 col-span-2"><CheckCircle size={14} className="text-emerald-500 shrink-0"/> <strong>Exonération Totale de Plus-Value (RP)</strong></li>}
+                                    </ul>
+                                </>
                             )}
                         </div>
                     </div>
@@ -152,7 +173,7 @@ const DossierBancaire = ({ data, refProp }: any) => {
     );
 };
 
-// --- COMPOSANT PEDAGOGIQUE ---
+// --- COMPOSANTS UI ---
 const Help = ({ title, text }: { title: string, text: string }) => (
   <div className="group/help relative inline-flex items-center ml-2 align-middle cursor-help z-[999]">
     <HelpCircle size={14} className="text-zinc-500 group-hover/help:text-indigo-400 transition-colors duration-300"/>
@@ -163,7 +184,6 @@ const Help = ({ title, text }: { title: string, text: string }) => (
   </div>
 );
 
-// --- SLIDER PREMIUM ---
 const PremiumSlider = ({ label, value, min, max, step, unit, onChange }: any) => (
     <div className="group relative bg-black/40 rounded-2xl p-4 border border-white/5 hover:border-indigo-500/30 transition-all duration-300">
         <div className="flex justify-between items-end mb-3">
@@ -176,7 +196,6 @@ const PremiumSlider = ({ label, value, min, max, step, unit, onChange }: any) =>
     </div>
 );
 
-// --- CARTE PREMIUM ---
 const PremiumCard = ({ children, className = "", color = "indigo" }: { children: React.ReactNode, className?: string, color?: string }) => {
     const borderColor = color === "emerald" ? "hover:border-emerald-500/30" : color === "rose" ? "hover:border-rose-500/30" : color === "amber" ? "hover:border-amber-500/30" : color === "blue" ? "hover:border-blue-500/30" : "hover:border-indigo-500/30";
     return <div className={`relative rounded-[32px] bg-zinc-900/40 backdrop-blur-md border border-white/5 transition-all duration-500 ${borderColor} hover:bg-zinc-900/60 group ${className}`}>{children}</div>;
@@ -193,12 +212,11 @@ export default function SimulateurPage() {
   const [printData, setPrintData] = useState<any>(null); 
   const [isReadyToPrint, setIsReadyToPrint] = useState(false);
 
-  // FIX MOBILE #1 : Pas de nettoyage des données dans onAfterPrint
+  // FIX MOBILE #1 : Pas de setPrintData(null)
   const handlePrint = useReactToPrint({
     contentRef: componentRef,
     documentTitle: "Dossier_Financement_Nexus",
     onAfterPrint: () => {
-        // On ne vide PAS les données ici pour éviter le bug d'affichage blanc sur mobile
         setIsReadyToPrint(false); 
     }
   });
@@ -393,7 +411,7 @@ export default function SimulateurPage() {
       <Sidebar />
       <main className="md:ml-64 flex-1 w-auto max-w-full p-4 md:p-8 relative overflow-hidden">
         
-        {/* COMPOSANT CACHÉ POUR L'IMPRESSION (CORRIGÉ MOBILE) */}
+        {/* ELEMENT CACHÉ POUR IMPRESSION (VERSION MOBILE FINALISÉE) */}
         <DossierBancaire refProp={componentRef} data={printData} />
 
         <div className="fixed top-0 left-64 w-[800px] h-[800px] bg-indigo-900/10 rounded-full blur-[150px] pointer-events-none"></div>
@@ -575,7 +593,6 @@ export default function SimulateurPage() {
             </motion.div>
           )}
 
-          {/* ... (Le reste du code PROJETS / FISCALITE reste identique) ... */}
           {mode === "FISCALITE" && (
             <motion.div key="fiscal" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="grid grid-cols-1 gap-8">
                 {projectType === "LOC" ? (
