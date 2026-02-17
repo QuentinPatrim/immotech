@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -10,6 +10,7 @@ import Sidebar from "@/components/Sidebar";
 import { NexusLogo } from "@/components/NexusLogo"; 
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/lib/supabaseClient";
+import OnboardingWizard from "@/components/OnboardingWizard"; // Assure-toi que l'import est correct
 
 const getNextMilestone = (current: number) => {
   if (current < 10000) return 10000;
@@ -26,7 +27,6 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [userName, setUserName] = useState("Investisseur");
   
-  // Données
   const [financialWealth, setFinancialWealth] = useState(0);
   const [realEstateWealth, setRealEstateWealth] = useState(0);
   const [totalNetWorth, setTotalNetWorth] = useState(0);
@@ -34,106 +34,107 @@ export default function Dashboard() {
   const [savingsRate, setSavingsRate] = useState(0);
   const [milestone, setMilestone] = useState(10000);
   const [isNewUser, setIsNewUser] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+
+  const fetchData = useCallback(async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) { router.push("/login"); return; }
+
+    if (session?.user) {
+      // Nom Utilisateur
+      if (session.user.user_metadata?.full_name) {
+          setUserName(session.user.user_metadata.full_name.split(' ')[0]);
+      }
+
+      // --- LOGIQUE ONBOARDING UNIQUE (FLAG) ---
+      const hasCompletedOnboarding = session.user.user_metadata?.onboarding_complete === true;
+      setShowOnboarding(!hasCompletedOnboarding);
+
+      // Récupération PATRIMOINE
+      const { data: profile } = await supabase.from('profiles').select('assets_json, budget_json').eq('id', session.user.id).maybeSingle();
+      
+      let hasAssets = false;
+      if (profile) {
+          let financial = 0; let realEstate = 0;
+          if (Array.isArray(profile.assets_json) && profile.assets_json.length > 0) {
+              hasAssets = true;
+              profile.assets_json.forEach((asset: any) => {
+                  const val = Number(asset.value) || 0;
+                  if (asset.type === "Immobilier") { realEstate += val; } else { financial += val; }
+              });
+          }
+          const total = financial + realEstate;
+          setFinancialWealth(financial); 
+          setRealEstateWealth(realEstate); 
+          setTotalNetWorth(total); 
+          setMilestone(getNextMilestone(total));
+      }
+
+      // Récupération FLUX MENSUEL
+      const now = new Date();
+      const startOfMonth = new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1)).toISOString().split('T')[0];
+
+      const { data: currentMonthHistory } = await supabase.from('monthly_history').select('*').eq('user_id', session.user.id).eq('month', startOfMonth).maybeSingle();
+
+      let currentIncome = 0;
+      let currentExpenses = 0;
+      let hasBudget = false;
+
+      if (currentMonthHistory) {
+          currentIncome = Number(currentMonthHistory.income) || 0;
+          currentExpenses = Number(currentMonthHistory.expenses) || 0;
+          hasBudget = true;
+      } else if (profile && profile.budget_json) {
+          const b = profile.budget_json as any;
+          currentIncome = Number(b.income) || 0;
+          if (Array.isArray(b.details)) {
+              currentExpenses = b.details.reduce((acc: number, item: any) => acc + (Number(item.amount) || 0), 0);
+          } else {
+              currentExpenses = Number(b.expenses) || 0;
+          }
+          if (currentIncome > 0) hasBudget = true;
+      }
+
+      const savings = Math.max(0, currentIncome - currentExpenses);
+      setMonthlySavings(savings);
+      setSavingsRate(currentIncome > 0 ? (savings / currentIncome) * 100 : 0);
+
+      // Si l'onboarding est fait mais qu'il n'y a aucune donnée, on montre les cartes d'initialisation
+      if (hasCompletedOnboarding && !hasAssets && !hasBudget) {
+          setIsNewUser(true);
+      } else {
+          setIsNewUser(false);
+      }
+    }
+    setLoading(false);
+  }, [router]);
 
   useEffect(() => {
-    const fetchData = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) { router.push("/login"); return; }
-
-      if (session?.user) {
-        // 1. Nom Utilisateur
-        if (session.user.user_metadata?.full_name) {
-            setUserName(session.user.user_metadata.full_name.split(' ')[0]);
-        }
-
-        // 2. Récupération PATRIMOINE (Profil)
-        const { data: profile } = await supabase.from('profiles').select('assets_json, budget_json').eq('id', session.user.id).maybeSingle();
-        
-        let hasAssets = false;
-        if (profile) {
-            let financial = 0; let realEstate = 0;
-            if (Array.isArray(profile.assets_json) && profile.assets_json.length > 0) {
-                hasAssets = true;
-                profile.assets_json.forEach((asset: any) => {
-                    // On gère les strings ou numbers
-                    const val = Number(asset.value) || 0;
-                    if (asset.type === "Immobilier") { realEstate += val; } else { financial += val; }
-                });
-            }
-            const total = financial + realEstate;
-            setFinancialWealth(financial); 
-            setRealEstateWealth(realEstate); 
-            setTotalNetWorth(total); 
-            setMilestone(getNextMilestone(total));
-        }
-
-        // 3. Récupération FLUX MENSUEL
-        const now = new Date();
-        const startOfMonth = new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1)).toISOString().split('T')[0];
-
-        const { data: currentMonthHistory } = await supabase
-            .from('monthly_history')
-            .select('*')
-            .eq('user_id', session.user.id)
-            .eq('month', startOfMonth)
-            .maybeSingle();
-
-        let currentIncome = 0;
-        let currentExpenses = 0;
-        let hasBudget = false;
-
-        if (currentMonthHistory) {
-            currentIncome = Number(currentMonthHistory.income) || 0;
-            currentExpenses = Number(currentMonthHistory.expenses) || 0;
-            hasBudget = true;
-        } else if (profile && profile.budget_json) {
-            const b = profile.budget_json as any;
-            currentIncome = Number(b.income) || 0;
-            
-            if (Array.isArray(b.details)) {
-                currentExpenses = b.details.reduce((acc: number, item: any) => acc + (Number(item.amount) || 0), 0);
-            } else {
-                currentExpenses = Number(b.expenses) || 0;
-            }
-            if (currentIncome > 0) hasBudget = true;
-        }
-
-        const savings = Math.max(0, currentIncome - currentExpenses);
-        setMonthlySavings(savings);
-        setSavingsRate(currentIncome > 0 ? (savings / currentIncome) * 100 : 0);
-
-        if (!hasAssets && !hasBudget) {
-            setIsNewUser(true);
-        }
-      }
-      setLoading(false);
-    };
     fetchData();
-  }, [router]);
+  }, [fetchData]);
 
   if (loading) return <div className="min-h-screen bg-[#050505]" />;
 
   return (
     <div className="min-h-screen bg-[#050505] text-zinc-100 font-sans selection:bg-emerald-500/30 selection:text-emerald-200">
       <Sidebar />
+
+      {/* Lancement de l'Onboarding */}
+      {showOnboarding && <OnboardingWizard onFinish={() => { setShowOnboarding(false); fetchData(); }} />}
+
       <main className="md:ml-64 flex-1 w-auto max-w-full p-4 pt-6 pb-24 md:p-8 relative overflow-hidden">
         
-        {/* AMBIENT GLOWS */}
         <div className="fixed top-0 left-64 w-[500px] h-[500px] bg-emerald-900/10 rounded-full blur-[120px] pointer-events-none"></div>
         <div className="fixed bottom-0 right-0 w-[500px] h-[500px] bg-blue-900/10 rounded-full blur-[120px] pointer-events-none"></div>
 
         <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} className="max-w-[1800px] mx-auto space-y-12 relative z-10">
           
-          {/* HEADER AVEC BOUTON REGLAGES AJOUTÉ */}
           <header className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 border-l-4 border-emerald-500 pl-6 py-2">
             <div>
                 <div className="flex items-center gap-3 mb-5 md:hidden">
-                    <div className="w-12 h-12 min-w-[3rem] min-h-[3rem]">
-                         <NexusLogo className="w-full h-full" /> 
-                    </div>
+                    <div className="w-12 h-12 min-w-[3rem] min-h-[3rem]"><NexusLogo className="w-full h-full" /></div>
                     <span className="text-2xl font-black text-white tracking-tighter uppercase font-sans opacity-90">NEXUS</span>
                 </div>
-
                 <p className="text-zinc-500 text-xs font-bold uppercase tracking-[0.2em] mb-2">VUE D'ENSEMBLE</p>
                 <h1 className="text-4xl md:text-6xl font-black text-white tracking-tighter uppercase">
                     Bonjour, <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-teal-500">{userName}</span>
@@ -143,16 +144,10 @@ export default function Dashboard() {
             <div className="flex items-center gap-4 w-full md:w-auto">
                 {!isNewUser && (
                     <div className="bg-zinc-900/50 backdrop-blur-md p-4 rounded-2xl border border-white/5 shadow-xl flex-1 md:flex-none">
-                        <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider mb-1 flex items-center gap-2">
-                            <Wallet size={12} className="text-emerald-500"/> Patrimoine Net
-                        </p>
-                        <div className="text-3xl font-black text-white tracking-tight">
-                            <AnimatedNumber value={totalNetWorth}/>
-                        </div>
+                        <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider mb-1 flex items-center gap-2"><Wallet size={12} className="text-emerald-500"/> Patrimoine Net</p>
+                        <div className="text-3xl font-black text-white tracking-tight"><AnimatedNumber value={totalNetWorth}/></div>
                     </div>
                 )}
-                
-                {/* --- BOUTON REGLAGES --- */}
                 <Link href="/parametres" className="h-16 w-16 md:h-20 md:w-20 rounded-2xl bg-zinc-900/50 border border-white/5 flex items-center justify-center text-zinc-400 hover:text-white hover:bg-zinc-800 transition-all shadow-xl backdrop-blur-md group">
                     <Settings size={28} className="group-hover:rotate-90 transition-transform duration-500"/>
                 </Link>
@@ -165,16 +160,12 @@ export default function Dashboard() {
                       <div className="h-full p-12 rounded-[32px] bg-zinc-900/40 border border-white/5 hover:border-emerald-500/30 transition-all cursor-pointer relative overflow-hidden backdrop-blur-xl">
                           <div className="absolute top-0 right-0 p-40 bg-emerald-500/5 blur-[80px] rounded-full group-hover:bg-emerald-500/10 transition-all"></div>
                           <div className="relative z-10 flex flex-col items-center text-center space-y-6">
-                              <div className="h-24 w-24 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-500 mb-2 border border-emerald-500/20 shadow-[0_0_30px_rgba(16,185,129,0.2)]">
-                                  <Wallet size={40} />
-                              </div>
+                              <div className="h-24 w-24 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-500 border border-emerald-500/20 shadow-[0_0_30px_rgba(16,185,129,0.2)]"><Wallet size={40} /></div>
                               <div>
                                   <h2 className="text-3xl font-black text-white uppercase tracking-wide mb-2">1. Initialisation</h2>
-                                  <p className="text-zinc-400 text-sm max-w-xs mx-auto font-light">Connectez vos actifs (Comptes, Immo, Crypto) pour calibrer le moteur Nexus.</p>
+                                  <p className="text-zinc-400 text-sm max-w-xs mx-auto font-light">Connectez vos actifs pour calibrer le moteur Nexus.</p>
                               </div>
-                              <Button className="bg-emerald-500 hover:bg-emerald-400 text-black font-bold rounded-full px-10 py-6 text-lg shadow-lg shadow-emerald-500/20">
-                                  Ajouter des actifs <ArrowUpRight className="ml-2" size={20}/>
-                              </Button>
+                              <Button className="bg-emerald-500 hover:bg-emerald-400 text-black font-bold rounded-full px-10 py-6 text-lg">Ajouter des actifs <ArrowUpRight className="ml-2" size={20}/></Button>
                           </div>
                       </div>
                   </Link>
@@ -183,51 +174,42 @@ export default function Dashboard() {
                       <div className="h-full p-12 rounded-[32px] bg-zinc-900/40 border border-white/5 hover:border-yellow-500/30 transition-all cursor-pointer relative overflow-hidden backdrop-blur-xl">
                           <div className="absolute top-0 right-0 p-40 bg-yellow-500/5 blur-[80px] rounded-full group-hover:bg-yellow-500/10 transition-all"></div>
                           <div className="relative z-10 flex flex-col items-center text-center space-y-6">
-                              <div className="h-24 w-24 rounded-full bg-yellow-500/10 flex items-center justify-center text-yellow-500 mb-2 border border-yellow-500/20 shadow-[0_0_30px_rgba(234,179,8,0.2)]">
-                                  <PieChart size={40} />
-                              </div>
+                              <div className="h-24 w-24 rounded-full bg-yellow-500/10 flex items-center justify-center text-yellow-500 border border-yellow-500/20 shadow-[0_0_30px_rgba(234,179,8,0.2)]"><PieChart size={40} /></div>
                               <div>
                                   <h2 className="text-3xl font-black text-white uppercase tracking-wide mb-2">2. Calibration Flux</h2>
-                                  <p className="text-zinc-400 text-sm max-w-xs mx-auto font-light">Définissez vos revenus et dépenses pour calculer votre capacité d'investissement réelle.</p>
+                                  <p className="text-zinc-400 text-sm max-w-xs mx-auto font-light">Définissez vos revenus pour calculer votre capacité réelle.</p>
                               </div>
-                              <Button className="bg-yellow-500 hover:bg-yellow-400 text-black font-bold rounded-full px-10 py-6 text-lg shadow-lg shadow-yellow-500/20">
-                                  Configurer Budget <ArrowUpRight className="ml-2" size={20}/>
-                              </Button>
+                              <Button className="bg-yellow-500 hover:bg-yellow-400 text-black font-bold rounded-full px-10 py-6 text-lg">Configurer Budget <ArrowUpRight className="ml-2" size={20}/></Button>
                           </div>
                       </div>
                   </Link>
               </div>
           ) : (
-            /* --- DASHBOARD ACTIF --- */
             <>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                {/* CARTE FINANCIER */}
                 <Link href="/patrimoine" className="group h-full">
                     <div className="relative overflow-hidden rounded-[40px] border border-white/5 bg-zinc-900/40 backdrop-blur-md p-10 h-full transition-all duration-500 hover:border-emerald-500/30 hover:bg-zinc-900/60 shadow-2xl">
-                        <div className="absolute top-0 right-0 w-80 h-80 bg-emerald-500/5 blur-[100px] rounded-full group-hover:bg-emerald-500/10 transition-all duration-500"></div>
                         <div className="relative z-10 flex flex-col justify-between h-full min-h-[220px]">
                             <div className="flex justify-between items-start mb-10">
                                 <div className="flex items-center gap-4">
-                                    <div className="h-14 w-14 rounded-2xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center border border-emerald-500/20 shadow-[0_0_20px_rgba(16,185,129,0.1)] group-hover:scale-110 transition-transform"><Wallet size={24}/></div>
+                                    <div className="h-14 w-14 rounded-2xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center border border-emerald-500/20 shadow-lg"><Wallet size={24}/></div>
                                     <div><span className="text-white font-black text-xl tracking-wide uppercase block">Financier</span><span className="text-xs text-zinc-500 font-mono">LIQUIDITÉ & BOURSE</span></div>
                                 </div>
-                                <div className="h-10 w-10 rounded-full border border-white/10 flex items-center justify-center text-zinc-500 group-hover:text-white group-hover:border-white/30 transition-colors"><ArrowUpRight size={18}/></div>
+                                <div className="h-10 w-10 rounded-full border border-white/10 flex items-center justify-center text-zinc-500 group-hover:text-white transition-colors"><ArrowUpRight size={18}/></div>
                             </div>
                             <div><div className="text-6xl lg:text-7xl font-black text-white tracking-tighter mb-3 group-hover:translate-x-2 transition-transform"><AnimatedNumber value={financialWealth} /></div><div className="h-1 w-24 bg-emerald-500 rounded-full group-hover:w-full transition-all duration-700 ease-out"></div></div>
                         </div>
                     </div>
                 </Link>
-                {/* CARTE IMMOBILIER */}
                 <Link href="/patrimoine" className="group h-full">
                     <div className="relative overflow-hidden rounded-[40px] border border-white/5 bg-zinc-900/40 backdrop-blur-md p-10 h-full transition-all duration-500 hover:border-blue-500/30 hover:bg-zinc-900/60 shadow-2xl">
-                        <div className="absolute top-0 right-0 w-80 h-80 bg-blue-500/5 blur-[100px] rounded-full group-hover:bg-blue-500/10 transition-all duration-500"></div>
                         <div className="relative z-10 flex flex-col justify-between h-full min-h-[220px]">
                             <div className="flex justify-between items-start mb-10">
                                 <div className="flex items-center gap-4">
-                                    <div className="h-14 w-14 rounded-2xl bg-blue-500/10 text-blue-500 flex items-center justify-center border border-blue-500/20 shadow-[0_0_20px_rgba(59,130,246,0.1)] group-hover:scale-110 transition-transform"><Building size={24}/></div>
+                                    <div className="h-14 w-14 rounded-2xl bg-blue-500/10 text-blue-500 flex items-center justify-center border border-blue-500/20 shadow-lg"><Building size={24}/></div>
                                     <div><span className="text-white font-black text-xl tracking-wide uppercase block">Immobilier</span><span className="text-xs text-zinc-500 font-mono">PIERRE & SCPI</span></div>
                                 </div>
-                                <div className="h-10 w-10 rounded-full border border-white/10 flex items-center justify-center text-zinc-500 group-hover:text-white group-hover:border-white/30 transition-colors"><ArrowUpRight size={18}/></div>
+                                <div className="h-10 w-10 rounded-full border border-white/10 flex items-center justify-center text-zinc-500 group-hover:text-white transition-colors"><ArrowUpRight size={18}/></div>
                             </div>
                             <div><div className="text-6xl lg:text-7xl font-black text-white tracking-tighter mb-3 group-hover:translate-x-2 transition-transform"><AnimatedNumber value={realEstateWealth} /></div><div className="h-1 w-24 bg-blue-500 rounded-full group-hover:w-full transition-all duration-700 ease-out"></div></div>
                         </div>
@@ -236,30 +218,25 @@ export default function Dashboard() {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                {/* CARTE EPARGNE */}
                 <Link href="/budget" className="group md:col-span-1">
                     <div className="p-8 rounded-[32px] bg-zinc-900/40 backdrop-blur-md border border-white/5 hover:border-yellow-500/30 transition-all h-full flex flex-col justify-center relative overflow-hidden shadow-xl">
-                        <div className="absolute bottom-0 right-0 p-24 bg-yellow-500/5 blur-[60px] rounded-full group-hover:bg-yellow-500/10 transition-all"></div>
                         <div className="relative z-10">
-                            <div className="flex justify-between items-center mb-8"><p className="text-xs font-bold text-zinc-400 uppercase flex items-center gap-2 tracking-widest"><Activity size={14} className="text-yellow-500"/> Flux Mensuel</p><span className="text-[10px] font-black px-3 py-1 rounded-full bg-yellow-500/10 text-yellow-500 border border-yellow-500/20">{savingsRate.toFixed(0)}% TAUX</span></div>
+                            <div className="flex justify-between items-center mb-8"><p className="text-xs font-bold text-zinc-400 uppercase flex items-center gap-2 tracking-widest"><Activity size={14} className="text-yellow-500"/> Flux Mensuel</p><span className="text-[10px] font-black px-3 py-1 rounded-full bg-yellow-500/10 text-yellow-500">{savingsRate.toFixed(0)}% TAUX</span></div>
                             <div className="text-5xl font-black text-white tracking-tighter">+<AnimatedNumber value={monthlySavings}/></div>
                             <p className="text-xs text-zinc-500 mt-2 font-medium">Épargne disponible ce mois-ci</p>
                         </div>
                     </div>
                 </Link>
-                {/* CARTE OBJECTIF */}
                 <div className="md:col-span-2 p-8 rounded-[32px] bg-zinc-900/40 backdrop-blur-md border border-white/5 flex flex-col justify-center relative overflow-hidden shadow-xl group">
                     <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-500 via-blue-500 to-purple-500 opacity-30 group-hover:opacity-60 transition-opacity"></div>
                     <div className="flex flex-col md:flex-row justify-between items-end mb-8 gap-4">
-                        <div><p className="text-xs font-bold text-purple-400 uppercase mb-3 tracking-[0.2em] flex items-center gap-2"><Target size={14}/> Prochain Palier</p><div className="text-4xl lg:text-5xl font-black text-white flex items-center gap-3 tracking-tighter"><AnimatedNumber value={milestone}/></div></div>
+                        <div><p className="text-xs font-bold text-purple-400 uppercase mb-3 tracking-[0.2em] flex items-center gap-2"><Target size={14}/> Prochain Palier</p><div className="text-4xl lg:text-5xl font-black text-white tracking-tighter"><AnimatedNumber value={milestone}/></div></div>
                         <div className="text-right"><span className="text-6xl font-black text-white/10 group-hover:text-white/20 transition-colors">{milestone > 0 ? ((totalNetWorth / milestone) * 100).toFixed(0) : 0}%</span></div>
                     </div>
-                    <div className="h-4 w-full bg-black/50 rounded-full overflow-hidden border border-white/5 p-[2px]"><motion.div initial={{ width: 0 }} animate={{ width: `${Math.min(100, (totalNetWorth / milestone) * 100)}%` }} transition={{ duration: 1.5, ease: "circOut" }} className="h-full bg-gradient-to-r from-purple-600 to-blue-500 rounded-full shadow-[0_0_15px_rgba(168,85,247,0.4)]" /></div>
-                    <div className="flex justify-between mt-4 text-[10px] uppercase font-bold tracking-widest text-zinc-500"><span>Progression Actuelle</span><span>Manque <AnimatedNumber value={milestone - totalNetWorth}/></span></div>
+                    <div className="h-4 w-full bg-black/50 rounded-full overflow-hidden border border-white/5 p-[2px]"><motion.div initial={{ width: 0 }} animate={{ width: `${Math.min(100, (totalNetWorth / milestone) * 100)}%` }} transition={{ duration: 1.5, ease: "circOut" }} className="h-full bg-gradient-to-r from-purple-600 to-blue-500 rounded-full" /></div>
                 </div>
               </div>
 
-              {/* NAVIGATION RAPIDE */}
               <div>
                 <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-[0.2em] mb-6 pl-2">Accès Rapide</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -269,8 +246,7 @@ export default function Dashboard() {
                             <div><p className="font-bold text-white text-base tracking-wide">{item.label}</p><p className="text-xs text-zinc-500">{item.sub}</p></div>
                         </Link>
                     ))}
-                    <div className="relative p-6 rounded-[24px] bg-black/40 border border-white/5 opacity-60 cursor-not-allowed flex items-center gap-5 overflow-hidden grayscale hover:grayscale-0 transition-all">
-                        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-10"></div>
+                    <div className="relative p-6 rounded-[24px] bg-black/40 border border-white/5 opacity-60 cursor-not-allowed flex items-center gap-5 overflow-hidden grayscale transition-all">
                         <div className="h-14 w-14 rounded-2xl bg-zinc-800 text-zinc-500 flex items-center justify-center shadow-inner"><Lock size={24}/></div>
                         <div><p className="font-bold text-zinc-300 text-base">Analyse IA 2.0</p><p className="text-xs text-zinc-600">Bientôt (Pro)</p></div>
                     </div>
