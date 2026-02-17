@@ -21,7 +21,7 @@ export async function POST(req: Request) {
       line_items: [
         {
           // REMPLACEZ BIEN CECI PAR VOTRE ID DE PRIX RÉEL (ex: price_1P...)
-          price: "price_1T1r4ZPqbFP5dfks28pR6D8", 
+          price: "price_1T1r4ZPqbFP5dfks28pR6D8u", 
           quantity: 1,
         },
       ],
