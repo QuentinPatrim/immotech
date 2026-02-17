@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Sidebar from "@/components/Sidebar"; 
 import { motion, AnimatePresence } from "framer-motion";
-import { Wallet, Building, Bitcoin, Landmark, Plus, Trash2, TrendingUp, PieChart as PieIcon, ArrowUpRight, ShieldCheck, Loader2, Save } from "lucide-react";
+import { Wallet, Building, Bitcoin, Landmark, Plus, Trash2, TrendingUp, PieChart as PieIcon, ArrowUpRight, ShieldCheck, Loader2, Save, Home, HelpCircle, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -17,11 +17,18 @@ type AssetType = "Immobilier" | "Bourse" | "Crypto" | "AssuranceVie" | "Cash" | 
 type Asset = { 
     id: string; 
     name: string; 
-    value: number; 
+    value: number; // Valeur Actuelle (Estimation)
     type: AssetType;
-    quantity?: number;    // Nb actions
-    buyPrice?: number;    // PRU (Prix de revient)
-    unitPrice?: number;   // Cours actuel
+    
+    // Bourse / Crypto
+    quantity?: number;    
+    unitPrice?: number;   
+    buyPrice?: number; // PRU ou Prix Achat FAI
+
+    // Immobilier Spécifique
+    notaryFees?: number;
+    workCost?: number;
+    loanCost?: number; // Coût total crédit
 };
 
 const ASSET_CONFIG: Record<AssetType, { color: string; gradient: string; icon: any; label: string }> = {
@@ -45,12 +52,22 @@ export default function PatrimoinePage() {
   // States Ajout
   const [newName, setNewName] = useState("");
   const [newType, setNewType] = useState<AssetType>("Bourse");
+  
+  // Champs Génériques
   const [newValue, setNewValue] = useState("");
+  
+  // Champs Bourse/Crypto
   const [newQty, setNewQty] = useState("");
-  const [newBuyPrice, setNewBuyPrice] = useState("");
+  const [newBuyPrice, setNewBuyPrice] = useState(""); // Utilisé aussi pour Prix Achat Immo
   const [newUnitPrice, setNewUnitPrice] = useState("");
 
+  // Champs Immo Spécifiques
+  const [newNotaryFees, setNewNotaryFees] = useState("");
+  const [newWorkCost, setNewWorkCost] = useState("");
+  const [newLoanCost, setNewLoanCost] = useState("");
+
   const isComplexAsset = newType === "Bourse" || newType === "Crypto";
+  const isRealEstate = newType === "Immobilier";
 
   useEffect(() => {
     fetchData();
@@ -93,19 +110,35 @@ export default function PatrimoinePage() {
     let assetData: Asset = { id: Date.now().toString(), name: newName, value: 0, type: newType };
 
     if (isComplexAsset) {
+        // Bourse / Crypto
         const qty = parseFloat(newQty) || 0;
         const current = parseFloat(newUnitPrice) || 0;
         const buy = parseFloat(newBuyPrice) || 0;
         finalValue = qty * current;
         assetData = { ...assetData, value: finalValue, quantity: qty, unitPrice: current, buyPrice: buy };
+    } else if (isRealEstate) {
+        // Immobilier
+        finalValue = parseFloat(newValue) || 0; // Estimation Actuelle
+        assetData = { 
+            ...assetData, 
+            value: finalValue, 
+            buyPrice: parseFloat(newBuyPrice) || 0, // Prix Achat FAI
+            notaryFees: parseFloat(newNotaryFees) || 0,
+            workCost: parseFloat(newWorkCost) || 0,
+            loanCost: parseFloat(newLoanCost) || 0
+        };
     } else {
+        // Simple
         finalValue = parseFloat(newValue) || 0;
         assetData = { ...assetData, value: finalValue };
     }
 
     const updated = [...assets, assetData];
     setAssets(updated); calculateTotals(updated); await saveToCloud(updated);
+    
+    // Reset
     setNewName(""); setNewValue(""); setNewQty(""); setNewBuyPrice(""); setNewUnitPrice("");
+    setNewNotaryFees(""); setNewWorkCost(""); setNewLoanCost("");
   };
 
   const removeAsset = async (id: string) => {
@@ -113,39 +146,24 @@ export default function PatrimoinePage() {
     setAssets(updated); calculateTotals(updated); await saveToCloud(updated);
   };
 
-  // --- MODIFICATION AVANCÉE DES ACTIFS ---
-  const updateAssetDetail = (id: string, field: 'value' | 'qty' | 'unitPrice' | 'buyPrice', valStr: string) => {
-      // On accepte la chaine vide pour l'UX
+  const updateAssetDetail = (id: string, field: keyof Asset, valStr: string) => {
       const val = valStr === "" ? 0 : parseFloat(valStr);
-      
       const updated = assets.map(a => {
           if (a.id !== id) return a;
-          const newAsset = { ...a };
-
-          if (field === 'value') {
-              // Cas simple (Immo, Cash)
-              newAsset.value = val;
-          } else {
-              // Cas complexe (Bourse, Crypto)
-              if (field === 'qty') newAsset.quantity = val;
-              if (field === 'unitPrice') newAsset.unitPrice = val;
-              if (field === 'buyPrice') newAsset.buyPrice = val;
-
-              // Recalcul automatique du total si Qty et Prix existent
-              if (newAsset.quantity !== undefined && newAsset.unitPrice !== undefined) {
-                  newAsset.value = newAsset.quantity * newAsset.unitPrice;
-              }
+          const newAsset = { ...a, [field]: val };
+          
+          // Recalcul auto pour Bourse
+          if ((newAsset.type === 'Bourse' || newAsset.type === 'Crypto') && field !== 'value') {
+             if (newAsset.quantity !== undefined && newAsset.unitPrice !== undefined) {
+                 newAsset.value = newAsset.quantity * newAsset.unitPrice;
+             }
           }
           return newAsset;
       });
-
-      setAssets(updated);
-      calculateTotals(updated);
+      setAssets(updated); calculateTotals(updated);
   };
 
-  const handleBlur = async () => {
-      await saveToCloud(assets);
-  };
+  const handleBlur = async () => { await saveToCloud(assets); };
 
   const chartData = Object.keys(ASSET_CONFIG).map((type) => {
     const value = assets.filter((a) => a.type === type).reduce((acc, a) => acc + a.value, 0);
@@ -159,7 +177,7 @@ export default function PatrimoinePage() {
       <Sidebar />
       <main className="md:ml-64 flex-1 w-auto max-w-full p-4 md:p-8 relative overflow-hidden">
         
-        {/* AMBIENT GLOWS */}
+        {/* Glows */}
         <div className="fixed top-0 left-64 w-[600px] h-[600px] bg-emerald-900/5 rounded-full blur-[120px] pointer-events-none"></div>
         <div className="fixed bottom-0 right-0 w-[500px] h-[500px] bg-blue-900/5 rounded-full blur-[120px] pointer-events-none"></div>
 
@@ -172,7 +190,7 @@ export default function PatrimoinePage() {
             <p className="text-zinc-400 text-lg font-light tracking-wide">Inventaire consolidé de votre richesse nette.</p>
           </header>
 
-          {/* --- KPI SECTION --- */}
+          {/* --- KPI --- */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             <div className="lg:col-span-2 relative overflow-hidden rounded-[32px] border border-white/5 bg-zinc-900/40 backdrop-blur-xl p-10 flex flex-col justify-center min-h-[240px] shadow-2xl group hover:border-emerald-500/20 transition-all">
                 <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-500/10 blur-[120px] rounded-full group-hover:bg-emerald-500/20 transition-all duration-700"></div>
@@ -219,7 +237,7 @@ export default function PatrimoinePage() {
                         <h3 className="text-xs font-bold text-white uppercase mb-6 flex items-center gap-2 tracking-widest"><Plus size={16} className="text-emerald-500"/> Nouvel Actif</h3>
                         <div className="flex flex-col gap-4">
                             <div className="flex flex-col md:flex-row gap-4">
-                                <div className="flex-1"><Input placeholder="Nom (ex: TotalEnergies...)" value={newName} onChange={(e) => setNewName(e.target.value)} className="bg-zinc-900/50 border-white/10 text-white h-14 rounded-2xl text-lg px-4"/></div>
+                                <div className="flex-1"><Input placeholder="Nom (ex: Appartement, Total...)" value={newName} onChange={(e) => setNewName(e.target.value)} className="bg-zinc-900/50 border-white/10 text-white h-14 rounded-2xl text-lg px-4"/></div>
                                 <div className="w-full md:w-48">
                                     <Select value={newType} onValueChange={(v) => setNewType(v as AssetType)}>
                                         <SelectTrigger className="bg-zinc-900/50 border-white/10 text-white h-14 rounded-2xl"><SelectValue placeholder="Type" /></SelectTrigger>
@@ -231,13 +249,29 @@ export default function PatrimoinePage() {
                                     </Select>
                                 </div>
                             </div>
-                            {isComplexAsset ? (
+
+                            {/* CAS 1 : BOURSE / CRYPTO */}
+                            {isComplexAsset && (
                                 <div className="grid grid-cols-3 gap-4 animate-in fade-in">
                                     <div className="relative"><label className="text-[10px] text-zinc-500 font-bold ml-2 mb-1 block">Quantité</label><Input type="number" placeholder="Nb" value={newQty} onChange={(e) => setNewQty(e.target.value)} className="bg-zinc-900/50 border-white/10 text-white h-12 rounded-xl" /></div>
                                     <div className="relative"><label className="text-[10px] text-zinc-500 font-bold ml-2 mb-1 block">PRU (Achat)</label><Input type="number" placeholder="€" value={newBuyPrice} onChange={(e) => setNewBuyPrice(e.target.value)} className="bg-zinc-900/50 border-white/10 text-white h-12 rounded-xl" /></div>
                                     <div className="relative"><label className="text-[10px] text-emerald-500 font-bold ml-2 mb-1 block">Cours Actuel</label><Input type="number" placeholder="€" value={newUnitPrice} onChange={(e) => setNewUnitPrice(e.target.value)} className="bg-zinc-900/50 border-emerald-500/30 text-white h-12 rounded-xl" /></div>
                                 </div>
-                            ) : (
+                            )}
+
+                            {/* CAS 2 : IMMOBILIER */}
+                            {isRealEstate && (
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 animate-in fade-in">
+                                    <div className="col-span-2 relative"><label className="text-[10px] text-zinc-500 font-bold ml-2 mb-1 block">Estimation Actuelle (Prix Marché)</label><Input type="number" placeholder="Valeur €" value={newValue} onChange={(e) => setNewValue(e.target.value)} className="bg-zinc-900/50 border-emerald-500/30 text-white h-12 rounded-xl font-bold" /></div>
+                                    <div className="relative"><label className="text-[10px] text-zinc-500 font-bold ml-2 mb-1 block">Prix Achat (FAI)</label><Input type="number" placeholder="€" value={newBuyPrice} onChange={(e) => setNewBuyPrice(e.target.value)} className="bg-zinc-900/50 border-white/10 text-white h-12 rounded-xl" /></div>
+                                    <div className="relative"><label className="text-[10px] text-zinc-500 font-bold ml-2 mb-1 block">Frais Notaire</label><Input type="number" placeholder="€" value={newNotaryFees} onChange={(e) => setNewNotaryFees(e.target.value)} className="bg-zinc-900/50 border-white/10 text-white h-12 rounded-xl" /></div>
+                                    <div className="relative"><label className="text-[10px] text-zinc-500 font-bold ml-2 mb-1 block">Travaux</label><Input type="number" placeholder="€" value={newWorkCost} onChange={(e) => setNewWorkCost(e.target.value)} className="bg-zinc-900/50 border-white/10 text-white h-12 rounded-xl" /></div>
+                                    <div className="relative"><label className="text-[10px] text-blue-400 font-bold ml-2 mb-1 block">Coût Crédit (Total)</label><Input type="number" placeholder="Intérêts + Ass." value={newLoanCost} onChange={(e) => setNewLoanCost(e.target.value)} className="bg-zinc-900/50 border-blue-500/20 text-white h-12 rounded-xl" /></div>
+                                </div>
+                            )}
+
+                            {/* CAS 3 : SIMPLE (CASH, AUTRE) */}
+                            {!isComplexAsset && !isRealEstate && (
                                 <div className="w-full relative animate-in fade-in">
                                     <Input type="number" placeholder="Valeur Totale en €" value={newValue} onChange={(e) => setNewValue(e.target.value)} className="bg-zinc-900/50 border-white/10 text-right font-bold text-xl h-14 rounded-2xl pr-10" />
                                     <span className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-500 font-bold pointer-events-none">€</span>
@@ -265,7 +299,7 @@ export default function PatrimoinePage() {
             </div>
           </div>
 
-          {/* --- LISTE DÉTAILLÉE (AVEC ÉDITION) --- */}
+          {/* --- LISTE DÉTAILLÉE --- */}
           <div className="space-y-8">
              <h3 className="text-2xl font-black text-white uppercase tracking-tight pl-2 border-l-4 border-zinc-800">Votre Portefeuille</h3>
              
@@ -296,61 +330,119 @@ export default function PatrimoinePage() {
                             <div className="space-y-3">
                                 <AnimatePresence>
                                     {categoryAssets.map((asset) => {
-                                        // Calcul PV/MV
+                                        // LOGIQUE AFFICHAGE DETAILLE
+                                        const isRealEstate = asset.type === 'Immobilier';
+                                        const isEditableType = asset.type === 'Bourse' || asset.type === 'Crypto';
+                                        
+                                        // Calculs Immo
+                                        const totalInvested = (asset.buyPrice||0) + (asset.notaryFees||0) + (asset.workCost||0);
+                                        const netGain = asset.value - totalInvested;
+                                        const breakeven = totalInvested + (asset.loanCost||0);
+                                        
+                                        // Calcul PV Bourse
                                         let gainPercent = 0;
-                                        if (asset.quantity && asset.buyPrice && asset.unitPrice) {
+                                        if (isEditableType && asset.quantity && asset.buyPrice && asset.unitPrice) {
                                             const totalBuy = asset.quantity * asset.buyPrice;
                                             const currentVal = asset.quantity * asset.unitPrice;
                                             if (totalBuy > 0) gainPercent = ((currentVal - totalBuy) / totalBuy) * 100;
                                         }
 
-                                        const isEditableType = asset.type === 'Bourse' || asset.type === 'Crypto';
-
                                         return (
-                                            <motion.div key={asset.id} className="p-4 bg-black/40 hover:bg-black/60 rounded-2xl border border-white/5 hover:border-white/10 transition-all flex flex-col gap-3">
-                                                <div className="flex justify-between items-center">
-                                                    <span className="text-sm text-zinc-200 font-bold pl-1">{asset.name}</span>
-                                                    {isEditableType && gainPercent !== 0 && (
-                                                        <span className={`text-[10px] font-bold px-2 py-1 rounded-md ${gainPercent >= 0 ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'}`}>
-                                                            {gainPercent > 0 ? '+' : ''}{gainPercent.toFixed(2)}%
-                                                        </span>
-                                                    )}
-                                                    {/* Bouton Supprimer */}
-                                                    <button onClick={() => removeAsset(asset.id)} className="ml-auto text-zinc-600 hover:text-red-500 transition-colors"><Trash2 size={16}/></button>
+                                            <motion.div key={asset.id} className="p-5 bg-black/40 hover:bg-black/60 rounded-3xl border border-white/5 hover:border-white/10 transition-all flex flex-col gap-4">
+                                                <div className="flex justify-between items-start">
+                                                    <div className="w-full">
+                                                        <div className="flex justify-between items-center w-full">
+                                                            <span className="text-sm text-white font-bold">{asset.name}</span>
+                                                            <button onClick={() => removeAsset(asset.id)} className="text-zinc-600 hover:text-red-500 transition-colors p-1"><Trash2 size={16}/></button>
+                                                        </div>
+
+                                                        {/* --- DETAILS IMMO EDITABLES --- */}
+                                                        {isRealEstate && (
+                                                            <div className="mt-3 grid grid-cols-2 gap-3 bg-white/5 p-3 rounded-xl border border-white/5">
+                                                                <div className="space-y-2">
+                                                                    <div className="flex justify-between items-center">
+                                                                        <span className="text-[9px] text-zinc-500 uppercase font-bold">Prix Achat</span>
+                                                                        <div className="relative w-20"><Input type="number" value={asset.buyPrice === 0 ? "" : asset.buyPrice} onChange={(e) => updateAssetDetail(asset.id, 'buyPrice', e.target.value)} onBlur={handleBlur} className="h-6 text-[10px] bg-zinc-900/50 border-transparent focus:border-indigo-500/50 text-right text-zinc-300 font-medium p-1 rounded" /></div>
+                                                                    </div>
+                                                                    <div className="flex justify-between items-center">
+                                                                        <span className="text-[9px] text-zinc-500 uppercase font-bold">Notaire</span>
+                                                                        <div className="relative w-20"><Input type="number" value={asset.notaryFees === 0 ? "" : asset.notaryFees} onChange={(e) => updateAssetDetail(asset.id, 'notaryFees', e.target.value)} onBlur={handleBlur} className="h-6 text-[10px] bg-zinc-900/50 border-transparent focus:border-indigo-500/50 text-right text-zinc-300 font-medium p-1 rounded" /></div>
+                                                                    </div>
+                                                                </div>
+                                                                <div className="space-y-2">
+                                                                    <div className="flex justify-between items-center">
+                                                                        <span className="text-[9px] text-zinc-500 uppercase font-bold">Travaux</span>
+                                                                        <div className="relative w-20"><Input type="number" value={asset.workCost === 0 ? "" : asset.workCost} onChange={(e) => updateAssetDetail(asset.id, 'workCost', e.target.value)} onBlur={handleBlur} className="h-6 text-[10px] bg-zinc-900/50 border-transparent focus:border-indigo-500/50 text-right text-zinc-300 font-medium p-1 rounded" /></div>
+                                                                    </div>
+                                                                    <div className="flex justify-between items-center">
+                                                                        <span className="text-[9px] text-blue-400 uppercase font-bold">Crédit (Total)</span>
+                                                                        <div className="relative w-20"><Input type="number" value={asset.loanCost === 0 ? "" : asset.loanCost} onChange={(e) => updateAssetDetail(asset.id, 'loanCost', e.target.value)} onBlur={handleBlur} className="h-6 text-[10px] bg-blue-900/10 border-blue-500/20 focus:border-blue-500/50 text-right text-blue-300 font-medium p-1 rounded" /></div>
+                                                                    </div>
+                                                                </div>
+                                                                <div className="col-span-2 pt-2 border-t border-white/5 flex justify-between items-center">
+                                                                     <span className="text-[9px] text-zinc-400 font-bold uppercase tracking-wider">Coût Total Entrée</span>
+                                                                     <span className="text-xs font-black text-white">{formatEuro(totalInvested)}</span>
+                                                                </div>
+                                                            </div>
+                                                        )}
+
+                                                        {/* --- DETAILS BOURSE EDITABLES --- */}
+                                                        {isEditableType && (
+                                                            <div className="flex items-center gap-2 bg-white/5 p-2 rounded-xl mt-3">
+                                                                <div className="flex-1 flex items-center gap-2">
+                                                                    <div className="relative w-16">
+                                                                        <span className="absolute -top-3 left-1 text-[8px] text-zinc-500 font-bold uppercase">Qté</span>
+                                                                        <Input type="number" value={asset.quantity === 0 ? "" : asset.quantity} onChange={(e) => updateAssetDetail(asset.id, 'quantity', e.target.value)} onBlur={handleBlur} className="h-8 text-xs bg-transparent border-none p-0 text-center font-bold text-white focus:ring-0"/>
+                                                                    </div>
+                                                                    <span className="text-zinc-600 text-xs">x</span>
+                                                                    <div className="relative w-20">
+                                                                        <span className="absolute -top-3 left-1 text-[8px] text-emerald-500 font-bold uppercase">Cours</span>
+                                                                        <Input type="number" value={asset.unitPrice === 0 ? "" : asset.unitPrice} onChange={(e) => updateAssetDetail(asset.id, 'unitPrice', e.target.value)} onBlur={handleBlur} className="h-8 text-xs bg-transparent border-none p-0 text-center font-bold text-emerald-400 focus:ring-0"/>
+                                                                    </div>
+                                                                </div>
+                                                                <div className="h-6 w-[1px] bg-white/10 mx-2"></div>
+                                                                <div className="relative w-16 text-right">
+                                                                    <span className="absolute -top-3 right-1 text-[8px] text-zinc-500 font-bold uppercase">PRU</span>
+                                                                    <Input type="number" value={asset.buyPrice === 0 ? "" : asset.buyPrice} onChange={(e) => updateAssetDetail(asset.id, 'buyPrice', e.target.value)} onBlur={handleBlur} className="h-8 text-xs bg-transparent border-none p-0 text-right font-medium text-zinc-400 focus:ring-0"/>
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
                                                 </div>
                                                 
-                                                {isEditableType ? (
-                                                    // VUE ÉDITION COMPLEXE (Qty x Prix | PRU)
-                                                    <div className="flex items-center gap-2 bg-white/5 p-2 rounded-xl">
-                                                        <div className="flex-1 flex items-center gap-2">
-                                                            <div className="relative w-16">
-                                                                <span className="absolute -top-3 left-1 text-[8px] text-zinc-500 font-bold uppercase">Qté</span>
-                                                                <Input type="number" value={asset.quantity === 0 ? "" : asset.quantity} onChange={(e) => updateAssetDetail(asset.id, 'qty', e.target.value)} onBlur={handleBlur} className="h-8 text-xs bg-transparent border-none p-0 text-center font-bold text-white focus:ring-0" placeholder="0"/>
-                                                            </div>
-                                                            <span className="text-zinc-600 text-xs">x</span>
-                                                            <div className="relative w-20">
-                                                                <span className="absolute -top-3 left-1 text-[8px] text-emerald-500 font-bold uppercase">Cours</span>
-                                                                <Input type="number" value={asset.unitPrice === 0 ? "" : asset.unitPrice} onChange={(e) => updateAssetDetail(asset.id, 'unitPrice', e.target.value)} onBlur={handleBlur} className="h-8 text-xs bg-transparent border-none p-0 text-center font-bold text-emerald-400 focus:ring-0" placeholder="0€"/>
-                                                            </div>
-                                                        </div>
-                                                        <div className="h-6 w-[1px] bg-white/10 mx-2"></div>
-                                                        <div className="relative w-16 text-right">
-                                                            <span className="absolute -top-3 right-1 text-[8px] text-zinc-500 font-bold uppercase">PRU</span>
-                                                            <Input type="number" value={asset.buyPrice === 0 ? "" : asset.buyPrice} onChange={(e) => updateAssetDetail(asset.id, 'buyPrice', e.target.value)} onBlur={handleBlur} className="h-8 text-xs bg-transparent border-none p-0 text-right font-medium text-zinc-400 focus:ring-0" placeholder="PRU"/>
-                                                        </div>
-                                                    </div>
-                                                ) : (
-                                                    // VUE ÉDITION SIMPLE (Valeur Totale)
-                                                    <div className="w-full relative">
-                                                        <Input type="number" value={asset.value === 0 ? "" : asset.value} onChange={(e) => updateAssetDetail(asset.id, 'value', e.target.value)} onBlur={handleBlur} className="bg-transparent border-white/10 text-right text-white font-bold h-10 pr-8 focus:ring-emerald-500/50" />
+                                                {/* BARRE DU BAS COMMUNE */}
+                                                <div className="flex items-end justify-between">
+                                                    {/* INPUT VALEUR ACTUELLE (Toujours modifiable) */}
+                                                    <div className="w-40 relative">
+                                                        <span className="absolute -top-3 left-1 text-[9px] font-bold text-emerald-500 uppercase tracking-wider">Valeur Actuelle</span>
+                                                        <Input type="number" value={asset.value === 0 ? "" : asset.value} onChange={(e) => updateAssetDetail(asset.id, 'value', e.target.value)} onBlur={handleBlur} className="bg-black/50 border-emerald-500/20 text-right text-emerald-400 font-black h-12 pr-8 focus:ring-emerald-500/50" />
                                                         <span className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 text-xs font-bold pointer-events-none">€</span>
                                                     </div>
-                                                )}
-                                                
-                                                {/* Total Read-Only pour le confort visuel */}
-                                                {isEditableType && (
-                                                    <div className="text-right text-sm font-black text-white">{formatEuro(asset.value)}</div>
-                                                )}
+
+                                                    {/* KPI DROITE (Perf Bourse ou Immo) */}
+                                                    <div className="text-right flex flex-col items-end">
+                                                        {isRealEstate ? (
+                                                            <>
+                                                                <div className={`text-xs font-bold flex items-center gap-1 ${netGain >= 0 ? "text-emerald-500" : "text-red-500"}`}>
+                                                                    {netGain >= 0 ? <TrendingUp size={12}/> : <AlertTriangle size={12}/>}
+                                                                    {netGain >= 0 ? "+" : ""}{formatEuro(netGain)}
+                                                                </div>
+                                                                <span className="text-[9px] text-zinc-500">Plus-value Latente</span>
+                                                                {(asset.loanCost || 0) > 0 && (
+                                                                    <div className="mt-2 text-[9px] text-blue-400 bg-blue-900/10 px-2 py-1 rounded border border-blue-500/20">
+                                                                        Rentable si &gt; {formatEuro(breakeven)}
+                                                                    </div>
+                                                                )}
+                                                            </>
+                                                        ) : isEditableType && gainPercent !== 0 ? (
+                                                            <span className={`text-[10px] font-bold px-2 py-1 rounded-md ${gainPercent >= 0 ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'}`}>
+                                                                {gainPercent > 0 ? '+' : ''}{gainPercent.toFixed(2)}%
+                                                            </span>
+                                                        ) : (
+                                                            <div className="text-sm font-black text-zinc-500">{formatEuro(asset.value)}</div>
+                                                        )}
+                                                    </div>
+                                                </div>
                                             </motion.div>
                                         );
                                     })}
