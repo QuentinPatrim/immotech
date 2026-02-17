@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import Sidebar from "@/components/Sidebar";
 import { motion, AnimatePresence } from "framer-motion";
-import { Calculator, Home, Building, Wallet, Landmark, CheckCircle, XCircle, PieChart as PieIcon, ArrowRight, Percent, Euro, PiggyBank, Scale, BedDouble, Armchair, Briefcase, Save, HelpCircle, FileText, Trash2, FolderOpen, MousePointerClick, TrendingUp, AlertTriangle, Crown, BarChart3, Check, Printer, Shield } from "lucide-react";
+import { Calculator, Home, Building, Wallet, Landmark, CheckCircle, PieChart as PieIcon, Scale, BedDouble, Armchair, Briefcase, Save, HelpCircle, FileText, Trash2, FolderOpen, MousePointerClick, TrendingUp, AlertTriangle, Crown, BarChart3, Check, Printer, Shield, PiggyBank } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
@@ -15,16 +15,23 @@ import { NexusLogo } from "@/components/NexusLogo";
 
 const formatEuro = (val: number) => new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(val);
 
-// --- COMPOSANT DOSSIER BANCAIRE (INTELLIGENT) ---
+// --- COMPOSANT DOSSIER BANCAIRE (INTELLIGENT & CONTEXTUEL) ---
 const DossierBancaire = ({ data, refProp }: any) => {
     const d = data || {};
     const totalCost = (d.price || 0) + (d.works || 0) + (d.notaryFees || 0);
     const isLoc = d.projectType === "LOC";
     const isRP = d.projectType === "RP";
     
+    // FIX HYDRATION: Date calculée uniquement au montage
+    const [dateStr, setDateStr] = useState("");
+    useEffect(() => {
+        setDateStr(new Date().toLocaleDateString("fr-FR"));
+    }, []);
+
     return (
       <div style={{ display: "none" }}>
         <div ref={refProp} className="p-12 bg-white text-black font-sans min-h-[29.7cm] w-[21cm] mx-auto relative flex flex-col justify-between">
+            
             <div>
                 {/* Header */}
                 <div className="flex justify-between items-center border-b-2 border-black/10 pb-6 mb-10">
@@ -38,9 +45,9 @@ const DossierBancaire = ({ data, refProp }: any) => {
                     <div className="text-right">
                         <p className="text-base font-bold text-gray-900">{d.name || "Projet Immobilier"}</p>
                         <span className="inline-block bg-gray-100 text-gray-600 text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wide mt-1">
-                            {d.projectType === "LOC" ? "Investissement Locatif" : d.projectType === "RP" ? "Résidence Principale" : "Résidence Secondaire"}
+                            {isLoc ? "Investissement Locatif" : isRP ? "Résidence Principale" : "Résidence Secondaire"}
                         </span>
-                        <p className="text-xs text-gray-400 mt-1">{new Date().toLocaleDateString()}</p>
+                        <p className="text-xs text-gray-400 mt-1">{dateStr}</p>
                     </div>
                 </div>
 
@@ -97,6 +104,7 @@ const DossierBancaire = ({ data, refProp }: any) => {
                                 <div className="p-5 rounded-xl bg-indigo-50 border border-indigo-100 text-center">
                                     <p className="text-[9px] uppercase font-bold text-indigo-400 mb-1 tracking-wider">Coût Total Crédit</p>
                                     <p className="text-3xl font-black text-indigo-700">{formatEuro(Math.round(d.totalCreditCost))}</p>
+                                    <p className="text-[9px] text-indigo-300 mt-1">Intérêts bancaires</p>
                                 </div>
                                 <div className="p-5 rounded-xl bg-amber-50 border border-amber-100 text-center">
                                     <p className="text-[9px] uppercase font-bold text-amber-500 mb-1 tracking-wider">Capitalisation / Mois</p>
@@ -160,7 +168,7 @@ const DossierBancaire = ({ data, refProp }: any) => {
 const Help = ({ title, text }: { title: string, text: string }) => (
   <div className="group/help relative inline-flex items-center ml-2 align-middle cursor-help z-[999]">
     <HelpCircle size={14} className="text-zinc-500 group-hover/help:text-indigo-400 transition-colors duration-300"/>
-    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 w-72 p-4 bg-[#121217] border border-white/10 rounded-xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.8)] opacity-0 invisible group-hover/help:visible group-hover/help:opacity-100 transition-all duration-200 z-[9999] translate-y-2 group-hover/help:translate-y-0 backdrop-blur-xl">
+    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 w-64 md:w-72 p-4 bg-[#121217] border border-white/10 rounded-xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.8)] opacity-0 invisible group-hover/help:visible group-hover/help:opacity-100 transition-all duration-200 z-[9999] translate-y-2 group-hover/help:translate-y-0 backdrop-blur-xl">
         <div className="flex items-center gap-2 mb-2 border-b border-white/5 pb-2">
             <span className="text-[10px] font-black text-indigo-400 uppercase tracking-wider">{title}</span>
         </div>
@@ -206,6 +214,7 @@ export default function SimulateurPage() {
   const componentRef = useRef(null);
   const [printData, setPrintData] = useState<any>(null); 
 
+  // Impression Fix v3
   const handlePrint = useReactToPrint({
     contentRef: componentRef,
     documentTitle: "Dossier_Financement_Nexus",
@@ -264,6 +273,7 @@ export default function SimulateurPage() {
     loadProjets();
   }, []);
 
+  // --- ENGINE DE CALCUL ---
   useEffect(() => {
     const safeRevenue = Number(revenue) || 0;
     const safeCredits = Number(credits) || 0;
@@ -581,7 +591,6 @@ export default function SimulateurPage() {
 
           {mode === "FISCALITE" && (
             <motion.div key="fiscal" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="grid grid-cols-1 gap-8">
-                {/* ICI LA MATRICE RESPONSIVE RESTAUREE */}
                 {projectType === "LOC" ? (
                     <PremiumCard className="p-10 bg-gradient-to-br from-[#0B0B0F] to-black border-indigo-500/20">
                         {/* Header Responsive */}
@@ -602,10 +611,10 @@ export default function SimulateurPage() {
                         {/* Tableau Responsive */}
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                             <div className="hidden md:block space-y-4 pt-16 text-right text-sm text-zinc-400 font-medium">
-                                <div className="h-10 flex items-center justify-end">Recettes Locatives</div>
-                                <div className="h-10 flex items-center justify-end">Charges Déductibles</div>
-                                <div className="h-10 flex items-center justify-end text-blue-400">Intérêts d'Emprunt</div>
-                                <div className="h-10 flex items-center justify-end text-indigo-400">Amortissement (LMNP)</div>
+                                <div className="h-10 flex items-center justify-end gap-2">Recettes Locatives <Help title="Recettes" text="Loyer annuel"/></div>
+                                <div className="h-10 flex items-center justify-end gap-2">Charges Déductibles <Help title="Charges" text="Charges copro, TF..."/></div>
+                                <div className="h-10 flex items-center justify-end gap-2 text-blue-400">Intérêts d'Emprunt <Help title="Intérêts" text="100% déductibles au réel"/></div>
+                                <div className="h-10 flex items-center justify-end gap-2 text-indigo-400">Amortissement (LMNP) <Help title="Amortissement" text="Charge fictive"/></div>
                                 <div className="h-1 p-0 m-0"></div>
                                 <div className="h-10 flex items-center justify-end text-white font-bold">Base Imposable</div>
                                 <div className="h-10 flex items-center justify-end text-amber-500">Impôt Final (TMI + PS)</div>
