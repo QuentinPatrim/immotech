@@ -15,7 +15,7 @@ import { NexusLogo } from "@/components/NexusLogo";
 
 const formatEuro = (val: number) => new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(val);
 
-// --- COMPOSANT DOSSIER BANCAIRE (INTELLIGENT & CONTEXTUEL) ---
+// --- COMPOSANT DOSSIER BANCAIRE (CORRIGÉ POUR MOBILE) ---
 const DossierBancaire = ({ data, refProp }: any) => {
     const d = data || {};
     const totalCost = (d.price || 0) + (d.works || 0) + (d.notaryFees || 0);
@@ -29,8 +29,10 @@ const DossierBancaire = ({ data, refProp }: any) => {
     }, []);
 
     return (
-      <div style={{ display: "none" }}>
-        <div ref={refProp} className="p-12 bg-white text-black font-sans min-h-[29.7cm] w-[21cm] mx-auto relative flex flex-col justify-between">
+      // FIX MOBILE : On remplace display:none par une position hors-écran
+      // Cela permet au navigateur mobile de calculer le rendu pour l'impression
+      <div className="absolute left-[-9999px] top-0 w-0 h-0 overflow-hidden print:static print:w-auto print:h-auto print:overflow-visible">
+        <div ref={refProp} className="p-12 bg-white text-black font-sans min-h-[29.7cm] w-[21cm] mx-auto relative flex flex-col justify-between print:block">
             
             <div>
                 {/* Header */}
@@ -210,21 +212,30 @@ export default function SimulateurPage() {
   const [projectName, setProjectName] = useState("");
   const [importingId, setImportingId] = useState<number | null>(null);
   
-  // REF POUR IMPRESSION PDF
+  // GESTION IMPRESSION (Corrigée pour Mobile)
   const componentRef = useRef(null);
   const [printData, setPrintData] = useState<any>(null); 
+  const [isReadyToPrint, setIsReadyToPrint] = useState(false);
 
-  // Impression Fix v3
   const handlePrint = useReactToPrint({
     contentRef: componentRef,
     documentTitle: "Dossier_Financement_Nexus",
+    onAfterPrint: () => {
+        setPrintData(null);
+        setIsReadyToPrint(false);
+    }
   });
+
+  // Déclencheur automatique dès que les données sont prêtes (évite les blocages pop-up)
+  useEffect(() => {
+    if (isReadyToPrint && printData) {
+        handlePrint();
+    }
+  }, [isReadyToPrint, printData, handlePrint]);
 
   const prepareAndPrint = (sim: any) => {
       setPrintData(sim.data ? { ...sim.data, name: sim.name } : null);
-      setTimeout(() => {
-          handlePrint();
-      }, 500); 
+      setIsReadyToPrint(true);
   };
 
   // --- PARAMÈTRES GLOBAUX ---
@@ -371,7 +382,15 @@ export default function SimulateurPage() {
       setSavedSimulations(updated);
       setProjectName("");
       const { data: { user } } = await supabase.auth.getUser();
-      if (user) await supabase.from('profiles').update({ simulations_json: updated }).eq('id', user.id);
+      
+      // FIX PERSISTENCE : Gestion d'erreur explicite
+      if (user) {
+          const { error } = await supabase.from('profiles').update({ simulations_json: updated }).eq('id', user.id);
+          if (error) {
+              console.error("Erreur sauvegarde:", error);
+              alert("Impossible de sauvegarder le projet. Erreur: " + error.message);
+          }
+      }
       setMode("PROJETS");
   };
 
@@ -407,7 +426,7 @@ export default function SimulateurPage() {
       <Sidebar />
       <main className="md:ml-64 flex-1 w-auto max-w-full p-4 md:p-8 relative overflow-hidden">
         
-        {/* COMPOSANT CACHÉ POUR L'IMPRESSION */}
+        {/* COMPOSANT CACHÉ POUR L'IMPRESSION (CORRIGÉ) */}
         <DossierBancaire refProp={componentRef} data={printData} />
 
         <div className="fixed top-0 left-64 w-[800px] h-[800px] bg-indigo-900/10 rounded-full blur-[150px] pointer-events-none"></div>
@@ -416,7 +435,7 @@ export default function SimulateurPage() {
         <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} className="max-w-[1800px] mx-auto space-y-10 relative z-10">
           
           <div className="flex flex-col xl:flex-row justify-between items-start xl:items-end gap-8 pl-2 border-l-4 border-indigo-600 py-2">
-            <div><h1 className="text-4xl md:text-5xl font-black text-white tracking-tight uppercase">Simulateur <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-400">Expert 360°</span></h1><p className="text-zinc-400 text-sm md:text-base font-light tracking-wide mt-2">Analysez, optimisez fiscalement et structurez vos investissements.</p></div>
+            <div><h1 className="text-4xl md:text-5xl font-black text-white tracking-tight uppercase">Simulateur <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-400">Expert 360°</span></h1></div>
             <div className="bg-zinc-900/60 backdrop-blur-xl p-1.5 rounded-2xl border border-white/5 flex flex-wrap gap-1 w-full xl:w-auto shadow-2xl">
                 {[{ id: "CAPACITE", label: "Capacité", icon: Wallet }, { id: "RENTABILITE", label: "Projet & Renta", icon: Calculator }, { id: "FISCALITE", label: "Fiscalité Expert", icon: Scale }, { id: "PROJETS", label: "Portefeuille", icon: FolderOpen }].map((tab) => (
                     <button key={tab.id} onClick={() => setMode(tab.id as any)} className={`flex items-center gap-2 px-5 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-all duration-300 ${mode === tab.id ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/25 scale-105" : "text-zinc-500 hover:text-white hover:bg-white/5"}`}><tab.icon size={16}/> {tab.label}</button>
@@ -720,7 +739,7 @@ export default function SimulateurPage() {
                         <div className="flex flex-col gap-2">
                             <div className="flex gap-2">
                                 <Button onClick={() => loadSimulation(sim)} className="flex-1 bg-white text-black hover:bg-zinc-200 h-10 rounded-xl text-xs font-bold uppercase shadow-lg"><MousePointerClick size={14} className="mr-2"/> Ouvrir</Button>
-                                {/* BOUTON PDF */}
+                                {/* BOUTON PDF FIXÉ POUR MOBILE */}
                                 <Button onClick={() => prepareAndPrint(sim)} className="w-10 bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 h-10 rounded-xl"><Printer size={14}/></Button>
                                 <Button onClick={() => deleteSimulation(sim.id)} className="w-10 bg-rose-500/10 text-rose-500 hover:bg-rose-500/20 h-10 rounded-xl"><Trash2 size={14}/></Button>
                             </div>
