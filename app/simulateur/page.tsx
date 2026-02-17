@@ -17,7 +17,7 @@ const formatEuro = (val: number) => new Intl.NumberFormat("fr-FR", { style: "cur
 const Help = ({ title, text }: { title: string, text: string }) => (
   <div className="group/help relative inline-flex items-center ml-2 align-middle cursor-help z-[999]">
     <HelpCircle size={14} className="text-zinc-500 group-hover/help:text-indigo-400 transition-colors duration-300"/>
-    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 w-72 p-4 bg-[#121217] border border-white/10 rounded-xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.8)] opacity-0 invisible group-hover/help:visible group-hover/help:opacity-100 transition-all duration-200 z-[9999] translate-y-2 group-hover/help:translate-y-0 backdrop-blur-xl">
+    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 w-64 md:w-72 p-4 bg-[#121217] border border-white/10 rounded-xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.8)] opacity-0 invisible group-hover/help:visible group-hover/help:opacity-100 transition-all duration-200 z-[9999] translate-y-2 group-hover/help:translate-y-0 backdrop-blur-xl">
         <div className="flex items-center gap-2 mb-2 border-b border-white/5 pb-2">
             <span className="text-[10px] font-black text-indigo-400 uppercase tracking-wider">{title}</span>
         </div>
@@ -93,13 +93,13 @@ export default function SimulateurPage() {
   const [monthlyPayment, setMonthlyPayment] = useState(0);
   const [totalCost, setTotalCost] = useState(0);
   const [notaryFees, setNotaryFees] = useState(0);
-  const [totalCreditCost, setTotalCreditCost] = useState(0); // NOUVEAU: Coût total crédit
+  const [totalCreditCost, setTotalCreditCost] = useState(0);
   
   // DONNÉES DATA VIZ
   const [fiscalData, setFiscalData] = useState({ micro: { total: 0, base: 0 }, reel: { total: 0, charges: 0, interests: 0, amortissement: 0, base: 0 } });
   const [capitalGainData, setCapitalGainData] = useState({ grossGain: 0, acquisitionPrice: 0, totalTax: 0, netGain: 0 });
   const [yearOneInterest, setYearOneInterest] = useState(0);
-  const [amortizationSchedule, setAmortizationSchedule] = useState<any[]>([]); // NOUVEAU: Données du graphique
+  const [amortizationSchedule, setAmortizationSchedule] = useState<any[]>([]);
 
   const handleInput = (setter: (v: any) => void, val: string) => {
       if (val === "") setter("");
@@ -117,7 +117,7 @@ export default function SimulateurPage() {
     loadProjets();
   }, []);
 
-  // --- ENGINE DE CALCUL ---
+  // --- ENGINE ---
   useEffect(() => {
     const safeRevenue = Number(revenue) || 0;
     const safeCredits = Number(credits) || 0;
@@ -134,7 +134,7 @@ export default function SimulateurPage() {
     setMaxMonthly(Math.max(0, Math.round(availableIncome)));
     setTotalEnvelope(Math.max(0, Math.round(capacity)) + safeApportCap);
 
-    // 2. PROJET & RENTABILITÉ
+    // 2. PROJET
     const safePrice = Number(price) || 0;
     const safeWorks = Number(works) || 0;
     const safeNotaryRate = Number(notaryRate) || 0;
@@ -156,8 +156,6 @@ export default function SimulateurPage() {
 
     if (loanAmount > 0) {
         mensu = loanAmount * (mRate / (1 - Math.pow(1 + mRate, -nMonths)));
-        
-        // --- TABLEAU D'AMORTISSEMENT ---
         let remainingCapital = loanAmount;
         let cumulativeInterests = 0;
 
@@ -169,14 +167,9 @@ export default function SimulateurPage() {
                 const capitalRepaid = mensu - interestMonth;
                 remainingCapital -= capitalRepaid;
             }
-            if (y === 1) y1Interest = interestYear; // Intérêts année 1 pour fiscalité
+            if (y === 1) y1Interest = interestYear; 
             cumulativeInterests += interestYear;
-            
-            schedule.push({
-                year: `An ${y}`,
-                capital: Math.max(0, Math.round(remainingCapital)),
-                interests: Math.round(cumulativeInterests)
-            });
+            schedule.push({ year: `An ${y}`, capital: Math.max(0, Math.round(remainingCapital)), interests: Math.round(cumulativeInterests) });
         }
         costCredit = (mensu * nMonths) - loanAmount;
     }
@@ -186,14 +179,13 @@ export default function SimulateurPage() {
     setTotalCreditCost(costCredit);
     setAmortizationSchedule(schedule);
 
-    // Cashflow Brut
+    // Cashflow & Fiscalité
     const annualRent = safeRent * 12;
     const annualCharges = (safeCharges * 12) + safeTax;
     const annualCredit = mensu * 12;
     const cfBrutAnnual = annualRent - annualCharges - annualCredit;
     setCashflowBrut(cfBrutAnnual / 12);
 
-    // 3. MOTEUR FISCALITÉ
     if (projectType === "LOC") {
         // MICRO
         let abattement = 0;
@@ -205,14 +197,13 @@ export default function SimulateurPage() {
         const taxMicro = baseMicro * (userTMI / 100) + baseMicro * 0.172;
 
         // RÉEL
-        const interestAvg = costCredit / duration; // Moyenne pour estimation rapide
         let amo = 0;
         if (rentalStrategy !== "NUE") {
             const bati = safePrice * 0.85; 
             amo = (bati / 30) + (safeWorks / 15) + (5000 / 7) + (notFees / 25);
         }
 
-        const resultatComptable = annualRent - annualCharges - y1Interest - amo; // On prend Y1 ici pour le scénario réel
+        const resultatComptable = annualRent - annualCharges - y1Interest - amo; 
         const baseReel = Math.max(0, resultatComptable);
         const taxReel = baseReel * (userTMI / 100) + baseReel * 0.172;
 
@@ -226,11 +217,10 @@ export default function SimulateurPage() {
         setYieldNet(total > 0 ? ((annualRent - annualCharges) / total) * 100 : 0);
 
     } else {
-        // RP / RS (Cashflow = Coût)
+        // RP / RS
         setCashflowNetImpots(-(mensu + safeCharges + (safeTax / 12)));
         setYieldNet(0); 
         
-        // Calcul PV (inchangé)
         const notaireRetenu = Math.max(notFees, safePrice * 0.075);
         const travauxRetenus = holdingYears > 5 ? Math.max(safeWorks, safePrice * 0.15) : safeWorks;
         const acquisitionRetenue = safePrice + notaireRetenu + travauxRetenus;
@@ -239,7 +229,7 @@ export default function SimulateurPage() {
         let taxTotal = 0;
         if (projectType === "RS") {
              const abattementApprox = Math.min(1, Math.max(0, (holdingYears - 5) * 0.06)); 
-             taxTotal = grossGain * (1 - abattementApprox) * (0.362); // 19% + 17.2%
+             taxTotal = grossGain * (1 - abattementApprox) * (0.362); 
         }
         setCapitalGainData({ grossGain, acquisitionPrice: acquisitionRetenue, totalTax: taxTotal, netGain: grossGain - taxTotal });
     }
@@ -279,19 +269,17 @@ export default function SimulateurPage() {
       <Sidebar />
       <main className="md:ml-64 flex-1 w-auto max-w-full p-4 md:p-8 relative overflow-hidden">
         
-        {/* Glows */}
         <div className="fixed top-0 left-64 w-[800px] h-[800px] bg-indigo-900/10 rounded-full blur-[150px] pointer-events-none"></div>
         <div className="fixed bottom-0 right-0 w-[600px] h-[600px] bg-cyan-900/10 rounded-full blur-[150px] pointer-events-none"></div>
         
         <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} className="max-w-[1800px] mx-auto space-y-10 relative z-10">
           
-          {/* HEADER */}
           <div className="flex flex-col xl:flex-row justify-between items-start xl:items-end gap-8 pl-2 border-l-4 border-indigo-600 py-2">
             <div>
               <h1 className="text-4xl md:text-5xl font-black text-white tracking-tight uppercase">
-                Mon Simulateur <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-400">Immobilier</span>
+                Simulateur <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-400">Expert 360°</span>
               </h1>
-              <p className="text-zinc-400 text-sm md:text-base font-light tracking-wide mt-2">Analysez, optimisez fiscalement et structurez vos investissements</p>
+              <p className="text-zinc-400 text-sm md:text-base font-light tracking-wide mt-2">Analysez, optimisez fiscalement et structurez vos investissements.</p>
             </div>
             
             <div className="bg-zinc-900/60 backdrop-blur-xl p-1.5 rounded-2xl border border-white/5 flex flex-wrap gap-1 w-full xl:w-auto shadow-2xl">
@@ -303,7 +291,7 @@ export default function SimulateurPage() {
 
           <AnimatePresence mode="wait">
           
-          {/* --- VUE CAPACITÉ --- */}
+          {/* ... VUE CAPACITÉ (INCHANGÉE) ... */}
           {mode === "CAPACITE" && (
             <motion.div key="capa" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="grid grid-cols-1 lg:grid-cols-12 gap-8">
                 <div className="lg:col-span-4 space-y-6">
@@ -325,8 +313,8 @@ export default function SimulateurPage() {
                 </div>
                 <div className="lg:col-span-8 p-16 rounded-[48px] bg-gradient-to-br from-zinc-900 via-black to-blue-950/20 border border-white/10 flex flex-col items-center justify-center text-center relative overflow-hidden shadow-2xl">
                     <div className="relative z-10">
-                        <p className="text-zinc-500 text-xs font-black uppercase tracking-[0.4em] mb-8">ENVELOPPE GLOBALE (EMPRUNT + APPORT)</p>
-                        <div className="text-7xl lg:text-[9rem] font-black text-white tracking-tighter transition-all duration-500 hover:scale-105 cursor-default"><AnimatedNumber value={totalEnvelope} /></div>
+                        <p className="text-zinc-500 text-xs font-black uppercase tracking-[0.4em] mb-8">ENVELOPPE GLOBALE</p>
+                        <div className="text-7xl lg:text-[9rem] font-black text-white tracking-tighter"><AnimatedNumber value={totalEnvelope} /></div>
                         <div className="mt-10 flex gap-6 justify-center text-sm font-bold text-zinc-500 bg-white/5 px-8 py-4 rounded-full border border-white/5 backdrop-blur-md">
                              <span className="flex items-center gap-2"><Landmark size={14} className="text-blue-500"/> Banque: {formatEuro(maxLoan)}</span>
                              <span className="text-zinc-700 mx-2">|</span>
@@ -337,11 +325,11 @@ export default function SimulateurPage() {
             </motion.div>
           )}
 
-          {/* --- VUE RENTABILITÉ --- */}
+          {/* ... VUE RENTABILITÉ (INCHANGÉE) ... */}
           {mode === "RENTABILITE" && (
             <motion.div key="renta" initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.98 }} className="grid grid-cols-1 xl:grid-cols-12 gap-8">
-                {/* Configuration */}
-                <div className="xl:col-span-4 space-y-6">
+               {/* Réutiliser le code RENTABILITE de la réponse précédente */}
+               <div className="xl:col-span-4 space-y-6">
                     <PremiumCard className="p-6">
                         <h3 className="text-xs font-black text-white uppercase flex items-center gap-3 mb-6 tracking-widest"><Building size={18}/> Le Projet</h3>
                         <div className="bg-black/40 p-4 rounded-2xl mb-6 border border-white/5">
@@ -357,7 +345,7 @@ export default function SimulateurPage() {
                                 <div className="animate-in slide-in-from-top-2 fade-in">
                                     <div className="flex items-center gap-2 mb-2">
                                         <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Stratégie Locative</label>
-                                        <Help title="Stratégie Locative" text="LMNP (Meublé) : Permet l'amortissement du bien. NU (Foncier) : Revenus fonciers classiques."/>
+                                        <Help title="Stratégie Locative" text="LMNP : Location Meublée Non Professionnelle (Permet l'amortissement du bien). NU : Revenus fonciers classiques."/>
                                     </div>
                                     <div className="grid grid-cols-3 gap-2">
                                         {['LMNP', 'NUE', 'LCD'].map(s => (
@@ -447,7 +435,6 @@ export default function SimulateurPage() {
                                 <div className="text-5xl font-black text-white">{yieldNet.toFixed(2)}<span className="text-emerald-500 text-2xl">%</span></div>
                             </PremiumCard>
                         ) : (
-                            // POUR RP/RS : On remplace Rendement par Coût Crédit Total
                             <PremiumCard color="rose" className="p-6 flex flex-col items-center justify-center">
                                 <div className="flex items-center gap-2 mb-2">
                                     <p className="text-[10px] text-zinc-500 font-bold uppercase">Coût Total Crédit</p>
@@ -462,7 +449,7 @@ export default function SimulateurPage() {
                         </PremiumCard>
                     </div>
 
-                    {/* GRAPHIQUE AMORTISSEMENT CRÉDIT (NOUVEAU) */}
+                    {/* GRAPHIQUE AMORTISSEMENT CRÉDIT */}
                     <PremiumCard className="p-8 border-white/5 relative overflow-hidden">
                         <div className="flex items-center justify-between mb-6 relative z-10">
                             <h4 className="text-sm font-black text-white uppercase tracking-widest flex items-center gap-3"><BarChart3 size={18} className="text-blue-500"/> Amortissement du Capital</h4>
@@ -526,22 +513,22 @@ export default function SimulateurPage() {
 
           {/* --- VUE FISCALITÉ EXPERT --- */}
           {mode === "FISCALITE" && (
-            <motion.div key="fiscal" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="grid grid-cols-1 gap-8">
+            <motion.div key="fiscal" initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.98 }} className="grid grid-cols-1 gap-8">
                 
                 {projectType === "LOC" ? (
                     // --- MATRICE LOCATIVE ---
                     <PremiumCard className="p-10 bg-gradient-to-br from-[#0B0B0F] to-black border-indigo-500/20">
                         {/* Header */}
-                        <div className="flex items-center justify-between mb-8">
+                        <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-8 gap-4">
                             <div className="flex items-center gap-4">
                                 <div className="h-12 w-12 rounded-2xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center border border-indigo-500/30"><Scale size={24}/></div>
                                 <div>
-                                    <h2 className="text-2xl font-black text-white uppercase tracking-tight">Matrice Fiscale <span className="text-indigo-500">Expert</span></h2>
+                                    <h2 className="text-2xl font-black text-white uppercase tracking-tight">Matrice Fiscale <span className="text-indigo-500">Avancée</span></h2>
                                     <p className="text-zinc-400 text-sm">Comparatif détaillé des régimes fiscaux pour votre situation.</p>
                                 </div>
                             </div>
-                            <div className="flex items-center gap-3 bg-zinc-900/80 p-2 rounded-xl border border-white/5">
-                                <span className="text-[10px] font-bold text-zinc-500 uppercase ml-2 flex items-center gap-2">Votre TMI <Help title="TMI" text="Taux Marginal d'Imposition. Le taux auquel sont taxés vos revenus supplémentaires."/></span>
+                            <div className="flex items-center gap-3 bg-zinc-900/80 p-2 rounded-xl border border-white/5 overflow-x-auto">
+                                <span className="text-[10px] font-bold text-zinc-500 uppercase ml-2 flex items-center gap-2 whitespace-nowrap">Votre TMI <Help title="TMI" text="Taux Marginal d'Imposition. Le taux auquel sont taxés vos revenus supplémentaires."/></span>
                                 <div className="flex gap-1">
                                     {[0, 11, 30, 41, 45].map((t) => (
                                         <button key={t} onClick={() => setUserTMI(t)} className={`h-8 w-10 rounded-lg text-xs font-bold transition-all ${userTMI === t ? "bg-indigo-600 text-white shadow-md" : "bg-zinc-800 text-zinc-500 hover:bg-zinc-700"}`}>{t}%</button>
@@ -550,14 +537,14 @@ export default function SimulateurPage() {
                             </div>
                         </div>
 
-                        {/* TABLEAU */}
+                        {/* TABLEAU RESPONSIVE */}
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                            {/* Labels */}
-                            <div className="space-y-4 pt-16 text-right text-sm text-zinc-400 font-medium">
+                            {/* Labels (Desktop Only) */}
+                            <div className="hidden md:block space-y-4 pt-16 text-right text-sm text-zinc-400 font-medium">
                                 <div className="h-10 flex items-center justify-end gap-2">Recettes Locatives <Help title="Recettes" text="Loyer Hors Charges encaissé sur l'année."/></div>
                                 <div className="h-10 flex items-center justify-end gap-2">Charges Déductibles <Help title="Charges" text="Taxe foncière, Charges de copro, Assurances, Gestion, Réparations..."/></div>
-                                <div className="h-10 flex items-center justify-end gap-2 text-blue-400">Intérêts d'Emprunt <Help title="Intérêts (Année 1)" text="Pour cette simulation, nous prenons les intérêts de la 1ère année (les plus élevés) afin de maximiser le déficit au démarrage. Ils sont 100% déductibles au Réel."/></div>
-                                <div className="h-10 flex items-center justify-end gap-2 text-indigo-400">Amortissement (LMNP) <Help title="Amortissement" text="Charge fictive calculée sur la valeur du bien (Hors terrain) + Travaux + Meubles. Elle réduit drastiquement votre base imposable sans sortir de trésorerie."/></div>
+                                <div className="h-10 flex items-center justify-end gap-2 text-blue-400">Intérêts d'Emprunt <Help title="Intérêts (Année 1)" text="Pour cette simulation, nous prenons les intérêts de la 1ère année (les plus élevés). Ils sont 100% déductibles au Réel."/></div>
+                                <div className="h-10 flex items-center justify-end gap-2 text-indigo-400">Amortissement (LMNP) <Help title="Amortissement" text="Charge fictive calculée sur la valeur du bien (Hors terrain) + Travaux + Meubles. Elle réduit drastiquement votre base imposable."/></div>
                                 <div className="h-1 p-0 m-0"></div>
                                 <div className="h-10 flex items-center justify-end text-white font-bold">Base Imposable</div>
                                 <div className="h-10 flex items-center justify-end gap-2 text-amber-500">Impôt Final (TMI + PS) <Help title="Impôt Final" text={`Calculé ainsi : Base Imposable x (${userTMI}% TMI + 17.2% Prélèvements Sociaux).`}/></div>
@@ -571,13 +558,31 @@ export default function SimulateurPage() {
                                     <span className="text-[10px] text-zinc-500">Abattement forfaitaire</span>
                                 </div>
                                 <div className="space-y-4 text-center font-mono text-sm">
-                                    <div className="h-10 flex items-center justify-center text-white">{formatEuro(Number(rent)*12)}</div>
-                                    <div className="h-10 flex items-center justify-center text-zinc-600 italic">Forfaitaire</div>
-                                    <div className="h-10 flex items-center justify-center text-zinc-600 italic">Non déductible</div>
-                                    <div className="h-10 flex items-center justify-center text-zinc-600 italic">Non applicable</div>
-                                    <div className="h-1 bg-white/5 my-2"></div>
-                                    <div className="h-10 flex items-center justify-center text-white font-bold text-lg">{formatEuro(fiscalData.micro.base)}</div>
-                                    <div className="h-10 flex items-center justify-center text-amber-500 font-bold">{formatEuro(fiscalData.micro.total)}</div>
+                                    <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-2 md:py-0 border-b border-white/5 md:border-none">
+                                        <span className="md:hidden text-xs text-zinc-500">Recettes</span>
+                                        <span className="text-white">{formatEuro(Number(rent)*12)}</span>
+                                    </div>
+                                    <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-2 md:py-0 border-b border-white/5 md:border-none">
+                                        <span className="md:hidden text-xs text-zinc-500">Charges</span>
+                                        <span className="text-zinc-600 italic">Forfaitaire</span>
+                                    </div>
+                                    <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-2 md:py-0 border-b border-white/5 md:border-none">
+                                        <span className="md:hidden text-xs text-zinc-500">Intérêts</span>
+                                        <span className="text-zinc-600 italic">Non déductible</span>
+                                    </div>
+                                    <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-2 md:py-0 border-b border-white/5 md:border-none">
+                                        <span className="md:hidden text-xs text-zinc-500">Amortissement</span>
+                                        <span className="text-zinc-600 italic">Non applicable</span>
+                                    </div>
+                                    <div className="hidden md:block h-1 bg-white/5 my-2"></div>
+                                    <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-2 md:py-0 border-b border-white/5 md:border-none">
+                                        <span className="md:hidden text-xs text-white font-bold">Base Imposable</span>
+                                        <span className="text-white font-bold text-lg">{formatEuro(fiscalData.micro.base)}</span>
+                                    </div>
+                                    <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-2 md:py-0">
+                                        <span className="md:hidden text-xs text-amber-500 font-bold">Impôt Total</span>
+                                        <span className="text-amber-500 font-bold">{formatEuro(fiscalData.micro.total)}</span>
+                                    </div>
                                 </div>
                             </div>
 
@@ -589,13 +594,31 @@ export default function SimulateurPage() {
                                     <span className="text-[10px] text-zinc-500">Charges + Amortissement</span>
                                 </div>
                                 <div className="space-y-4 text-center font-mono text-sm">
-                                    <div className="h-10 flex items-center justify-center text-white">{formatEuro(Number(rent)*12)}</div>
-                                    <div className="h-10 flex items-center justify-center text-zinc-300">-{formatEuro(fiscalData.reel.charges)}</div>
-                                    <div className="h-10 flex items-center justify-center text-blue-400 font-bold">-{formatEuro(Math.round(yearOneInterest))}</div>
-                                    <div className="h-10 flex items-center justify-center text-indigo-400 font-bold">-{formatEuro(Math.round(fiscalData.reel.amortissement))}</div>
-                                    <div className="h-1 bg-white/5 my-2"></div>
-                                    <div className="h-10 flex items-center justify-center text-white font-bold text-lg">{fiscalData.reel.base === 0 ? "0 € (Déficit)" : formatEuro(fiscalData.reel.base)}</div>
-                                    <div className="h-10 flex items-center justify-center text-amber-500 font-bold">{formatEuro(fiscalData.reel.total)}</div>
+                                    <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-2 md:py-0 border-b border-white/5 md:border-none">
+                                        <span className="md:hidden text-xs text-zinc-500">Recettes</span>
+                                        <span className="text-white">{formatEuro(Number(rent)*12)}</span>
+                                    </div>
+                                    <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-2 md:py-0 border-b border-white/5 md:border-none">
+                                        <span className="md:hidden text-xs text-zinc-500">Charges</span>
+                                        <span className="text-zinc-300">-{formatEuro(fiscalData.reel.charges)}</span>
+                                    </div>
+                                    <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-2 md:py-0 border-b border-white/5 md:border-none">
+                                        <span className="md:hidden text-xs text-zinc-500">Intérêts</span>
+                                        <span className="text-blue-400 font-bold">-{formatEuro(Math.round(yearOneInterest))}</span>
+                                    </div>
+                                    <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-2 md:py-0 border-b border-white/5 md:border-none">
+                                        <span className="md:hidden text-xs text-zinc-500">Amortissement</span>
+                                        <span className="text-indigo-400 font-bold">-{formatEuro(Math.round(fiscalData.reel.amortissement))}</span>
+                                    </div>
+                                    <div className="hidden md:block h-1 bg-white/5 my-2"></div>
+                                    <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-2 md:py-0 border-b border-white/5 md:border-none">
+                                        <span className="md:hidden text-xs text-white font-bold">Base Imposable</span>
+                                        <span className="text-white font-bold text-lg">{fiscalData.reel.base === 0 ? "0 € (Déficit)" : formatEuro(fiscalData.reel.base)}</span>
+                                    </div>
+                                    <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-2 md:py-0">
+                                        <span className="md:hidden text-xs text-amber-500 font-bold">Impôt Total</span>
+                                        <span className="text-amber-500 font-bold">{formatEuro(fiscalData.reel.total)}</span>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -684,7 +707,7 @@ export default function SimulateurPage() {
             </motion.div>
           )}
 
-          {/* --- VUE MES PROJETS --- */}
+          {/* ... VUE MES PROJETS (INCHANGÉE) ... */}
           {mode === "PROJETS" && (
             <motion.div key="list" initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.98 }} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {savedSimulations.length === 0 && (
