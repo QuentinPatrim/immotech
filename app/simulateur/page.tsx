@@ -12,6 +12,7 @@ import AnimatedNumber from "@/components/AnimatedNumber";
 import { supabase } from "@/lib/supabaseClient";
 import { useReactToPrint } from "react-to-print"; 
 import { NexusLogo } from "@/components/NexusLogo"; 
+import PremiumGuard from "@/components/PremiumGuard";
 
 const formatEuro = (val: number) => new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(val);
 
@@ -29,26 +30,20 @@ const DossierBancaire = ({ data, refProp }: any) => {
 
     return (
       <div className="absolute left-[-9999px] top-0 w-0 h-0 overflow-hidden print:static print:w-auto print:h-auto print:overflow-visible">
-        {/* CSS GLOBAL POUR NETTOYER L'IMPRESSION */}
         <style type="text/css" media="print">
           {`
             @page { size: A4; margin: 0; }
             body { -webkit-print-color-adjust: exact; print-color-adjust: exact; background-color: white; }
-            /* Cacher impérativement la sidebar et tout autre élément d'interface */
             nav, aside, header, .sidebar-mobile, button { display: none !important; }
-            /* S'assurer que le contenu prend toute la place */
             .print-container { width: 100%; height: 100%; margin: 0; padding: 0; }
           `}
         </style>
 
         <div ref={refProp} className="print-container bg-white text-black font-sans mx-auto relative print:w-full print:max-w-[210mm] print:min-h-[297mm] print:p-[10mm]">
-            
             <div className="flex flex-col h-full justify-between p-8 md:p-12">
                 <div>
-                    {/* Header avec Logo Fixé */}
                     <div className="flex justify-between items-center border-b-2 border-black/10 pb-6 mb-8">
                         <div className="flex items-center gap-4">
-                            {/* shrink-0 empêche le logo d'être écrasé */}
                             <div className="text-black shrink-0 w-12 h-12"><NexusLogo className="w-full h-full"/></div>
                             <div>
                                 <h1 className="text-2xl font-black uppercase tracking-tighter text-black leading-none">NEXUS <span className="text-indigo-600">INVEST</span></h1>
@@ -64,7 +59,6 @@ const DossierBancaire = ({ data, refProp }: any) => {
                         </div>
                     </div>
 
-                    {/* Synthèse Projet */}
                     <div className="grid grid-cols-2 gap-6 mb-8">
                         <div className="p-5 bg-gray-50 rounded-2xl border border-gray-100 shadow-sm break-inside-avoid">
                             <h3 className="text-[10px] font-black uppercase text-indigo-600 mb-4 flex items-center gap-2 tracking-widest"><Home size={14}/> L'Acquisition</h3>
@@ -88,7 +82,6 @@ const DossierBancaire = ({ data, refProp }: any) => {
                         </div>
                     </div>
 
-                    {/* Indicateurs Clés */}
                     <div className="mb-8 break-inside-avoid">
                         <h3 className="text-sm font-black uppercase text-gray-900 mb-4 border-l-4 border-indigo-600 pl-3">Indicateurs Financiers</h3>
                         <div className="grid grid-cols-3 gap-4">
@@ -126,7 +119,6 @@ const DossierBancaire = ({ data, refProp }: any) => {
                         </div>
                     </div>
 
-                    {/* Analyse Stratégique DÉTAILLÉE */}
                     <div className="mb-8 break-inside-avoid">
                         <h3 className="text-sm font-black uppercase text-gray-900 mb-4 border-l-4 border-indigo-600 pl-3">Analyse Stratégique</h3>
                         <div className="p-6 border border-gray-200 rounded-xl bg-white shadow-sm">
@@ -160,8 +152,6 @@ const DossierBancaire = ({ data, refProp }: any) => {
                         </div>
                     </div>
                 </div>
-
-                {/* Footer Legal */}
                 <div className="border-t pt-6 text-center mt-auto">
                     <p className="text-[8px] text-gray-400 font-medium uppercase tracking-widest">
                         Document généré par Nexus Invest. Ne constitue pas une offre de prêt.
@@ -206,26 +196,20 @@ export default function SimulateurPage() {
   const [savedSimulations, setSavedSimulations] = useState<any[]>([]);
   const [projectName, setProjectName] = useState("");
   const [importingId, setImportingId] = useState<number | null>(null);
-  
-  // GESTION IMPRESSION MOBILE
+  const [isPro, setIsPro] = useState(false);
+
   const componentRef = useRef(null);
   const [printData, setPrintData] = useState<any>(null); 
   const [isReadyToPrint, setIsReadyToPrint] = useState(false);
 
-  // FIX MOBILE #1 : Pas de setPrintData(null)
   const handlePrint = useReactToPrint({
     contentRef: componentRef,
     documentTitle: "Dossier_Financement_Nexus",
-    onAfterPrint: () => {
-        setIsReadyToPrint(false); 
-    }
+    onAfterPrint: () => { setIsReadyToPrint(false); }
   });
 
-  // FIX MOBILE #2 : Déclenchement automatique
   useEffect(() => {
-    if (isReadyToPrint && printData) {
-        handlePrint();
-    }
+    if (isReadyToPrint && printData) { handlePrint(); }
   }, [isReadyToPrint, printData, handlePrint]);
 
   const prepareAndPrint = (sim: any) => {
@@ -233,7 +217,6 @@ export default function SimulateurPage() {
       setIsReadyToPrint(true);
   };
 
-  // --- PARAMÈTRES GLOBAUX ---
   const [revenue, setRevenue] = useState<number | string>(2500);
   const [credits, setCredits] = useState<number | string>(0);
   const [duration, setDuration] = useState(25);
@@ -269,17 +252,19 @@ export default function SimulateurPage() {
   const handleInput = (setter: (v: any) => void, val: string) => { if (val === "") setter(""); else setter(Number(val)); };
 
   useEffect(() => {
-    const loadProjets = async () => {
+    const init = async () => {
         const { data: { session } } = await supabase.auth.getSession();
         if (session) {
-            const { data } = await supabase.from('profiles').select('simulations_json').eq('id', session.user.id).single();
-            if (data && data.simulations_json) setSavedSimulations(data.simulations_json);
+            const { data } = await supabase.from('profiles').select('is_pro, simulations_json').eq('id', session.user.id).single();
+            if (data) {
+                setIsPro(data.is_pro === true);
+                if (data.simulations_json) setSavedSimulations(data.simulations_json);
+            }
         }
     };
-    loadProjets();
+    init();
   }, []);
 
-  // --- ENGINE DE CALCUL ---
   useEffect(() => {
     const safeRevenue = Number(revenue) || 0;
     const safeCredits = Number(credits) || 0;
@@ -371,13 +356,7 @@ export default function SimulateurPage() {
       setSavedSimulations(updated);
       setProjectName("");
       const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-          const { error } = await supabase.from('profiles').update({ simulations_json: updated }).eq('id', user.id);
-          if (error) {
-              console.error("Erreur Save:", error);
-              alert("Erreur de sauvegarde. Vérifiez que la colonne 'simulations_json' existe dans Supabase.");
-          }
-      }
+      if (user) await supabase.from('profiles').update({ simulations_json: updated }).eq('id', user.id);
       setMode("PROJETS");
   };
 
@@ -411,7 +390,6 @@ export default function SimulateurPage() {
       <Sidebar />
       <main className="md:ml-64 flex-1 w-auto max-w-full p-4 md:p-8 relative overflow-hidden">
         
-        {/* ELEMENT CACHÉ POUR IMPRESSION (VERSION MOBILE FINALISÉE) */}
         <DossierBancaire refProp={componentRef} data={printData} />
 
         <div className="fixed top-0 left-64 w-[800px] h-[800px] bg-indigo-900/10 rounded-full blur-[150px] pointer-events-none"></div>
@@ -422,8 +400,10 @@ export default function SimulateurPage() {
           <div className="flex flex-col xl:flex-row justify-between items-start xl:items-end gap-8 pl-2 border-l-4 border-indigo-600 py-2">
             <div><h1 className="text-4xl md:text-5xl font-black text-white tracking-tight uppercase">Simulateur <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-400">Expert 360°</span></h1></div>
             <div className="bg-zinc-900/60 backdrop-blur-xl p-1.5 rounded-2xl border border-white/5 flex flex-wrap gap-1 w-full xl:w-auto shadow-2xl">
-                {[{ id: "CAPACITE", label: "Capacité", icon: Wallet }, { id: "RENTABILITE", label: "Projet & Renta", icon: Calculator }, { id: "FISCALITE", label: "Fiscalité Expert", icon: Scale }, { id: "PROJETS", label: "Portefeuille", icon: FolderOpen }].map((tab) => (
-                    <button key={tab.id} onClick={() => setMode(tab.id as any)} className={`flex items-center gap-2 px-5 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-all duration-300 ${mode === tab.id ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/25 scale-105" : "text-zinc-500 hover:text-white hover:bg-white/5"}`}><tab.icon size={16}/> {tab.label}</button>
+                {[{ id: "CAPACITE", label: "Capacité", icon: Wallet }, { id: "RENTABILITE", label: "Projet & Renta", icon: Calculator }, { id: "FISCALITE", label: "Fiscalité Expert", icon: Scale, premium: true }, { id: "PROJETS", label: "Portefeuille", icon: FolderOpen, premium: true }].map((tab) => (
+                    <button key={tab.id} onClick={() => setMode(tab.id as any)} className={`flex items-center gap-2 px-5 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-all duration-300 ${mode === tab.id ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/25 scale-105" : "text-zinc-500 hover:text-white hover:bg-white/5"}`}>
+                        <tab.icon size={16}/> {tab.label} {tab.premium && <Crown size={12} className="text-yellow-400 ml-1"/>}
+                    </button>
                 ))}
             </div>
           </div>
@@ -436,8 +416,8 @@ export default function SimulateurPage() {
                     <PremiumCard className="p-8">
                         <h3 className="text-xs font-black text-indigo-400 uppercase mb-8 flex items-center gap-3 tracking-widest"><Wallet size={18}/> Revenus</h3>
                         <div className="space-y-6">
-                            <div className="space-y-2"><div className="flex justify-between"><label className="text-[10px] font-bold text-zinc-500 uppercase">Salaire Net / Mois</label></div><Input type="number" value={revenue} onChange={e => handleInput(setRevenue, e.target.value)} className="bg-black/40 border-white/10 h-14 text-white font-bold text-xl focus:border-indigo-500"/></div>
-                            <div className="space-y-2"><div className="flex justify-between"><label className="text-[10px] font-bold text-zinc-500 uppercase">Crédits en cours</label></div><Input type="number" value={credits} onChange={e => handleInput(setCredits, e.target.value)} className="bg-black/40 border-white/10 h-14 text-white font-bold text-xl focus:border-indigo-500"/></div>
+                            <div className="space-y-2"><label className="text-[10px] font-bold text-zinc-500 uppercase">Salaire Net / Mois</label><Input type="number" value={revenue} onChange={e => handleInput(setRevenue, e.target.value)} className="bg-black/40 border-white/10 h-14 text-white font-bold text-xl focus:border-indigo-500"/></div>
+                            <div className="space-y-2"><label className="text-[10px] font-bold text-zinc-500 uppercase">Crédits en cours</label><Input type="number" value={credits} onChange={e => handleInput(setCredits, e.target.value)} className="bg-black/40 border-white/10 h-14 text-white font-bold text-xl focus:border-indigo-500"/></div>
                             <div className="space-y-2 pt-4 border-t border-white/5"><label className="text-[10px] font-bold text-emerald-500 uppercase">Apport Perso</label><Input type="number" value={apportCapacity} onChange={e => handleInput(setApportCapacity, e.target.value)} className="bg-emerald-900/10 border-emerald-500/20 h-14 text-emerald-400 font-bold text-xl focus:border-emerald-500"/></div>
                         </div>
                     </PremiumCard>
@@ -450,14 +430,12 @@ export default function SimulateurPage() {
                     </PremiumCard>
                 </div>
                 <div className="lg:col-span-8 p-16 rounded-[48px] bg-gradient-to-br from-zinc-900 via-black to-blue-950/20 border border-white/10 flex flex-col items-center justify-center text-center relative overflow-hidden shadow-2xl">
-                    <div className="relative z-10">
-                        <p className="text-zinc-500 text-xs font-black uppercase tracking-[0.4em] mb-8">ENVELOPPE GLOBALE</p>
-                        <div className="text-7xl lg:text-[9rem] font-black text-white tracking-tighter"><AnimatedNumber value={totalEnvelope} /></div>
-                        <div className="mt-10 flex gap-6 justify-center text-sm font-bold text-zinc-500 bg-white/5 px-8 py-4 rounded-full border border-white/5 backdrop-blur-md">
-                             <span className="flex items-center gap-2"><Landmark size={14} className="text-blue-500"/> Banque: {formatEuro(maxLoan)}</span>
-                             <span className="text-zinc-700 mx-2">|</span>
-                             <span className="flex items-center gap-2"><PiggyBank size={14} className="text-emerald-500"/> Apport: {formatEuro(Number(apportCapacity))}</span>
-                        </div>
+                    <p className="text-zinc-500 text-xs font-black uppercase tracking-[0.4em] mb-8">ENVELOPPE GLOBALE</p>
+                    <div className="text-7xl lg:text-[9rem] font-black text-white tracking-tighter"><AnimatedNumber value={totalEnvelope} /></div>
+                    <div className="mt-10 flex gap-6 justify-center text-sm font-bold text-zinc-500 bg-white/5 px-8 py-4 rounded-full border border-white/5 backdrop-blur-md">
+                            <span className="flex items-center gap-2"><Landmark size={14} className="text-blue-500"/> Banque: {formatEuro(maxLoan)}</span>
+                            <span className="text-zinc-700 mx-2">|</span>
+                            <span className="flex items-center gap-2"><PiggyBank size={14} className="text-emerald-500"/> Apport: {formatEuro(Number(apportCapacity))}</span>
                     </div>
                 </div>
             </motion.div>
@@ -479,9 +457,7 @@ export default function SimulateurPage() {
                             </div>
                             {projectType === "LOC" && (
                                 <div className="animate-in slide-in-from-top-2 fade-in">
-                                    <div className="flex items-center gap-2 mb-2">
-                                        <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Stratégie Locative</label>
-                                    </div>
+                                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block mb-2">Stratégie Locative</label>
                                     <div className="grid grid-cols-3 gap-2">
                                         {['LMNP', 'NUE', 'LCD'].map(s => (
                                             <button key={s} onClick={() => setRentalStrategy(s as any)} className={`text-[10px] font-bold py-2 rounded-lg transition-all ${rentalStrategy === s ? "bg-indigo-600 text-white shadow-lg" : "text-zinc-500 hover:text-white hover:bg-zinc-800"}`}>{s}</button>
@@ -508,7 +484,6 @@ export default function SimulateurPage() {
                                 </div>
                             </div>
                             <div className="pt-4 border-t border-white/5 space-y-4">
-                                <h4 className="text-[10px] font-bold text-emerald-500 uppercase tracking-wider flex items-center gap-2"><Home size={12}/> Exploitation & Charges</h4>
                                 {projectType === "LOC" && (
                                     <div><label className="text-[10px] font-bold text-zinc-500 uppercase">Loyer Mensuel CC</label><Input type="number" value={rent} onChange={e => handleInput(setRent, e.target.value)} className="bg-black/40 border-white/10 h-12 text-emerald-400 font-bold"/></div>
                                 )}
@@ -536,9 +511,7 @@ export default function SimulateurPage() {
                         </PremiumCard>
                     ) : (
                         <PremiumCard className="p-10 text-center flex flex-col items-center justify-center min-h-[300px] border-amber-500/20">
-                            <div className="flex items-center gap-2 mb-4 justify-center">
-                                <span className="text-xs font-black text-amber-500 uppercase tracking-[0.4em]">COÛT MENSUEL TOTAL</span>
-                            </div>
+                            <div className="text-xs font-black text-amber-500 uppercase tracking-[0.4em] mb-4">COÛT MENSUEL TOTAL</div>
                             <div className="text-7xl font-black text-white tracking-tighter mb-4">-<AnimatedNumber value={Math.round(monthlyPayment + Number(charges) + (Number(tax)/12))}/></div>
                             <div className="flex gap-4 text-xs font-bold text-zinc-500 bg-white/5 px-6 py-2 rounded-full border border-white/10">
                                 <span>Crédit: {Math.round(monthlyPayment)}€</span><span>Charges: {Math.round(Number(charges))}€</span><span>Taxe: {Math.round(Number(tax)/12)}€</span>
@@ -546,6 +519,10 @@ export default function SimulateurPage() {
                         </PremiumCard>
                     )}
                     <div className="grid grid-cols-2 gap-6">
+                        <PremiumCard color="indigo" className="p-6 flex flex-col items-center justify-center">
+                            <p className="text-[10px] text-zinc-500 font-bold uppercase mb-2">Coût Projet</p>
+                            <div className="text-5xl font-black text-white">{Math.round(totalCost/1000)}<span className="text-indigo-500 text-2xl">k€</span></div>
+                        </PremiumCard>
                         {projectType === "LOC" ? (
                             <PremiumCard color="emerald" className="p-6 flex flex-col items-center justify-center">
                                 <p className="text-[10px] text-zinc-500 font-bold uppercase mb-2">Rendement Brut</p>
@@ -557,12 +534,8 @@ export default function SimulateurPage() {
                                 <div className="text-5xl font-black text-white">{formatEuro(Math.round(totalCreditCost))}<span className="text-rose-500 text-2xl text-xs ml-2">Intérêts</span></div>
                             </PremiumCard>
                         )}
-                        <PremiumCard color="indigo" className="p-6 flex flex-col items-center justify-center">
-                            <p className="text-[10px] text-zinc-500 font-bold uppercase mb-2">Coût Projet</p>
-                            <div className="text-5xl font-black text-white">{Math.round(totalCost/1000)}<span className="text-indigo-500 text-2xl">k€</span></div>
-                        </PremiumCard>
                     </div>
-                    {/* CHART */}
+                    {/* CHART AMORTISSEMENT */}
                     <PremiumCard className="p-8 border-white/5 relative overflow-hidden">
                         <div className="flex items-center justify-between mb-6 relative z-10">
                             <h4 className="text-sm font-black text-white uppercase tracking-widest flex items-center gap-3"><BarChart3 size={18} className="text-blue-500"/> Amortissement</h4>
@@ -586,7 +559,7 @@ export default function SimulateurPage() {
                     </PremiumCard>
                     
                     <div className="flex gap-4">
-                        <Input placeholder="Nom du projet (ex: Studio Lille)" value={projectName} onChange={(e) => setProjectName(e.target.value)} className="bg-zinc-900 border-white/10 h-14 rounded-2xl text-white focus:border-indigo-500"/>
+                        <Input placeholder="Nom du projet" value={projectName} onChange={(e) => setProjectName(e.target.value)} className="bg-zinc-900 border-white/10 h-14 rounded-2xl text-white focus:border-indigo-500"/>
                         <Button onClick={saveSimulation} className="h-14 px-8 bg-white text-black hover:bg-zinc-200 font-bold rounded-2xl gap-2 shadow-lg"><Save size={20}/> Sauvegarder</Button>
                     </div>
                 </div>
@@ -594,145 +567,146 @@ export default function SimulateurPage() {
           )}
 
           {mode === "FISCALITE" && (
-            <motion.div key="fiscal" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="grid grid-cols-1 gap-8">
-                {projectType === "LOC" ? (
-                    <PremiumCard className="p-10 bg-gradient-to-br from-[#0B0B0F] to-black border-indigo-500/20">
-                        {/* Header Responsive */}
-                        <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-8 gap-4">
-                            <div className="flex items-center gap-4">
-                                <div className="h-12 w-12 rounded-2xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center border border-indigo-500/30"><Scale size={24}/></div>
-                                <div><h2 className="text-2xl font-black text-white uppercase">Matrice Fiscale <span className="text-indigo-500">Expert</span></h2></div>
-                            </div>
-                            <div className="flex items-center gap-3 bg-zinc-900/80 p-2 rounded-xl border border-white/5">
-                                <span className="text-[10px] font-bold text-zinc-500 uppercase ml-2">Votre TMI</span>
-                                <div className="flex gap-1">
-                                    {[0, 11, 30, 41, 45].map((t) => (
-                                        <button key={t} onClick={() => setUserTMI(t)} className={`h-8 w-10 rounded-lg text-xs font-bold transition-all ${userTMI === t ? "bg-indigo-600 text-white" : "bg-zinc-800 text-zinc-500 hover:bg-zinc-700"}`}>{t}%</button>
-                                    ))}
+            <PremiumGuard isPro={isPro} title="Fiscalité Expert" description="Optimisez vos impôts avec nos matrices LMNP, SCI et Holding.">
+                <motion.div key="fiscal" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="grid grid-cols-1 gap-8">
+                    {projectType === "LOC" ? (
+                        <PremiumCard className="p-10 bg-gradient-to-br from-[#0B0B0F] to-black border-indigo-500/20">
+                            <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-8 gap-4">
+                                <div className="flex items-center gap-4">
+                                    <div className="h-12 w-12 rounded-2xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center border border-indigo-500/30"><Scale size={24}/></div>
+                                    <h2 className="text-2xl font-black text-white uppercase">Matrice Fiscale <span className="text-indigo-500">Expert</span></h2>
+                                </div>
+                                <div className="flex items-center gap-3 bg-zinc-900/80 p-2 rounded-xl border border-white/5">
+                                    <span className="text-[10px] font-bold text-zinc-500 uppercase ml-2">Votre TMI</span>
+                                    <div className="flex gap-1">
+                                        {[0, 11, 30, 41, 45].map((t) => (
+                                            <button key={t} onClick={() => setUserTMI(t)} className={`h-8 w-10 rounded-lg text-xs font-bold transition-all ${userTMI === t ? "bg-indigo-600 text-white" : "bg-zinc-800 text-zinc-500 hover:bg-zinc-700"}`}>{t}%</button>
+                                        ))}
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                        {/* Tableau Responsive */}
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                            <div className="hidden md:block space-y-4 pt-16 text-right text-sm text-zinc-400 font-medium">
-                                <div className="h-10 flex items-center justify-end gap-2">Recettes Locatives <Help title="Recettes" text="Loyer annuel"/></div>
-                                <div className="h-10 flex items-center justify-end gap-2">Charges Déductibles <Help title="Charges" text="Charges copro, TF..."/></div>
-                                <div className="h-10 flex items-center justify-end gap-2 text-blue-400">Intérêts d'Emprunt <Help title="Intérêts" text="100% déductibles au réel"/></div>
-                                <div className="h-10 flex items-center justify-end gap-2 text-indigo-400">Amortissement (LMNP) <Help title="Amortissement" text="Charge fictive"/></div>
-                                <div className="h-1 p-0 m-0"></div>
-                                <div className="h-10 flex items-center justify-end text-white font-bold">Base Imposable</div>
-                                <div className="h-10 flex items-center justify-end text-amber-500">Impôt Final (TMI + PS)</div>
-                            </div>
-                            {/* Colonne MICRO */}
-                            <div className={`rounded-2xl p-6 border transition-all ${fiscalData.micro.total < fiscalData.reel.total ? "bg-emerald-900/10 border-emerald-500/50" : "bg-black/20 border-white/5"}`}>
-                                <div className="text-center mb-6"><h4 className="font-black text-white uppercase">Régime Micro</h4></div>
-                                <div className="space-y-4 text-center font-mono text-sm">
-                                    <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-2 md:py-0 border-b border-white/5 md:border-none"><span className="md:hidden text-xs text-zinc-500">Recettes</span><span className="text-white">{formatEuro(Number(rent)*12)}</span></div>
-                                    <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-2 md:py-0 border-b border-white/5 md:border-none"><span className="md:hidden text-xs text-zinc-500">Charges</span><span className="text-zinc-600 italic">Forfaitaire</span></div>
-                                    <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-2 md:py-0 border-b border-white/5 md:border-none"><span className="md:hidden text-xs text-zinc-500">Intérêts</span><span className="text-zinc-600 italic">Non déductible</span></div>
-                                    <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-2 md:py-0 border-b border-white/5 md:border-none"><span className="md:hidden text-xs text-zinc-500">Amortissement</span><span className="text-zinc-600 italic">Non applicable</span></div>
-                                    <div className="hidden md:block h-1 bg-white/5 my-2"></div>
-                                    <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-2 md:py-0 border-b border-white/5 md:border-none"><span className="md:hidden text-xs text-white font-bold">Base Imp.</span><span className="text-white font-bold text-lg">{formatEuro(fiscalData.micro.base)}</span></div>
-                                    <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-2 md:py-0"><span className="md:hidden text-xs text-amber-500 font-bold">Impôt Total</span><span className="text-amber-500 font-bold">{formatEuro(fiscalData.micro.total)}</span></div>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                <div className="hidden md:block space-y-4 pt-16 text-right text-sm text-zinc-400 font-medium">
+                                    <div className="h-10 flex items-center justify-end gap-2">Recettes Locatives <Help title="Recettes" text="Loyer annuel"/></div>
+                                    <div className="h-10 flex items-center justify-end gap-2">Charges Déductibles <Help title="Charges" text="Charges copro, TF..."/></div>
+                                    <div className="h-10 flex items-center justify-end gap-2 text-blue-400">Intérêts d'Emprunt <Help title="Intérêts" text="100% déductibles au réel"/></div>
+                                    <div className="h-10 flex items-center justify-end gap-2 text-indigo-400">Amortissement (LMNP) <Help title="Amortissement" text="Charge fictive"/></div>
+                                    <div className="h-1 p-0 m-0"></div>
+                                    <div className="h-10 flex items-center justify-end text-white font-bold">Base Imposable</div>
+                                    <div className="h-10 flex items-center justify-end text-amber-500">Impôt Final (TMI + PS)</div>
+                                </div>
+                                {/* Colonne MICRO */}
+                                <div className={`rounded-2xl p-6 border transition-all ${fiscalData.micro.total < fiscalData.reel.total ? "bg-emerald-900/10 border-emerald-500/50" : "bg-black/20 border-white/5"}`}>
+                                    <h4 className="text-center font-bold text-white uppercase mb-6">Régime Micro</h4>
+                                    <div className="space-y-4 text-center font-mono text-sm">
+                                        <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-2 md:py-0 border-b border-white/5 md:border-none"><span className="md:hidden text-xs text-zinc-500">Recettes</span><span className="text-white">{formatEuro(Number(rent)*12)}</span></div>
+                                        <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-2 md:py-0 border-b border-white/5 md:border-none"><span className="md:hidden text-xs text-zinc-500">Charges</span><span className="text-zinc-600 italic">Forfaitaire</span></div>
+                                        <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-2 md:py-0 border-b border-white/5 md:border-none"><span className="md:hidden text-xs text-zinc-500">Intérêts</span><span className="text-zinc-600 italic">Non déductible</span></div>
+                                        <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-2 md:py-0 border-b border-white/5 md:border-none"><span className="md:hidden text-xs text-zinc-500">Amortissement</span><span className="text-zinc-600 italic">Non applicable</span></div>
+                                        <div className="hidden md:block h-1 bg-white/5 my-2"></div>
+                                        <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-2 md:py-0 border-b border-white/5 md:border-none"><span className="md:hidden text-xs text-white font-bold">Base Imp.</span><span className="text-white font-bold text-lg">{formatEuro(fiscalData.micro.base)}</span></div>
+                                        <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-2 md:py-0"><span className="md:hidden text-xs text-amber-500 font-bold">Impôt Total</span><span className="text-amber-500 font-bold">{formatEuro(fiscalData.micro.total)}</span></div>
+                                    </div>
+                                </div>
+                                {/* Colonne REEL */}
+                                <div className={`rounded-2xl p-6 border transition-all ${fiscalData.reel.total <= fiscalData.micro.total ? "bg-emerald-900/10 border-emerald-500/50" : "bg-black/20 border-white/5"}`}>
+                                    <h4 className="text-center font-bold text-white uppercase mb-6">Régime Réel</h4>
+                                    <div className="space-y-4 text-center font-mono text-sm">
+                                        <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-2 md:py-0 border-b border-white/5 md:border-none"><span className="md:hidden text-xs text-zinc-500">Recettes</span><span className="text-white">{formatEuro(Number(rent)*12)}</span></div>
+                                        <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-2 md:py-0 border-b border-white/5 md:border-none"><span className="md:hidden text-xs text-zinc-500">Charges</span><span className="text-zinc-300">-{formatEuro(fiscalData.reel.charges)}</span></div>
+                                        <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-2 md:py-0 border-b border-white/5 md:border-none"><span className="md:hidden text-xs text-blue-400">Intérêts</span><span className="text-blue-400 font-bold">-{formatEuro(Math.round(yearOneInterest))}</span></div>
+                                        <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-2 md:py-0 border-b border-white/5 md:border-none"><span className="md:hidden text-xs text-indigo-400">Amortissement</span><span className="text-indigo-400 font-bold">-{formatEuro(Math.round(fiscalData.reel.amortissement))}</span></div>
+                                        <div className="hidden md:block h-1 bg-white/5 my-2"></div>
+                                        <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-2 md:py-0 border-b border-white/5 md:border-none"><span className="md:hidden text-xs text-white font-bold">Base Imp.</span><span className="text-white font-bold text-lg">{fiscalData.reel.base === 0 ? "0 €" : formatEuro(fiscalData.reel.base)}</span></div>
+                                        <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-2 md:py-0"><span className="md:hidden text-xs text-amber-500 font-bold">Impôt Total</span><span className="text-amber-500 font-bold">{formatEuro(fiscalData.reel.total)}</span></div>
+                                    </div>
                                 </div>
                             </div>
-                            {/* Colonne REEL */}
-                            <div className={`rounded-2xl p-6 border transition-all ${fiscalData.reel.total <= fiscalData.micro.total ? "bg-emerald-900/10 border-emerald-500/50" : "bg-black/20 border-white/5"}`}>
-                                <div className="text-center mb-6"><h4 className="font-black text-white uppercase">Régime Réel</h4></div>
-                                <div className="space-y-4 text-center font-mono text-sm">
-                                    <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-2 md:py-0 border-b border-white/5 md:border-none"><span className="md:hidden text-xs text-zinc-500">Recettes</span><span className="text-white">{formatEuro(Number(rent)*12)}</span></div>
-                                    <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-2 md:py-0 border-b border-white/5 md:border-none"><span className="md:hidden text-xs text-zinc-500">Charges</span><span className="text-zinc-300">-{formatEuro(fiscalData.reel.charges)}</span></div>
-                                    <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-2 md:py-0 border-b border-white/5 md:border-none"><span className="md:hidden text-xs text-blue-400">Intérêts</span><span className="text-blue-400 font-bold">-{formatEuro(Math.round(yearOneInterest))}</span></div>
-                                    <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-2 md:py-0 border-b border-white/5 md:border-none"><span className="md:hidden text-xs text-indigo-400">Amortissement</span><span className="text-indigo-400 font-bold">-{formatEuro(Math.round(fiscalData.reel.amortissement))}</span></div>
-                                    <div className="hidden md:block h-1 bg-white/5 my-2"></div>
-                                    <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-2 md:py-0 border-b border-white/5 md:border-none"><span className="md:hidden text-xs text-white font-bold">Base Imp.</span><span className="text-white font-bold text-lg">{fiscalData.reel.base === 0 ? "0 €" : formatEuro(fiscalData.reel.base)}</span></div>
-                                    <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-2 md:py-0"><span className="md:hidden text-xs text-amber-500 font-bold">Impôt Total</span><span className="text-amber-500 font-bold">{formatEuro(fiscalData.reel.total)}</span></div>
+                        </PremiumCard>
+                    ) : (
+                        // --- MODE PLUS-VALUE (RP / RS) ---
+                        <PremiumCard color="emerald" className="p-10 bg-gradient-to-br from-[#0B0B0F] to-black border-emerald-500/20">
+                            <div className="flex items-center gap-4 mb-8">
+                                <div className="h-12 w-12 rounded-2xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center border border-emerald-500/30"><TrendingUp size={24}/></div>
+                                <div>
+                                    <h2 className="text-2xl font-black text-white uppercase tracking-tight">Plus-Value <span className="text-emerald-500">Immobilière</span></h2>
+                                    <p className="text-zinc-400 text-sm">Simulation à la revente (Régime des particuliers 2026)</p>
                                 </div>
                             </div>
-                        </div>
-                    </PremiumCard>
-                ) : (
-                    // --- MODE PLUS-VALUE (RP / RS) ---
-                    <PremiumCard color="emerald" className="p-10 bg-gradient-to-br from-[#0B0B0F] to-black border-emerald-500/20">
-                        <div className="flex items-center gap-4 mb-8">
-                            <div className="h-12 w-12 rounded-2xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center border border-emerald-500/30"><TrendingUp size={24}/></div>
-                            <div>
-                                <h2 className="text-2xl font-black text-white uppercase tracking-tight">Plus-Value <span className="text-emerald-500">Immobilière</span></h2>
-                                <p className="text-zinc-400 text-sm">Simulation à la revente (Régime des particuliers 2026)</p>
-                            </div>
-                        </div>
 
-                        {projectType === "RP" ? (
-                            <div className="p-10 rounded-3xl bg-gradient-to-br from-amber-900/20 via-zinc-900 to-black border border-amber-500/30 text-center relative overflow-hidden shadow-[0_0_50px_-10px_rgba(245,158,11,0.2)]">
-                                <div className="absolute top-0 right-0 p-32 bg-amber-500/10 blur-[80px] rounded-full pointer-events-none"></div>
-                                <div className="inline-flex p-4 rounded-full bg-amber-500/20 text-amber-400 mb-6 shadow-[0_0_30px_rgba(245,158,11,0.3)]">
-                                    <Crown size={40} />
-                                </div>
-                                <h3 className="text-3xl font-black text-white uppercase mb-4 tracking-wide">Le Graal Fiscal : <span className="text-amber-400">Exonération Totale</span></h3>
-                                <p className="text-sm text-zinc-300 max-w-2xl mx-auto leading-relaxed mb-8">
-                                    La plus-value sur Résidence Principale est <strong className="text-white">100% exonérée</strong> d'impôt et de prélèvements sociaux.
-                                </p>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-2xl mx-auto text-left">
-                                    <div className="bg-black/50 p-6 rounded-2xl border border-white/5">
-                                        <div className="flex items-center gap-2 mb-4"><p className="text-[10px] text-zinc-500 font-bold uppercase">Prix Revente Estimé</p></div>
-                                        <Input type="number" value={resalePrice} onChange={e => handleInput(setResalePrice, e.target.value)} className="bg-transparent border-white/10 h-14 text-white font-black text-3xl px-0 focus-visible:ring-0 focus:border-amber-500"/>
+                            {projectType === "RP" ? (
+                                <div className="p-10 rounded-3xl bg-gradient-to-br from-amber-900/20 via-zinc-900 to-black border border-amber-500/30 text-center relative overflow-hidden shadow-[0_0_50px_-10px_rgba(245,158,11,0.2)]">
+                                    <div className="absolute top-0 right-0 p-32 bg-amber-500/10 blur-[80px] rounded-full pointer-events-none"></div>
+                                    <div className="inline-flex p-4 rounded-full bg-amber-500/20 text-amber-400 mb-6 shadow-[0_0_30px_rgba(245,158,11,0.3)]">
+                                        <Crown size={40} />
                                     </div>
-                                    <div className="bg-black/50 p-6 rounded-2xl border border-amber-500/20 relative overflow-hidden">
-                                        <div className="absolute right-0 top-0 h-full w-2 bg-amber-500"></div>
-                                        <p className="text-[10px] text-amber-500 font-bold uppercase mb-2">Net Vendeur (Gain Brut)</p>
-                                        <p className="text-4xl font-black text-white">{formatEuro(Math.max(0, (Number(resalePrice)||0) - Number(price)))}</p>
-                                        <p className="text-xs text-zinc-500 mt-2 font-bold flex items-center gap-1"><CheckCircle size={12} className="text-emerald-500"/> 0€ d'impôt à payer</p>
+                                    <h3 className="text-3xl font-black text-white uppercase mb-4 tracking-wide">Le Graal Fiscal : <span className="text-amber-400">Exonération Totale</span></h3>
+                                    <p className="text-sm text-zinc-300 max-w-2xl mx-auto leading-relaxed mb-8">
+                                        La plus-value sur Résidence Principale est <strong className="text-white">100% exonérée</strong> d'impôt et de prélèvements sociaux.
+                                    </p>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-2xl mx-auto text-left">
+                                        <div className="bg-black/50 p-6 rounded-2xl border border-white/5">
+                                            <div className="flex items-center gap-2 mb-4"><p className="text-[10px] text-zinc-500 font-bold uppercase">Prix Revente Estimé</p></div>
+                                            <Input type="number" value={resalePrice} onChange={e => handleInput(setResalePrice, e.target.value)} className="bg-transparent border-white/10 h-14 text-white font-black text-3xl px-0 focus-visible:ring-0 focus:border-amber-500"/>
+                                        </div>
+                                        <div className="bg-black/50 p-6 rounded-2xl border border-amber-500/20 relative overflow-hidden">
+                                            <div className="absolute right-0 top-0 h-full w-2 bg-amber-500"></div>
+                                            <p className="text-[10px] text-amber-500 font-bold uppercase mb-2">Net Vendeur (Gain Brut)</p>
+                                            <p className="text-4xl font-black text-white">{formatEuro(Math.max(0, (Number(resalePrice)||0) - Number(price)))}</p>
+                                            <p className="text-xs text-zinc-500 mt-2 font-bold flex items-center gap-1"><CheckCircle size={12} className="text-emerald-500"/> 0€ d'impôt à payer</p>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                        ) : (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
-                                <div className="p-8 bg-zinc-900/50 rounded-3xl border border-white/5 space-y-6">
-                                    <h4 className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-4">Paramètres de sortie</h4>
-                                    <div><label className="text-[10px] font-bold text-zinc-500 uppercase">Prix de Revente Estimé</label><Input type="number" value={resalePrice} onChange={e => handleInput(setResalePrice, e.target.value)} className="bg-black/40 border-white/10 h-14 text-white font-bold text-xl"/></div>
-                                    <PremiumSlider label="Années de détention" value={holdingYears} min={1} max={35} step={1} unit="ans" onChange={setHoldingYears}/>
-                                </div>
-                                <div className="p-8 bg-zinc-900/50 rounded-3xl border border-white/5 flex flex-col justify-center">
-                                    <div className="flex justify-between items-center mb-4 pb-4 border-b border-white/5">
-                                        <span className="text-xs font-bold text-zinc-400 uppercase flex items-center gap-2">Base Acquisition</span>
-                                        <span className="text-lg font-bold text-white">{formatEuro(capitalGainData.acquisitionPrice)}</span>
+                            ) : (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+                                    <div className="p-8 bg-zinc-900/50 rounded-3xl border border-white/5 space-y-6">
+                                        <h4 className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-4">Paramètres de sortie</h4>
+                                        <div><label className="text-[10px] font-bold text-zinc-500 uppercase">Prix de Revente Estimé</label><Input type="number" value={resalePrice} onChange={e => handleInput(setResalePrice, e.target.value)} className="bg-black/40 border-white/10 h-14 text-white font-bold text-xl"/></div>
+                                        <PremiumSlider label="Années de détention" value={holdingYears} min={1} max={35} step={1} unit="ans" onChange={setHoldingYears}/>
                                     </div>
-                                    <div className="flex justify-between items-center mb-2"><span className="text-sm text-zinc-400">Plus-Value Brute</span><span className="text-xl font-bold text-white">{formatEuro(capitalGainData.grossGain)}</span></div>
-                                    <div className="flex justify-between items-center mb-8"><span className="text-sm text-zinc-400 flex items-center gap-2">Impôt Total (IR + PS)</span><span className={`text-xl font-bold ${capitalGainData.totalTax > 0 ? "text-red-500" : "text-emerald-500"}`}>-{formatEuro(capitalGainData.totalTax)}</span></div>
-                                    <div className="pt-6 border-t border-white/10"><span className="text-xs font-black uppercase tracking-[0.2em] text-emerald-500 block mb-2">NET VENDEUR</span><span className="text-5xl font-black text-white tracking-tighter">{formatEuro(capitalGainData.netGain)}</span></div>
+                                    <div className="p-8 bg-zinc-900/50 rounded-3xl border border-white/5 flex flex-col justify-center">
+                                        <div className="flex justify-between items-center mb-4 pb-4 border-b border-white/5">
+                                            <span className="text-xs font-bold text-zinc-400 uppercase flex items-center gap-2">Base Acquisition</span>
+                                            <span className="text-lg font-bold text-white">{formatEuro(capitalGainData.acquisitionPrice)}</span>
+                                        </div>
+                                        <div className="flex justify-between items-center mb-2"><span className="text-sm text-zinc-400">Plus-Value Brute</span><span className="text-xl font-bold text-white">{formatEuro(capitalGainData.grossGain)}</span></div>
+                                        <div className="flex justify-between items-center mb-8"><span className="text-sm text-zinc-400 flex items-center gap-2">Impôt Total (IR + PS)</span><span className={`text-xl font-bold ${capitalGainData.totalTax > 0 ? "text-red-500" : "text-emerald-500"}`}>-{formatEuro(capitalGainData.totalTax)}</span></div>
+                                        <div className="pt-6 border-t border-white/10"><span className="text-xs font-black uppercase tracking-[0.2em] text-emerald-500 block mb-2">NET VENDEUR</span><span className="text-5xl font-black text-white tracking-tighter">{formatEuro(capitalGainData.netGain)}</span></div>
+                                    </div>
                                 </div>
-                            </div>
-                        )}
-                    </PremiumCard>
-                )}
-            </motion.div>
+                            )}
+                        </PremiumCard>
+                    )}
+                </motion.div>
+            </PremiumGuard>
           )}
 
           {mode === "PROJETS" && (
-            <motion.div key="list" initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.98 }} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {savedSimulations.map((sim) => (
-                    <PremiumCard key={sim.id} className="p-6 group flex flex-col justify-between h-full">
-                        <div>
-                            <div className="flex justify-between items-start mb-4">
-                                <div><h4 className="text-lg font-bold text-white mb-1">{sim.name}</h4><span className="text-[10px] bg-zinc-800 text-zinc-400 px-2 py-1 rounded uppercase tracking-wider">{sim.data.projectType} • {sim.data.rentalStrategy}</span></div>
-                                <p className="text-[10px] text-zinc-600 font-mono">{new Date(sim.date).toLocaleDateString()}</p>
+            <PremiumGuard isPro={isPro} title="Portefeuille de Projets" description="Sauvegardez vos simulations et générez des dossiers bancaires PDF illimités.">
+                <motion.div key="list" initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.98 }} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {savedSimulations.map((sim) => (
+                        <PremiumCard key={sim.id} className="p-6 group flex flex-col justify-between h-full">
+                            <div>
+                                <div className="flex justify-between items-start mb-4">
+                                    <div><h4 className="text-lg font-bold text-white mb-1">{sim.name}</h4><span className="text-[10px] bg-zinc-800 text-zinc-400 px-2 py-1 rounded uppercase tracking-wider">{sim.data.projectType} • {sim.data.rentalStrategy}</span></div>
+                                    <p className="text-[10px] text-zinc-600 font-mono">{new Date(sim.date).toLocaleDateString()}</p>
+                                </div>
+                                <div className="space-y-3 mb-6">
+                                    <div className="flex justify-between items-end border-b border-white/5 pb-2"><span className="text-xs text-zinc-500 font-bold uppercase">Cashflow</span><span className={`text-xl font-black ${sim.data.cashflowNetImpots > 0 ? "text-emerald-400" : "text-rose-500"}`}>{Math.round(sim.data.cashflowNetImpots)}€</span></div>
+                                </div>
                             </div>
-                            <div className="space-y-3 mb-6">
-                                <div className="flex justify-between items-end border-b border-white/5 pb-2"><span className="text-xs text-zinc-500 font-bold uppercase">Cashflow</span><span className={`text-xl font-black ${sim.data.cashflowNetImpots > 0 ? "text-emerald-400" : "text-rose-500"}`}>{Math.round(sim.data.cashflowNetImpots)}€</span></div>
+                            <div className="flex flex-col gap-2">
+                                <div className="flex gap-2">
+                                    <Button onClick={() => loadSimulation(sim)} className="flex-1 bg-white text-black hover:bg-zinc-200 h-10 rounded-xl text-xs font-bold uppercase shadow-lg"><MousePointerClick size={14} className="mr-2"/> Ouvrir</Button>
+                                    <Button onClick={() => prepareAndPrint(sim)} className="w-10 bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 h-10 rounded-xl"><Printer size={14}/></Button>
+                                    <Button onClick={() => deleteSimulation(sim.id)} className="w-10 bg-rose-500/10 text-rose-500 hover:bg-rose-500/20 h-10 rounded-xl"><Trash2 size={14}/></Button>
+                                </div>
+                                <Button onClick={() => importToPatrimoine(sim)} disabled={importingId === sim.id} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white h-10 rounded-xl text-xs font-bold uppercase shadow-lg shadow-emerald-900/20 transition-all">{importingId === sim.id ? "..." : <><Check size={14} className="mr-2"/> Valider cet investissement</>}</Button>
                             </div>
-                        </div>
-                        <div className="flex flex-col gap-2">
-                            <div className="flex gap-2">
-                                <Button onClick={() => loadSimulation(sim)} className="flex-1 bg-white text-black hover:bg-zinc-200 h-10 rounded-xl text-xs font-bold uppercase shadow-lg"><MousePointerClick size={14} className="mr-2"/> Ouvrir</Button>
-                                {/* BOUTON PDF FIXÉ POUR MOBILE */}
-                                <Button onClick={() => prepareAndPrint(sim)} className="w-10 bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 h-10 rounded-xl"><Printer size={14}/></Button>
-                                <Button onClick={() => deleteSimulation(sim.id)} className="w-10 bg-rose-500/10 text-rose-500 hover:bg-rose-500/20 h-10 rounded-xl"><Trash2 size={14}/></Button>
-                            </div>
-                            <Button onClick={() => importToPatrimoine(sim)} disabled={importingId === sim.id} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white h-10 rounded-xl text-xs font-bold uppercase shadow-lg shadow-emerald-900/20 transition-all">{importingId === sim.id ? "..." : <><Check size={14} className="mr-2"/> Valider cet investissement</>}</Button>
-                        </div>
-                    </PremiumCard>
-                ))}
-            </motion.div>
+                        </PremiumCard>
+                    ))}
+                </motion.div>
+            </PremiumGuard>
           )}
 
           </AnimatePresence>
