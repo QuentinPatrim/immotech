@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { TrendingUp, Wallet, ArrowUpRight, Lock, Building, PieChart, Calculator, Activity, Target } from "lucide-react";
+import { TrendingUp, Wallet, ArrowUpRight, Lock, Building, PieChart, Calculator, Activity, Target, Settings } from "lucide-react";
 import AnimatedNumber from "@/components/AnimatedNumber";
 import Sidebar from "@/components/Sidebar";
 import { NexusLogo } from "@/components/NexusLogo"; 
@@ -67,12 +67,10 @@ export default function Dashboard() {
             setMilestone(getNextMilestone(total));
         }
 
-        // 3. Récupération FLUX MENSUEL (Intelligent : Mois en cours OU Profil)
-        // On calcule le premier jour du mois actuel (ex: "2023-02-01")
+        // 3. Récupération FLUX MENSUEL
         const now = new Date();
         const startOfMonth = new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1)).toISOString().split('T')[0];
 
-        // On cherche d'abord s'il y a un historique précis pour ce mois-ci
         const { data: currentMonthHistory } = await supabase
             .from('monthly_history')
             .select('*')
@@ -85,16 +83,13 @@ export default function Dashboard() {
         let hasBudget = false;
 
         if (currentMonthHistory) {
-            // CAS 1 : On a des données réelles pour ce mois
             currentIncome = Number(currentMonthHistory.income) || 0;
             currentExpenses = Number(currentMonthHistory.expenses) || 0;
             hasBudget = true;
         } else if (profile && profile.budget_json) {
-            // CAS 2 : Pas de données ce mois-ci, on prend le Profil Type (estimation)
             const b = profile.budget_json as any;
             currentIncome = Number(b.income) || 0;
             
-            // Si les dépenses sont dans "details", on somme, sinon on prend le total direct
             if (Array.isArray(b.details)) {
                 currentExpenses = b.details.reduce((acc: number, item: any) => acc + (Number(item.amount) || 0), 0);
             } else {
@@ -103,12 +98,10 @@ export default function Dashboard() {
             if (currentIncome > 0) hasBudget = true;
         }
 
-        // Calcul du reste à vivre / épargne
         const savings = Math.max(0, currentIncome - currentExpenses);
         setMonthlySavings(savings);
         setSavingsRate(currentIncome > 0 ? (savings / currentIncome) * 100 : 0);
 
-        // Détection nouvel utilisateur (si rien n'est configuré)
         if (!hasAssets && !hasBudget) {
             setIsNewUser(true);
         }
@@ -131,7 +124,7 @@ export default function Dashboard() {
 
         <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} className="max-w-[1800px] mx-auto space-y-12 relative z-10">
           
-          {/* HEADER MOBILE (Logo FORCÉ) */}
+          {/* HEADER AVEC BOUTON REGLAGES AJOUTÉ */}
           <header className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 border-l-4 border-emerald-500 pl-6 py-2">
             <div>
                 <div className="flex items-center gap-3 mb-5 md:hidden">
@@ -146,16 +139,24 @@ export default function Dashboard() {
                     Bonjour, <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-teal-500">{userName}</span>
                 </h1>
             </div>
-            {!isNewUser && (
-                <div className="bg-zinc-900/50 backdrop-blur-md p-4 rounded-2xl border border-white/5 shadow-xl w-full md:w-auto">
-                    <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider mb-1 flex items-center gap-2">
-                        <Wallet size={12} className="text-emerald-500"/> Patrimoine Net
-                    </p>
-                    <div className="text-3xl font-black text-white tracking-tight">
-                        <AnimatedNumber value={totalNetWorth}/>
+            
+            <div className="flex items-center gap-4 w-full md:w-auto">
+                {!isNewUser && (
+                    <div className="bg-zinc-900/50 backdrop-blur-md p-4 rounded-2xl border border-white/5 shadow-xl flex-1 md:flex-none">
+                        <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider mb-1 flex items-center gap-2">
+                            <Wallet size={12} className="text-emerald-500"/> Patrimoine Net
+                        </p>
+                        <div className="text-3xl font-black text-white tracking-tight">
+                            <AnimatedNumber value={totalNetWorth}/>
+                        </div>
                     </div>
-                </div>
-            )}
+                )}
+                
+                {/* --- BOUTON REGLAGES --- */}
+                <Link href="/parametres" className="h-16 w-16 md:h-20 md:w-20 rounded-2xl bg-zinc-900/50 border border-white/5 flex items-center justify-center text-zinc-400 hover:text-white hover:bg-zinc-800 transition-all shadow-xl backdrop-blur-md group">
+                    <Settings size={28} className="group-hover:rotate-90 transition-transform duration-500"/>
+                </Link>
+            </div>
           </header>
 
           {isNewUser ? (
