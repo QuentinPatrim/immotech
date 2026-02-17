@@ -15,22 +15,22 @@ import { NexusLogo } from "@/components/NexusLogo";
 
 const formatEuro = (val: number) => new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(val);
 
-// --- COMPOSANT DOSSIER BANCAIRE (CORRIGÉ POUR MOBILE) ---
+// --- COMPOSANT DOSSIER BANCAIRE (FIX MOBILE) ---
 const DossierBancaire = ({ data, refProp }: any) => {
     const d = data || {};
     const totalCost = (d.price || 0) + (d.works || 0) + (d.notaryFees || 0);
     const isLoc = d.projectType === "LOC";
     const isRP = d.projectType === "RP";
     
-    // FIX HYDRATION: Date calculée uniquement au montage
+    // FIX HYDRATION
     const [dateStr, setDateStr] = useState("");
     useEffect(() => {
         setDateStr(new Date().toLocaleDateString("fr-FR"));
     }, []);
 
     return (
-      // FIX MOBILE : On remplace display:none par une position hors-écran
-      // Cela permet au navigateur mobile de calculer le rendu pour l'impression
+      // FIX MOBILE MAJEUR : Position absolue hors-écran au lieu de display:none
+      // Cela permet au moteur PDF du téléphone de "voir" le contenu
       <div className="absolute left-[-9999px] top-0 w-0 h-0 overflow-hidden print:static print:w-auto print:h-auto print:overflow-visible">
         <div ref={refProp} className="p-12 bg-white text-black font-sans min-h-[29.7cm] w-[21cm] mx-auto relative flex flex-col justify-between print:block">
             
@@ -77,7 +77,7 @@ const DossierBancaire = ({ data, refProp }: any) => {
                     </div>
                 </div>
 
-                {/* Indicateurs Clés (Adaptatifs) */}
+                {/* Indicateurs Clés */}
                 <div className="mb-10">
                     <h3 className="text-sm font-black uppercase text-gray-900 mb-4 border-l-4 border-indigo-600 pl-3">Indicateurs Financiers</h3>
                     <div className="grid grid-cols-3 gap-4">
@@ -101,54 +101,33 @@ const DossierBancaire = ({ data, refProp }: any) => {
                                 <div className="p-5 rounded-xl bg-gray-50 border border-gray-200 text-center">
                                     <p className="text-[9px] uppercase font-bold text-gray-400 mb-1 tracking-wider">Effort Mensuel Total</p>
                                     <p className="text-3xl font-black text-gray-800">{formatEuro(Math.round(d.monthlyPayment + (d.charges || 0) + ((d.tax || 0)/12)))}</p>
-                                    <p className="text-[9px] text-gray-400 mt-1">Crédit + Charges + Taxe</p>
                                 </div>
                                 <div className="p-5 rounded-xl bg-indigo-50 border border-indigo-100 text-center">
                                     <p className="text-[9px] uppercase font-bold text-indigo-400 mb-1 tracking-wider">Coût Total Crédit</p>
                                     <p className="text-3xl font-black text-indigo-700">{formatEuro(Math.round(d.totalCreditCost))}</p>
-                                    <p className="text-[9px] text-indigo-300 mt-1">Intérêts bancaires</p>
                                 </div>
                                 <div className="p-5 rounded-xl bg-amber-50 border border-amber-100 text-center">
                                     <p className="text-[9px] uppercase font-bold text-amber-500 mb-1 tracking-wider">Capitalisation / Mois</p>
                                     <p className="text-3xl font-black text-amber-700">~{formatEuro(Math.round(d.monthlyPayment * 0.6))}</p>
-                                    <p className="text-[9px] text-amber-600 mt-1">Épargne forcée</p>
                                 </div>
                             </>
                         )}
                     </div>
                 </div>
 
-                {/* Analyse Stratégique (Adaptatif) */}
+                {/* Analyse Stratégique */}
                 <div className="mb-10">
                     <h3 className="text-sm font-black uppercase text-gray-900 mb-4 border-l-4 border-indigo-600 pl-3">Analyse Stratégique</h3>
                     <div className="p-6 border border-gray-200 rounded-xl bg-white shadow-sm">
                         {isLoc ? (
-                            <>
-                                <p className="text-sm text-gray-700 leading-relaxed mb-4">
-                                    Ce projet est structuré pour maximiser la rentabilité nette via le régime 
-                                    <strong className="text-black uppercase"> {d.rentalStrategy === "LMNP" ? "LMNP (Loueur Meublé Non Pro)" : d.rentalStrategy} </strong> 
-                                    au <strong className="text-black uppercase">{d.rentalStrategy !== "NUE" ? "RÉEL" : "FONCIER"}</strong>.
-                                </p>
-                                <ul className="grid grid-cols-2 gap-3 text-xs text-gray-600 font-medium">
-                                    <li className="flex items-center gap-2"><CheckCircle size={14} className="text-emerald-500"/> Déductibilité des intérêts d'emprunt</li>
-                                    <li className="flex items-center gap-2"><CheckCircle size={14} className="text-emerald-500"/> Amortissement comptable (Gomme l'impôt)</li>
-                                    <li className="flex items-center gap-2"><CheckCircle size={14} className="text-emerald-500"/> Optimisation du Cashflow Net</li>
-                                    <li className="flex items-center gap-2"><CheckCircle size={14} className="text-emerald-500"/> Effet de levier bancaire</li>
-                                </ul>
-                            </>
+                            <p className="text-sm text-gray-700 leading-relaxed mb-4">
+                                Ce projet est structuré pour maximiser la rentabilité nette via le régime 
+                                <strong className="text-black uppercase"> {d.rentalStrategy === "LMNP" ? "LMNP" : d.rentalStrategy} </strong>.
+                            </p>
                         ) : (
-                            <>
-                                <p className="text-sm text-gray-700 leading-relaxed mb-4">
-                                    Acquisition patrimoniale à usage de <strong>{isRP ? "RÉSIDENCE PRINCIPALE" : "RÉSIDENCE SECONDAIRE"}</strong>. 
-                                    L'objectif est la sécurisation du logement et la transformation d'un flux locatif à fonds perdus en épargne forcée (capitalisation).
-                                </p>
-                                <ul className="grid grid-cols-2 gap-3 text-xs text-gray-600 font-medium">
-                                    <li className="flex items-center gap-2"><CheckCircle size={14} className="text-amber-500"/> Constitution de Patrimoine Long Terme</li>
-                                    <li className="flex items-center gap-2"><CheckCircle size={14} className="text-amber-500"/> Protection contre l'inflation</li>
-                                    <li className="flex items-center gap-2"><CheckCircle size={14} className="text-amber-500"/> Capitalisation mensuelle via le crédit</li>
-                                    {isRP && <li className="flex items-center gap-2"><CheckCircle size={14} className="text-emerald-500"/> <strong>Exonération Totale de Plus-Value (RP)</strong></li>}
-                                </ul>
-                            </>
+                            <p className="text-sm text-gray-700 leading-relaxed mb-4">
+                                Acquisition patrimoniale à usage de <strong>{isRP ? "RÉSIDENCE PRINCIPALE" : "RÉSIDENCE SECONDAIRE"}</strong>.
+                            </p>
                         )}
                     </div>
                 </div>
@@ -157,7 +136,6 @@ const DossierBancaire = ({ data, refProp }: any) => {
             {/* Footer Legal */}
             <div className="border-t pt-6 text-center">
                 <p className="text-[9px] text-gray-400 font-medium uppercase tracking-widest">
-                    Données non contractuelles basées sur les informations fournies par l'utilisateur. <br/>
                     Document généré par Nexus Invest. Ne constitue pas une offre de prêt.
                 </p>
             </div>
@@ -166,21 +144,17 @@ const DossierBancaire = ({ data, refProp }: any) => {
     );
 };
 
-// --- COMPOSANT PEDAGOGIQUE ---
+// --- COMPOSANTS UI ---
 const Help = ({ title, text }: { title: string, text: string }) => (
   <div className="group/help relative inline-flex items-center ml-2 align-middle cursor-help z-[999]">
     <HelpCircle size={14} className="text-zinc-500 group-hover/help:text-indigo-400 transition-colors duration-300"/>
     <div className="absolute bottom-6 left-1/2 -translate-x-1/2 w-64 md:w-72 p-4 bg-[#121217] border border-white/10 rounded-xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.8)] opacity-0 invisible group-hover/help:visible group-hover/help:opacity-100 transition-all duration-200 z-[9999] translate-y-2 group-hover/help:translate-y-0 backdrop-blur-xl">
-        <div className="flex items-center gap-2 mb-2 border-b border-white/5 pb-2">
-            <span className="text-[10px] font-black text-indigo-400 uppercase tracking-wider">{title}</span>
-        </div>
+        <span className="block text-[10px] font-black text-indigo-400 uppercase tracking-wider mb-2">{title}</span>
         <span className="block text-xs text-zinc-300 leading-relaxed font-light">{text}</span>
-        <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-[#121217] border-b border-r border-white/10 rotate-45"></div>
     </div>
   </div>
 );
 
-// --- SLIDER PREMIUM ---
 const PremiumSlider = ({ label, value, min, max, step, unit, onChange }: any) => (
     <div className="group relative bg-black/40 rounded-2xl p-4 border border-white/5 hover:border-indigo-500/30 transition-all duration-300">
         <div className="flex justify-between items-end mb-3">
@@ -190,20 +164,12 @@ const PremiumSlider = ({ label, value, min, max, step, unit, onChange }: any) =>
             </div>
         </div>
         <Slider value={[value]} min={min} max={max} step={step} onValueChange={(v) => onChange(v[0])} className="py-2 cursor-grab active:cursor-grabbing" />
-        <div className="absolute bottom-0 left-0 h-[1px] w-full bg-gradient-to-r from-transparent via-indigo-500/0 to-transparent group-hover:via-indigo-500/50 transition-all duration-500"></div>
     </div>
 );
 
-// --- CARTE PREMIUM ---
 const PremiumCard = ({ children, className = "", color = "indigo" }: { children: React.ReactNode, className?: string, color?: string }) => {
     const borderColor = color === "emerald" ? "hover:border-emerald-500/30" : color === "rose" ? "hover:border-rose-500/30" : color === "amber" ? "hover:border-amber-500/30" : color === "blue" ? "hover:border-blue-500/30" : "hover:border-indigo-500/30";
-    const shadowColor = color === "emerald" ? "hover:shadow-[0_0_40px_-10px_rgba(16,185,129,0.15)]" : color === "rose" ? "hover:shadow-[0_0_40px_-10px_rgba(244,63,94,0.15)]" : color === "amber" ? "hover:shadow-[0_0_40px_-10px_rgba(245,158,11,0.15)]" : color === "blue" ? "hover:shadow-[0_0_40px_-10px_rgba(59,130,246,0.15)]" : "hover:shadow-[0_0_40px_-10px_rgba(99,102,241,0.15)]";
-    
-    return (
-        <div className={`relative rounded-[32px] bg-zinc-900/40 backdrop-blur-md border border-white/5 transition-all duration-500 ${borderColor} ${shadowColor} hover:bg-zinc-900/60 group ${className}`}>
-            {children}
-        </div>
-    );
+    return <div className={`relative rounded-[32px] bg-zinc-900/40 backdrop-blur-md border border-white/5 transition-all duration-500 ${borderColor} hover:bg-zinc-900/60 group ${className}`}>{children}</div>;
 };
 
 export default function SimulateurPage() {
@@ -212,21 +178,23 @@ export default function SimulateurPage() {
   const [projectName, setProjectName] = useState("");
   const [importingId, setImportingId] = useState<number | null>(null);
   
-  // GESTION IMPRESSION (Corrigée pour Mobile)
+  // GESTION IMPRESSION MOBILE
   const componentRef = useRef(null);
   const [printData, setPrintData] = useState<any>(null); 
   const [isReadyToPrint, setIsReadyToPrint] = useState(false);
 
+  // FIX MOBILE #1 : Pas de setPrintData(null) dans onAfterPrint
   const handlePrint = useReactToPrint({
     contentRef: componentRef,
     documentTitle: "Dossier_Financement_Nexus",
     onAfterPrint: () => {
-        setPrintData(null);
-        setIsReadyToPrint(false);
+        // IMPORTANT : On ne vide PAS les données ici.
+        // Sur mobile, le PDF est généré en arrière-plan. Si on vide les données, il imprime du vide (NaN).
+        setIsReadyToPrint(false); 
     }
   });
 
-  // Déclencheur automatique dès que les données sont prêtes (évite les blocages pop-up)
+  // FIX MOBILE #2 : Déclenchement automatique sans délai
   useEffect(() => {
     if (isReadyToPrint && printData) {
         handlePrint();
@@ -277,6 +245,7 @@ export default function SimulateurPage() {
     const loadProjets = async () => {
         const { data: { session } } = await supabase.auth.getSession();
         if (session) {
+            // Check si la colonne existe (gestion erreur silencieuse)
             const { data } = await supabase.from('profiles').select('simulations_json').eq('id', session.user.id).single();
             if (data && data.simulations_json) setSavedSimulations(data.simulations_json);
         }
@@ -364,31 +333,24 @@ export default function SimulateurPage() {
     }
   }, [revenue, credits, duration, rate, apportCapacity, price, works, notaryRate, apport, rent, charges, tax, projectType, rentalStrategy, userTMI, resalePrice, holdingYears]);
 
+  // FIX SAUVEGARDE : Gestion d'erreur explicite
   const saveSimulation = async () => {
       if (!projectName) { alert("Nommez votre projet !"); return; }
       const newSim = {
           id: Date.now(),
           name: projectName,
           date: new Date().toISOString(),
-          data: { 
-              price, works, notaryRate, notaryFees, apport, 
-              rent, charges, tax, 
-              duration, rate, totalCreditCost, monthlyPayment,
-              cashflowNetImpots, yieldNet, projectType, rentalStrategy,
-              revenue, credits 
-          }
+          data: { price, works, notaryRate, notaryFees, apport, rent, charges, tax, duration, rate, totalCreditCost, monthlyPayment, cashflowNetImpots, yieldNet, projectType, rentalStrategy, revenue, credits }
       };
       const updated = [newSim, ...savedSimulations];
       setSavedSimulations(updated);
       setProjectName("");
       const { data: { user } } = await supabase.auth.getUser();
-      
-      // FIX PERSISTENCE : Gestion d'erreur explicite
       if (user) {
           const { error } = await supabase.from('profiles').update({ simulations_json: updated }).eq('id', user.id);
           if (error) {
-              console.error("Erreur sauvegarde:", error);
-              alert("Impossible de sauvegarder le projet. Erreur: " + error.message);
+              console.error("Erreur Save:", error);
+              alert("Erreur de sauvegarde. Vérifiez que la colonne 'simulations_json' existe dans Supabase.");
           }
       }
       setMode("PROJETS");
@@ -419,14 +381,12 @@ export default function SimulateurPage() {
       if (user) await supabase.from('profiles').update({ simulations_json: updated }).eq('id', user.id);
   };
 
-  const dataCost = [{ name: 'Prix Net', value: Number(price) || 0, color: '#3b82f6' }, { name: 'Travaux', value: Number(works) || 0, color: '#eab308' }, { name: 'Notaire', value: notaryFees, color: '#ef4444' }].filter(d => d.value > 0);
-
   return (
     <div className="min-h-screen bg-[#020202] text-zinc-100 font-sans pb-24 md:pb-8 selection:bg-indigo-500/30 selection:text-indigo-200">
       <Sidebar />
       <main className="md:ml-64 flex-1 w-auto max-w-full p-4 md:p-8 relative overflow-hidden">
         
-        {/* COMPOSANT CACHÉ POUR L'IMPRESSION (CORRIGÉ) */}
+        {/* ELEMENT CACHÉ POUR IMPRESSION (FIX MOBILE) */}
         <DossierBancaire refProp={componentRef} data={printData} />
 
         <div className="fixed top-0 left-64 w-[800px] h-[800px] bg-indigo-900/10 rounded-full blur-[150px] pointer-events-none"></div>
@@ -451,8 +411,8 @@ export default function SimulateurPage() {
                     <PremiumCard className="p-8">
                         <h3 className="text-xs font-black text-indigo-400 uppercase mb-8 flex items-center gap-3 tracking-widest"><Wallet size={18}/> Revenus</h3>
                         <div className="space-y-6">
-                            <div className="space-y-2"><div className="flex justify-between"><label className="text-[10px] font-bold text-zinc-500 uppercase">Salaire Net / Mois</label></div><Input type="number" value={revenue} onChange={e => handleInput(setRevenue, e.target.value)} className="bg-black/40 border-white/10 h-14 text-white font-bold text-xl focus:border-indigo-500"/></div>
-                            <div className="space-y-2"><div className="flex justify-between"><label className="text-[10px] font-bold text-zinc-500 uppercase">Crédits en cours</label></div><Input type="number" value={credits} onChange={e => handleInput(setCredits, e.target.value)} className="bg-black/40 border-white/10 h-14 text-white font-bold text-xl focus:border-indigo-500"/></div>
+                            <div className="space-y-2"><label className="text-[10px] font-bold text-zinc-500 uppercase">Salaire Net / Mois</label><Input type="number" value={revenue} onChange={e => handleInput(setRevenue, e.target.value)} className="bg-black/40 border-white/10 h-14 text-white font-bold text-xl focus:border-indigo-500"/></div>
+                            <div className="space-y-2"><label className="text-[10px] font-bold text-zinc-500 uppercase">Crédits en cours</label><Input type="number" value={credits} onChange={e => handleInput(setCredits, e.target.value)} className="bg-black/40 border-white/10 h-14 text-white font-bold text-xl focus:border-indigo-500"/></div>
                             <div className="space-y-2 pt-4 border-t border-white/5"><label className="text-[10px] font-bold text-emerald-500 uppercase">Apport Perso</label><Input type="number" value={apportCapacity} onChange={e => handleInput(setApportCapacity, e.target.value)} className="bg-emerald-900/10 border-emerald-500/20 h-14 text-emerald-400 font-bold text-xl focus:border-emerald-500"/></div>
                         </div>
                     </PremiumCard>
