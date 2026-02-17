@@ -15,136 +15,144 @@ import { NexusLogo } from "@/components/NexusLogo";
 
 const formatEuro = (val: number) => new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(val);
 
-// --- COMPOSANT DOSSIER BANCAIRE (FIX MOBILE) ---
+// --- COMPOSANT DOSSIER BANCAIRE (FIX PDF MOBILE) ---
 const DossierBancaire = ({ data, refProp }: any) => {
     const d = data || {};
     const totalCost = (d.price || 0) + (d.works || 0) + (d.notaryFees || 0);
     const isLoc = d.projectType === "LOC";
     const isRP = d.projectType === "RP";
     
-    // FIX HYDRATION
     const [dateStr, setDateStr] = useState("");
     useEffect(() => {
         setDateStr(new Date().toLocaleDateString("fr-FR"));
     }, []);
 
     return (
-      // FIX MOBILE MAJEUR : Position absolue hors-écran au lieu de display:none
-      // Cela permet au moteur PDF du téléphone de "voir" le contenu
       <div className="absolute left-[-9999px] top-0 w-0 h-0 overflow-hidden print:static print:w-auto print:h-auto print:overflow-visible">
-        <div ref={refProp} className="p-12 bg-white text-black font-sans min-h-[29.7cm] w-[21cm] mx-auto relative flex flex-col justify-between print:block">
+        {/* FIX CRITIQUE : Style global pour forcer le format A4 sans marges navigateur */}
+        <style type="text/css" media="print">
+          {`
+            @page { size: A4; margin: 0; }
+            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          `}
+        </style>
+
+        {/* Conteneur A4 ajusté : w-full pour s'adapter à la largeur du PDF généré */}
+        <div ref={refProp} className="bg-white text-black font-sans mx-auto relative print:w-full print:max-w-[210mm] print:min-h-[297mm] print:p-[10mm]">
             
-            <div>
-                {/* Header */}
-                <div className="flex justify-between items-center border-b-2 border-black/10 pb-6 mb-10">
-                    <div className="flex items-center gap-4">
-                        <div className="text-black"><NexusLogo className="w-12 h-12"/></div>
-                        <div>
-                            <h1 className="text-2xl font-black uppercase tracking-tighter text-black leading-none">NEXUS <span className="text-indigo-600">INVEST</span></h1>
-                            <p className="text-[10px] text-gray-500 uppercase tracking-[0.2em] mt-1">Dossier de Financement</p>
+            <div className="flex flex-col h-full justify-between p-8 md:p-12">
+                <div>
+                    {/* Header */}
+                    <div className="flex justify-between items-center border-b-2 border-black/10 pb-6 mb-8">
+                        <div className="flex items-center gap-4">
+                            <div className="text-black"><NexusLogo className="w-12 h-12"/></div>
+                            <div>
+                                <h1 className="text-2xl font-black uppercase tracking-tighter text-black leading-none">NEXUS <span className="text-indigo-600">INVEST</span></h1>
+                                <p className="text-[10px] text-gray-500 uppercase tracking-[0.2em] mt-1">Dossier de Financement</p>
+                            </div>
+                        </div>
+                        <div className="text-right">
+                            <p className="text-base font-bold text-gray-900">{d.name || "Projet Immobilier"}</p>
+                            <span className="inline-block bg-gray-100 text-gray-600 text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wide mt-1">
+                                {isLoc ? "Investissement Locatif" : isRP ? "Résidence Principale" : "Résidence Secondaire"}
+                            </span>
+                            <p className="text-xs text-gray-400 mt-1">{dateStr}</p>
                         </div>
                     </div>
-                    <div className="text-right">
-                        <p className="text-base font-bold text-gray-900">{d.name || "Projet Immobilier"}</p>
-                        <span className="inline-block bg-gray-100 text-gray-600 text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wide mt-1">
-                            {isLoc ? "Investissement Locatif" : isRP ? "Résidence Principale" : "Résidence Secondaire"}
-                        </span>
-                        <p className="text-xs text-gray-400 mt-1">{dateStr}</p>
-                    </div>
-                </div>
 
-                {/* Synthèse Projet */}
-                <div className="grid grid-cols-2 gap-8 mb-10">
-                    <div className="p-6 bg-gray-50 rounded-2xl border border-gray-100 shadow-sm">
-                        <h3 className="text-[10px] font-black uppercase text-indigo-600 mb-4 flex items-center gap-2 tracking-widest"><Home size={14}/> L'Acquisition</h3>
-                        <div className="space-y-3 text-sm text-gray-600">
-                            <div className="flex justify-between"><span>Prix Net Vendeur</span> <span className="font-bold text-gray-900">{formatEuro(d.price)}</span></div>
-                            <div className="flex justify-between"><span>Travaux Estimés</span> <span className="font-bold text-gray-900">{formatEuro(d.works)}</span></div>
-                            <div className="flex justify-between"><span>Frais de Notaire</span> <span className="font-bold text-gray-900">{formatEuro(d.notaryFees)}</span></div>
-                            <div className="h-px bg-gray-200 my-2"></div>
-                            <div className="flex justify-between text-base font-black text-black"><span>COÛT TOTAL</span> <span>{formatEuro(totalCost)}</span></div>
+                    {/* Synthèse Projet */}
+                    <div className="grid grid-cols-2 gap-6 mb-8">
+                        <div className="p-5 bg-gray-50 rounded-2xl border border-gray-100 shadow-sm break-inside-avoid">
+                            <h3 className="text-[10px] font-black uppercase text-indigo-600 mb-4 flex items-center gap-2 tracking-widest"><Home size={14}/> L'Acquisition</h3>
+                            <div className="space-y-2 text-sm text-gray-600">
+                                <div className="flex justify-between"><span>Prix Net Vendeur</span> <span className="font-bold text-gray-900">{formatEuro(d.price)}</span></div>
+                                <div className="flex justify-between"><span>Travaux Estimés</span> <span className="font-bold text-gray-900">{formatEuro(d.works)}</span></div>
+                                <div className="flex justify-between"><span>Frais de Notaire</span> <span className="font-bold text-gray-900">{formatEuro(d.notaryFees)}</span></div>
+                                <div className="h-px bg-gray-200 my-2"></div>
+                                <div className="flex justify-between text-base font-black text-black"><span>COÛT TOTAL</span> <span>{formatEuro(totalCost)}</span></div>
+                            </div>
+                        </div>
+                        <div className="p-5 bg-gray-50 rounded-2xl border border-gray-100 shadow-sm break-inside-avoid">
+                            <h3 className="text-[10px] font-black uppercase text-indigo-600 mb-4 flex items-center gap-2 tracking-widest"><Landmark size={14}/> Le Financement</h3>
+                            <div className="space-y-2 text-sm text-gray-600">
+                                <div className="flex justify-between"><span>Apport Personnel</span> <span className="font-bold text-gray-900">{formatEuro(d.apport)}</span></div>
+                                <div className="flex justify-between"><span>Emprunt Sollicité</span> <span className="font-bold text-gray-900">{formatEuro(totalCost - d.apport)}</span></div>
+                                <div className="flex justify-between"><span>Conditions</span> <span className="font-bold text-gray-900">{d.duration} ans à {d.rate}%</span></div>
+                                <div className="h-px bg-gray-200 my-2"></div>
+                                <div className="flex justify-between text-base font-black text-black"><span>Mensualité (Hors Ass.)</span> <span>{formatEuro(d.monthlyPayment || 0)}</span></div>
+                            </div>
                         </div>
                     </div>
-                    <div className="p-6 bg-gray-50 rounded-2xl border border-gray-100 shadow-sm">
-                        <h3 className="text-[10px] font-black uppercase text-indigo-600 mb-4 flex items-center gap-2 tracking-widest"><Landmark size={14}/> Le Financement</h3>
-                        <div className="space-y-3 text-sm text-gray-600">
-                            <div className="flex justify-between"><span>Apport Personnel</span> <span className="font-bold text-gray-900">{formatEuro(d.apport)}</span></div>
-                            <div className="flex justify-between"><span>Emprunt Sollicité</span> <span className="font-bold text-gray-900">{formatEuro(totalCost - d.apport)}</span></div>
-                            <div className="flex justify-between"><span>Conditions</span> <span className="font-bold text-gray-900">{d.duration} ans à {d.rate}%</span></div>
-                            <div className="h-px bg-gray-200 my-2"></div>
-                            <div className="flex justify-between text-base font-black text-black"><span>Mensualité (Hors Ass.)</span> <span>{formatEuro(d.monthlyPayment || 0)}</span></div>
+
+                    {/* Indicateurs Clés */}
+                    <div className="mb-8 break-inside-avoid">
+                        <h3 className="text-sm font-black uppercase text-gray-900 mb-4 border-l-4 border-indigo-600 pl-3">Indicateurs Financiers</h3>
+                        <div className="grid grid-cols-3 gap-4">
+                            {isLoc ? (
+                                <>
+                                    <div className="p-4 rounded-xl bg-indigo-50 border border-indigo-100 text-center">
+                                        <p className="text-[9px] uppercase font-bold text-indigo-400 mb-1 tracking-wider">Rendement Brut</p>
+                                        <p className="text-2xl font-black text-indigo-700">{Number(d.yieldNet).toFixed(2)}%</p>
+                                    </div>
+                                    <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-100 text-center">
+                                        <p className="text-[9px] uppercase font-bold text-emerald-600 mb-1 tracking-wider">Cashflow Net / Mois</p>
+                                        <p className={`text-2xl font-black ${d.cashflowNetImpots > 0 ? "text-emerald-700" : "text-amber-600"}`}>{d.cashflowNetImpots > 0 ? "+":""}{Math.round(d.cashflowNetImpots)}€</p>
+                                    </div>
+                                    <div className="p-4 rounded-xl bg-gray-50 border border-gray-200 text-center">
+                                        <p className="text-[9px] uppercase font-bold text-gray-400 mb-1 tracking-wider">Loyer Annuel</p>
+                                        <p className="text-2xl font-black text-gray-800">{formatEuro(d.rent * 12)}</p>
+                                    </div>
+                                </>
+                            ) : (
+                                <>
+                                    <div className="p-4 rounded-xl bg-gray-50 border border-gray-200 text-center">
+                                        <p className="text-[9px] uppercase font-bold text-gray-400 mb-1 tracking-wider">Effort Mensuel</p>
+                                        <p className="text-2xl font-black text-gray-800">{formatEuro(Math.round(d.monthlyPayment + (d.charges || 0) + ((d.tax || 0)/12)))}</p>
+                                    </div>
+                                    <div className="p-4 rounded-xl bg-indigo-50 border border-indigo-100 text-center">
+                                        <p className="text-[9px] uppercase font-bold text-indigo-400 mb-1 tracking-wider">Coût Crédit</p>
+                                        <p className="text-2xl font-black text-indigo-700">{formatEuro(Math.round(d.totalCreditCost))}</p>
+                                    </div>
+                                    <div className="p-4 rounded-xl bg-amber-50 border border-amber-100 text-center">
+                                        <p className="text-[9px] uppercase font-bold text-amber-500 mb-1 tracking-wider">Capitalisation</p>
+                                        <p className="text-2xl font-black text-amber-700">~{formatEuro(Math.round(d.monthlyPayment * 0.6))}</p>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Analyse Stratégique */}
+                    <div className="mb-8 break-inside-avoid">
+                        <h3 className="text-sm font-black uppercase text-gray-900 mb-4 border-l-4 border-indigo-600 pl-3">Analyse Stratégique</h3>
+                        <div className="p-6 border border-gray-200 rounded-xl bg-white shadow-sm">
+                            {isLoc ? (
+                                <p className="text-sm text-gray-700 leading-relaxed">
+                                    Ce projet est structuré pour maximiser la rentabilité nette via le régime 
+                                    <strong className="text-black uppercase"> {d.rentalStrategy === "LMNP" ? "LMNP" : d.rentalStrategy} </strong>.
+                                </p>
+                            ) : (
+                                <p className="text-sm text-gray-700 leading-relaxed">
+                                    Acquisition patrimoniale à usage de <strong>{isRP ? "RÉSIDENCE PRINCIPALE" : "RÉSIDENCE SECONDAIRE"}</strong>.
+                                </p>
+                            )}
                         </div>
                     </div>
                 </div>
 
-                {/* Indicateurs Clés */}
-                <div className="mb-10">
-                    <h3 className="text-sm font-black uppercase text-gray-900 mb-4 border-l-4 border-indigo-600 pl-3">Indicateurs Financiers</h3>
-                    <div className="grid grid-cols-3 gap-4">
-                        {isLoc ? (
-                            <>
-                                <div className="p-5 rounded-xl bg-indigo-50 border border-indigo-100 text-center">
-                                    <p className="text-[9px] uppercase font-bold text-indigo-400 mb-1 tracking-wider">Rendement Brut</p>
-                                    <p className="text-3xl font-black text-indigo-700">{Number(d.yieldNet).toFixed(2)}%</p>
-                                </div>
-                                <div className="p-5 rounded-xl bg-emerald-50 border border-emerald-100 text-center">
-                                    <p className="text-[9px] uppercase font-bold text-emerald-600 mb-1 tracking-wider">Cashflow Net / Mois</p>
-                                    <p className={`text-3xl font-black ${d.cashflowNetImpots > 0 ? "text-emerald-700" : "text-amber-600"}`}>{d.cashflowNetImpots > 0 ? "+":""}{Math.round(d.cashflowNetImpots)}€</p>
-                                </div>
-                                <div className="p-5 rounded-xl bg-gray-50 border border-gray-200 text-center">
-                                    <p className="text-[9px] uppercase font-bold text-gray-400 mb-1 tracking-wider">Loyer Annuel</p>
-                                    <p className="text-3xl font-black text-gray-800">{formatEuro(d.rent * 12)}</p>
-                                </div>
-                            </>
-                        ) : (
-                            <>
-                                <div className="p-5 rounded-xl bg-gray-50 border border-gray-200 text-center">
-                                    <p className="text-[9px] uppercase font-bold text-gray-400 mb-1 tracking-wider">Effort Mensuel Total</p>
-                                    <p className="text-3xl font-black text-gray-800">{formatEuro(Math.round(d.monthlyPayment + (d.charges || 0) + ((d.tax || 0)/12)))}</p>
-                                </div>
-                                <div className="p-5 rounded-xl bg-indigo-50 border border-indigo-100 text-center">
-                                    <p className="text-[9px] uppercase font-bold text-indigo-400 mb-1 tracking-wider">Coût Total Crédit</p>
-                                    <p className="text-3xl font-black text-indigo-700">{formatEuro(Math.round(d.totalCreditCost))}</p>
-                                </div>
-                                <div className="p-5 rounded-xl bg-amber-50 border border-amber-100 text-center">
-                                    <p className="text-[9px] uppercase font-bold text-amber-500 mb-1 tracking-wider">Capitalisation / Mois</p>
-                                    <p className="text-3xl font-black text-amber-700">~{formatEuro(Math.round(d.monthlyPayment * 0.6))}</p>
-                                </div>
-                            </>
-                        )}
-                    </div>
+                {/* Footer Legal */}
+                <div className="border-t pt-6 text-center mt-auto">
+                    <p className="text-[8px] text-gray-400 font-medium uppercase tracking-widest">
+                        Document généré par Nexus Invest. Ne constitue pas une offre de prêt.
+                    </p>
                 </div>
-
-                {/* Analyse Stratégique */}
-                <div className="mb-10">
-                    <h3 className="text-sm font-black uppercase text-gray-900 mb-4 border-l-4 border-indigo-600 pl-3">Analyse Stratégique</h3>
-                    <div className="p-6 border border-gray-200 rounded-xl bg-white shadow-sm">
-                        {isLoc ? (
-                            <p className="text-sm text-gray-700 leading-relaxed mb-4">
-                                Ce projet est structuré pour maximiser la rentabilité nette via le régime 
-                                <strong className="text-black uppercase"> {d.rentalStrategy === "LMNP" ? "LMNP" : d.rentalStrategy} </strong>.
-                            </p>
-                        ) : (
-                            <p className="text-sm text-gray-700 leading-relaxed mb-4">
-                                Acquisition patrimoniale à usage de <strong>{isRP ? "RÉSIDENCE PRINCIPALE" : "RÉSIDENCE SECONDAIRE"}</strong>.
-                            </p>
-                        )}
-                    </div>
-                </div>
-            </div>
-
-            {/* Footer Legal */}
-            <div className="border-t pt-6 text-center">
-                <p className="text-[9px] text-gray-400 font-medium uppercase tracking-widest">
-                    Document généré par Nexus Invest. Ne constitue pas une offre de prêt.
-                </p>
             </div>
         </div>
       </div>
     );
 };
 
-// --- COMPOSANTS UI ---
+// --- COMPOSANT PEDAGOGIQUE ---
 const Help = ({ title, text }: { title: string, text: string }) => (
   <div className="group/help relative inline-flex items-center ml-2 align-middle cursor-help z-[999]">
     <HelpCircle size={14} className="text-zinc-500 group-hover/help:text-indigo-400 transition-colors duration-300"/>
@@ -155,6 +163,7 @@ const Help = ({ title, text }: { title: string, text: string }) => (
   </div>
 );
 
+// --- SLIDER PREMIUM ---
 const PremiumSlider = ({ label, value, min, max, step, unit, onChange }: any) => (
     <div className="group relative bg-black/40 rounded-2xl p-4 border border-white/5 hover:border-indigo-500/30 transition-all duration-300">
         <div className="flex justify-between items-end mb-3">
@@ -167,6 +176,7 @@ const PremiumSlider = ({ label, value, min, max, step, unit, onChange }: any) =>
     </div>
 );
 
+// --- CARTE PREMIUM ---
 const PremiumCard = ({ children, className = "", color = "indigo" }: { children: React.ReactNode, className?: string, color?: string }) => {
     const borderColor = color === "emerald" ? "hover:border-emerald-500/30" : color === "rose" ? "hover:border-rose-500/30" : color === "amber" ? "hover:border-amber-500/30" : color === "blue" ? "hover:border-blue-500/30" : "hover:border-indigo-500/30";
     return <div className={`relative rounded-[32px] bg-zinc-900/40 backdrop-blur-md border border-white/5 transition-all duration-500 ${borderColor} hover:bg-zinc-900/60 group ${className}`}>{children}</div>;
@@ -183,18 +193,17 @@ export default function SimulateurPage() {
   const [printData, setPrintData] = useState<any>(null); 
   const [isReadyToPrint, setIsReadyToPrint] = useState(false);
 
-  // FIX MOBILE #1 : Pas de setPrintData(null) dans onAfterPrint
+  // FIX MOBILE #1 : Pas de nettoyage des données dans onAfterPrint
   const handlePrint = useReactToPrint({
     contentRef: componentRef,
     documentTitle: "Dossier_Financement_Nexus",
     onAfterPrint: () => {
-        // IMPORTANT : On ne vide PAS les données ici.
-        // Sur mobile, le PDF est généré en arrière-plan. Si on vide les données, il imprime du vide (NaN).
+        // On ne vide PAS les données ici pour éviter le bug d'affichage blanc sur mobile
         setIsReadyToPrint(false); 
     }
   });
 
-  // FIX MOBILE #2 : Déclenchement automatique sans délai
+  // FIX MOBILE #2 : Déclenchement automatique
   useEffect(() => {
     if (isReadyToPrint && printData) {
         handlePrint();
@@ -245,7 +254,6 @@ export default function SimulateurPage() {
     const loadProjets = async () => {
         const { data: { session } } = await supabase.auth.getSession();
         if (session) {
-            // Check si la colonne existe (gestion erreur silencieuse)
             const { data } = await supabase.from('profiles').select('simulations_json').eq('id', session.user.id).single();
             if (data && data.simulations_json) setSavedSimulations(data.simulations_json);
         }
@@ -333,7 +341,6 @@ export default function SimulateurPage() {
     }
   }, [revenue, credits, duration, rate, apportCapacity, price, works, notaryRate, apport, rent, charges, tax, projectType, rentalStrategy, userTMI, resalePrice, holdingYears]);
 
-  // FIX SAUVEGARDE : Gestion d'erreur explicite
   const saveSimulation = async () => {
       if (!projectName) { alert("Nommez votre projet !"); return; }
       const newSim = {
@@ -386,7 +393,7 @@ export default function SimulateurPage() {
       <Sidebar />
       <main className="md:ml-64 flex-1 w-auto max-w-full p-4 md:p-8 relative overflow-hidden">
         
-        {/* ELEMENT CACHÉ POUR IMPRESSION (FIX MOBILE) */}
+        {/* COMPOSANT CACHÉ POUR L'IMPRESSION (CORRIGÉ MOBILE) */}
         <DossierBancaire refProp={componentRef} data={printData} />
 
         <div className="fixed top-0 left-64 w-[800px] h-[800px] bg-indigo-900/10 rounded-full blur-[150px] pointer-events-none"></div>
@@ -411,8 +418,8 @@ export default function SimulateurPage() {
                     <PremiumCard className="p-8">
                         <h3 className="text-xs font-black text-indigo-400 uppercase mb-8 flex items-center gap-3 tracking-widest"><Wallet size={18}/> Revenus</h3>
                         <div className="space-y-6">
-                            <div className="space-y-2"><label className="text-[10px] font-bold text-zinc-500 uppercase">Salaire Net / Mois</label><Input type="number" value={revenue} onChange={e => handleInput(setRevenue, e.target.value)} className="bg-black/40 border-white/10 h-14 text-white font-bold text-xl focus:border-indigo-500"/></div>
-                            <div className="space-y-2"><label className="text-[10px] font-bold text-zinc-500 uppercase">Crédits en cours</label><Input type="number" value={credits} onChange={e => handleInput(setCredits, e.target.value)} className="bg-black/40 border-white/10 h-14 text-white font-bold text-xl focus:border-indigo-500"/></div>
+                            <div className="space-y-2"><div className="flex justify-between"><label className="text-[10px] font-bold text-zinc-500 uppercase">Salaire Net / Mois</label></div><Input type="number" value={revenue} onChange={e => handleInput(setRevenue, e.target.value)} className="bg-black/40 border-white/10 h-14 text-white font-bold text-xl focus:border-indigo-500"/></div>
+                            <div className="space-y-2"><div className="flex justify-between"><label className="text-[10px] font-bold text-zinc-500 uppercase">Crédits en cours</label></div><Input type="number" value={credits} onChange={e => handleInput(setCredits, e.target.value)} className="bg-black/40 border-white/10 h-14 text-white font-bold text-xl focus:border-indigo-500"/></div>
                             <div className="space-y-2 pt-4 border-t border-white/5"><label className="text-[10px] font-bold text-emerald-500 uppercase">Apport Perso</label><Input type="number" value={apportCapacity} onChange={e => handleInput(setApportCapacity, e.target.value)} className="bg-emerald-900/10 border-emerald-500/20 h-14 text-emerald-400 font-bold text-xl focus:border-emerald-500"/></div>
                         </div>
                     </PremiumCard>
@@ -568,6 +575,7 @@ export default function SimulateurPage() {
             </motion.div>
           )}
 
+          {/* ... (Le reste du code PROJETS / FISCALITE reste identique) ... */}
           {mode === "FISCALITE" && (
             <motion.div key="fiscal" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="grid grid-cols-1 gap-8">
                 {projectType === "LOC" ? (
