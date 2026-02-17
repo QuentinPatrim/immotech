@@ -1,11 +1,57 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
-import { Check, X, Zap, Shield, Crown, ArrowLeft, Star } from "lucide-react";
+import { Check, X, Zap, Shield, Crown, ArrowLeft, Star, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
+import { supabase } from "@/lib/supabaseClient";
 
 export default function PricingPage() {
+  const [loading, setLoading] = useState(false);
+
+  // --- FONCTION DE PAIEMENT ---
+  const handleCheckout = async () => {
+    setLoading(true);
+    try {
+        // 1. Vérifier si l'utilisateur est connecté
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (!session) {
+            // Si pas connecté, rediriger vers la page de connexion
+            window.location.href = "/login"; 
+            return;
+        }
+
+        // 2. Appel à l'API interne pour créer la session Stripe
+        const response = await fetch("/api/stripe/checkout", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ 
+                email: session.user.email, 
+                userId: session.user.id 
+            })
+        });
+
+        const { url, error } = await response.json();
+
+        if (error) {
+            console.error("Erreur Stripe:", error);
+            alert("Erreur lors de l'initialisation du paiement.");
+            return;
+        }
+
+        // 3. Redirection vers la page de paiement sécurisée Stripe
+        if (url) window.location.href = url;
+
+    } catch (error) {
+        console.error("Erreur paiement:", error);
+        alert("Une erreur est survenue. Veuillez réessayer.");
+    } finally {
+        setLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#050505] text-zinc-100 font-sans p-6 md:p-12 relative overflow-hidden flex flex-col items-center">
       
@@ -30,7 +76,7 @@ export default function PricingPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-5xl w-full relative z-10">
         
-        {/* FREE */}
+        {/* OFFRE GRATUITE */}
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="p-8 rounded-[32px] bg-zinc-900/40 border border-white/5 flex flex-col backdrop-blur-sm">
             <div className="mb-8">
                 <h3 className="text-lg font-black text-zinc-400 uppercase tracking-widest mb-2">Discovery</h3>
@@ -49,7 +95,7 @@ export default function PricingPage() {
             <Button className="w-full h-14 bg-zinc-800 text-white font-bold rounded-2xl hover:bg-zinc-700 pointer-events-none opacity-50">Offre Actuelle</Button>
         </motion.div>
 
-        {/* PRO */}
+        {/* OFFRE PRO (1,99€) */}
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="p-1 rounded-[34px] bg-gradient-to-b from-purple-500 to-indigo-600 relative group shadow-2xl shadow-purple-900/20">
             <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-white text-black text-[10px] font-black uppercase px-4 py-1.5 rounded-full tracking-widest shadow-lg flex items-center gap-2">
                 <Crown size={12}/> Recommandé
@@ -59,7 +105,7 @@ export default function PricingPage() {
                 
                 <div className="mb-8 relative z-10">
                     <h3 className="text-lg font-black text-purple-400 uppercase tracking-widest mb-2">Investor Pro</h3>
-                    <div className="text-5xl font-black text-white flex items-end gap-2">9,90€ <span className="text-lg text-zinc-500 font-medium mb-1">/mois</span></div>
+                    <div className="text-5xl font-black text-white flex items-end gap-2">1,99€ <span className="text-lg text-zinc-500 font-medium mb-1">/mois</span></div>
                     <p className="text-sm text-purple-200/60 mt-4 font-medium">Rentabilisé dès le premier projet optimisé.</p>
                 </div>
                 
@@ -72,10 +118,16 @@ export default function PricingPage() {
                     <li className="flex items-center gap-3 text-white text-sm font-bold"><div className="p-1 bg-purple-500 rounded-full text-white"><Check size={12}/></div> Analyses IA & Conseils</li>
                 </ul>
 
-                <Button className="w-full h-14 bg-white text-black font-black uppercase tracking-wide rounded-2xl hover:scale-[1.02] active:scale-[0.98] transition-all shadow-lg relative z-10">
-                    Devenir Membre Pro
+                {/* BOUTON CONNECTÉ À STRIPE */}
+                <Button 
+                    onClick={handleCheckout} 
+                    disabled={loading} 
+                    className="w-full h-14 bg-white text-black font-black uppercase tracking-wide rounded-2xl hover:scale-[1.02] active:scale-[0.98] transition-all shadow-lg relative z-10"
+                >
+                    {loading ? <Loader2 className="animate-spin" /> : "Devenir Membre Pro"}
                 </Button>
-                <p className="text-[10px] text-center text-zinc-600 mt-4 font-medium">Sans engagement • Annulation en 1 clic</p>
+                
+                <p className="text-[10px] text-center text-zinc-600 mt-4 font-medium">Paiement sécurisé via Stripe. Annulable à tout moment.</p>
             </div>
         </motion.div>
 
