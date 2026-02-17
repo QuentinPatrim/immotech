@@ -8,7 +8,6 @@ import {
   PieChart, 
   TrendingUp, 
   Calculator, 
-  Settings, 
   BrainCircuit,
   LogOut
 } from "lucide-react";
@@ -58,15 +57,17 @@ export default function Sidebar() {
             );
           })}
           
-          {/* CORRECTION ICI : href="/parametres" au lieu de "/reglages" */}
+          {/* REMPLACEMENT DE RÉGLAGES PAR ANALYSES IA SUR MOBILE */}
           <Link
-             href="/parametres"
+             href="/analyses"
              className={`flex flex-col items-center justify-center w-full h-full gap-1 active:scale-95 ${
-                pathname === "/parametres" ? "text-emerald-400" : "text-zinc-500"
+                pathname === "/analyses" ? "text-emerald-400" : "text-zinc-500"
              }`}
           >
-             <Settings size={20} />
-             <span className="text-[9px] font-medium tracking-wide uppercase">Réglages</span>
+             <div className={`p-1 rounded-xl transition-all ${pathname === "/analyses" ? "bg-emerald-500/10" : ""}`}>
+                <BrainCircuit size={20} strokeWidth={pathname === "/analyses" ? 2.5 : 2} />
+             </div>
+             <span className="text-[9px] font-medium tracking-wide uppercase">Analyses</span>
           </Link>
         </div>
       </nav>
@@ -81,8 +82,8 @@ export default function Sidebar() {
         </div>
 
         <nav className="flex-1 px-4 space-y-2 overflow-y-auto mt-4">
-          {/* Le lien PC pointait déjà vers /parametres, on le garde */}
-          {[...menuItems, { name: "Réglages", href: "/parametres", icon: Settings }].map((item) => {
+          {/* RÉGLAGES SUPPRIMÉ DE LA LISTE ICI */}
+          {menuItems.map((item) => {
             const isActive = pathname === item.href;
             return (
               <Link
@@ -95,7 +96,9 @@ export default function Sidebar() {
                 }`}
               >
                 <item.icon size={20} className={`transition-colors ${isActive ? "text-emerald-500" : "text-zinc-500 group-hover:text-white"}`} />
-                <span className="font-bold text-sm tracking-wide">{item.name === "Dash" ? "Dashboard" : item.name === "Projets" ? "Projection" : item.name === "Simu" ? "Simulateur" : item.name}</span>
+                <span className="font-bold text-sm tracking-wide">
+                    {item.name === "Dash" ? "Dashboard" : item.name === "Projets" ? "Projection" : item.name === "Simu" ? "Simulateur" : item.name}
+                </span>
               </Link>
             );
           })}
