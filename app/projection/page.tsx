@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Sidebar from "@/components/Sidebar";
 import { motion } from "framer-motion";
-import { TrendingUp, Target, Sparkles, Loader2, Info, Coins, Scale, AlertTriangle, Calendar, CheckCircle, ArrowRight, Percent } from "lucide-react";
+import { TrendingUp, Target, Sparkles, Loader2, Info, Coins, Scale, AlertTriangle, Calendar, CheckCircle, ArrowRight, Percent, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Input } from "@/components/ui/input";
@@ -11,23 +11,25 @@ import { Switch } from "@/components/ui/switch";
 import { AreaChart, Area, XAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine, YAxis } from "recharts";
 import AnimatedNumber from "@/components/AnimatedNumber";
 import { supabase } from "@/lib/supabaseClient";
+import PremiumGuard from "@/components/PremiumGuard"; // Import du Guard
 
 const formatEuro = (val: number) => new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(val);
 
-// Helper : Convertit la saisie (texte ou nombre) en nombre pur pour les calculs
+// Helper : Convertit la saisie en nombre
 const getVal = (v: number | string) => (typeof v === 'string' ? parseFloat(v) : v) || 0;
 
 export default function ProjectionPage() {
   const [loading, setLoading] = useState(true);
+  const [isPro, setIsPro] = useState(false); // État pour le statut Premium
   
-  // --- PARAMÈTRES UTILISATEUR (modif: string | number pour gérer le champ vide) ---
+  // --- PARAMÈTRES UTILISATEUR ---
   const [initialCapital, setInitialCapital] = useState<number | string>(0); 
   const [monthlyContribution, setMonthlyContribution] = useState<number | string>(0);
   const [monthlyExpenses, setMonthlyExpenses] = useState(0); 
   
   // --- PARAMÈTRES SIMULATION ---
-  const [stockGrowth, setStockGrowth] = useState(6); // Croissance du prix de l'action
-  const [dividendYield, setDividendYield] = useState(3); // Cash versé
+  const [stockGrowth, setStockGrowth] = useState(6);
+  const [dividendYield, setDividendYield] = useState(3);
   const [years, setYears] = useState(20);
   const [isDividendStrategy, setIsDividendStrategy] = useState(false); 
 
@@ -45,9 +47,12 @@ export default function ProjectionPage() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
 
-      const { data: profile } = await supabase.from('profiles').select('assets_json, budget_json').eq('id', session.user.id).single();
+      // On récupère aussi 'is_pro' ici
+      const { data: profile } = await supabase.from('profiles').select('is_pro, assets_json, budget_json').eq('id', session.user.id).single();
       
       if (profile) {
+          setIsPro(profile.is_pro === true); // Stockage du statut PRO
+
           const assets = profile.assets_json || [];
           const financialWealth = assets.filter((a: any) => a.type !== 'Immobilier').reduce((acc: number, a: any) => acc + a.value, 0);
           setInitialCapital(financialWealth);
@@ -68,11 +73,10 @@ export default function ProjectionPage() {
     fetchData();
   }, []);
 
-  // --- 2. MOTEUR DE SIMULATION (GROWTH + DIVIDENDES CUMULÉS) ---
+  // --- 2. MOTEUR DE SIMULATION ---
   useEffect(() => {
       if (loading) return;
 
-      // Conversion sécurisée pour le calcul
       const startCap = getVal(initialCapital);
       const monthlyAdd = getVal(monthlyContribution);
 
@@ -81,10 +85,7 @@ export default function ProjectionPage() {
       let currentCTO = startCap;
       let totalInvested = startCap;
       
-      // Taux mensuels
-      const growthRate = stockGrowth / 100 / 12; // Croissance intrinsèque
-      
-      // Si stratégie dividende activée, on ajoute le yield. Sinon 0.
+      const growthRate = stockGrowth / 100 / 12; 
       const divRateAnnual = isDividendStrategy ? (dividendYield / 100) : 0;
       const divRateMonthly = divRateAnnual / 12;
       
@@ -93,16 +94,9 @@ export default function ProjectionPage() {
       setFireTarget(target);
 
       for (let year = 0; year <= years; year++) {
-          
-          // --- CALCUL VALEUR DE SORTIE (NETTE D'IMPÔT SUR PV) ---
-          
-          // PEA : Impôt 17.2% sur la PV globale à la sortie
           const gainPEA = currentPEA - totalInvested;
           const netPEA = currentPEA - (gainPEA > 0 ? gainPEA * 0.172 : 0);
 
-          // CTO : Impôt 30% sur la PV "Capitalisation" à la sortie
-          // Note : Les dividendes ont DÉJÀ été taxés au fil de l'eau (voir boucle mensuelle)
-          // On taxe donc la différence entre la valeur finale et le capital investi
           const gainCTO = currentCTO - totalInvested;
           const netCTO = currentCTO - (gainCTO > 0 ? gainCTO * 0.30 : 0);
 
@@ -119,13 +113,8 @@ export default function ProjectionPage() {
               foundFire = true;
           }
 
-          // Simulation Mensuelle
           for (let m = 0; m < 12; m++) {
-              // PEA : Le dividende est réinvesti BRUT (100%)
               currentPEA = currentPEA * (1 + growthRate + divRateMonthly) + monthlyAdd;
-              
-              // CTO : Le dividende est taxé à 30% AVANT réinvestissement
-              // La croissance (growthRate) n'est pas taxée tant qu'on ne vend pas
               const dividendNet = divRateMonthly * (1 - 0.30); 
               currentCTO = currentCTO * (1 + growthRate + dividendNet) + monthlyAdd;
 
@@ -138,7 +127,6 @@ export default function ProjectionPage() {
       setFinalPEA(data[years].PEA);
       setTaxDragCost(data[years].PEA - data[years].CTO);
       
-      // Rente estimée
       const withdrawalRate = isDividendStrategy ? (dividendYield / 100) : 0.04;
       setPassiveIncome(data[years].PEA * withdrawalRate);
 
@@ -151,7 +139,6 @@ export default function ProjectionPage() {
       <Sidebar />
       <main className="md:ml-64 flex-1 w-auto max-w-full p-4 md:p-8 relative overflow-hidden">
         
-        {/* Background Ambient Glows */}
         <div className="fixed top-0 left-64 w-[500px] h-[500px] bg-emerald-500/5 rounded-full blur-[120px] pointer-events-none"></div>
         <div className="fixed bottom-0 right-0 w-[500px] h-[500px] bg-blue-500/5 rounded-full blur-[120px] pointer-events-none"></div>
 
@@ -166,43 +153,29 @@ export default function ProjectionPage() {
 
           <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
               
-              {/* --- GAUCHE : PANNEAU DE CONTRÔLE --- */}
+              {/* --- GAUCHE : PANNEAU DE CONTRÔLE (Toujours visible pour teaser) --- */}
               <div className="xl:col-span-3 space-y-6">
-                  
                   {/* Carte Paramètres */}
                   <div className="p-6 rounded-[30px] bg-zinc-900/40 backdrop-blur-xl border border-white/5 hover:border-white/10 transition-all shadow-2xl">
                       <div className="flex items-center gap-3 mb-6">
                           <div className="h-8 w-1 bg-yellow-500 rounded-full shadow-[0_0_10px_rgba(234,179,8,0.5)]"></div>
                           <h3 className="text-sm font-bold text-white uppercase tracking-widest">Entrées</h3>
                       </div>
-                      
                       <div className="space-y-6">
                           <div className="space-y-2 group">
                               <label className="text-[10px] uppercase font-bold text-zinc-500 group-hover:text-white transition-colors">Capital Départ</label>
                               <div className="relative">
-                                  <Input 
-                                    type="number" 
-                                    value={initialCapital} 
-                                    onChange={(e) => setInitialCapital(e.target.value)} 
-                                    className="bg-black/50 border-white/10 text-white font-mono text-lg h-14 pr-10 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all rounded-xl"
-                                  />
+                                  <Input type="number" value={initialCapital} onChange={(e) => setInitialCapital(e.target.value)} className="bg-black/50 border-white/10 text-white font-mono text-lg h-14 pr-10 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all rounded-xl"/>
                                   <span className="absolute right-4 top-4 text-zinc-600 font-mono">€</span>
                               </div>
                           </div>
-
                           <div className="space-y-2 group">
                               <label className="text-[10px] uppercase font-bold text-zinc-500 group-hover:text-white transition-colors">Épargne Mensuelle</label>
                               <div className="relative">
-                                  <Input 
-                                    type="number" 
-                                    value={monthlyContribution} 
-                                    onChange={(e) => setMonthlyContribution(e.target.value)} 
-                                    className="bg-black/50 border-white/10 text-white font-mono text-lg h-14 pr-14 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all rounded-xl"
-                                  />
+                                  <Input type="number" value={monthlyContribution} onChange={(e) => setMonthlyContribution(e.target.value)} className="bg-black/50 border-white/10 text-white font-mono text-lg h-14 pr-14 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all rounded-xl"/>
                                   <span className="absolute right-4 top-4 text-zinc-600 font-mono">€/m</span>
                               </div>
                           </div>
-
                           <div className="space-y-4 pt-4 border-t border-white/5">
                               <div className="flex justify-between items-end"><label className="text-[10px] uppercase font-bold text-zinc-500">Horizon</label><span className="text-2xl font-black text-white">{years} <span className="text-sm text-zinc-500 font-normal">Ans</span></span></div>
                               <Slider value={[years]} min={5} max={40} step={1} onValueChange={(v) => setYears(v[0])} />
@@ -210,7 +183,7 @@ export default function ProjectionPage() {
                       </div>
                   </div>
 
-                  {/* Carte Stratégie AVANCÉE */}
+                  {/* Carte Stratégie */}
                   <div className="p-6 rounded-[30px] bg-zinc-900/40 backdrop-blur-xl border border-white/5 hover:border-white/10 transition-all shadow-2xl">
                       <div className="flex items-center justify-between mb-6">
                           <div className="flex items-center gap-3">
@@ -222,29 +195,15 @@ export default function ProjectionPage() {
                               <Switch checked={isDividendStrategy} onCheckedChange={setIsDividendStrategy} />
                           </div>
                       </div>
-                      
                       <div className="space-y-6">
-                          {/* Croissance Action */}
                           <div className="space-y-4">
-                              <div className="flex justify-between items-end">
-                                  <label className="text-[10px] uppercase font-bold text-zinc-500">Croissance Prix</label>
-                                  <span className="text-xl font-black text-emerald-400">{stockGrowth}%</span>
-                              </div>
+                              <div className="flex justify-between items-end"><label className="text-[10px] uppercase font-bold text-zinc-500">Croissance Prix</label><span className="text-xl font-black text-emerald-400">{stockGrowth}%</span></div>
                               <Slider value={[stockGrowth]} min={0} max={15} step={0.5} onValueChange={(v) => setStockGrowth(v[0])} />
                           </div>
-                          
-                          {/* Rendement Dividende */}
                           {isDividendStrategy && (
                               <div className="space-y-4 pt-4 border-t border-white/5 animate-in fade-in slide-in-from-top-2">
-                                  <div className="flex justify-between items-end">
-                                      <label className="text-[10px] uppercase font-bold text-zinc-500">Rendement Dividende</label>
-                                      <span className="text-xl font-bold text-blue-400">{dividendYield}%</span>
-                                  </div>
+                                  <div className="flex justify-between items-end"><label className="text-[10px] uppercase font-bold text-zinc-500">Rendement Dividende</label><span className="text-xl font-bold text-blue-400">{dividendYield}%</span></div>
                                   <Slider value={[dividendYield]} min={0} max={10} step={0.5} onValueChange={(v) => setDividendYield(v[0])} />
-                                  <div className="text-[10px] text-zinc-500 bg-black/40 p-3 rounded-lg border border-white/5">
-                                    <div className="flex justify-between mb-1"><span>Total Brut :</span><span className="text-white font-bold">{stockGrowth + dividendYield}%</span></div>
-                                    <div className="flex justify-between text-red-400"><span>Impact CTO :</span><span>-{(dividendYield * 0.3).toFixed(2)}% /an</span></div>
-                                  </div>
                               </div>
                           )}
                       </div>
@@ -254,12 +213,11 @@ export default function ProjectionPage() {
               {/* --- DROITE : VISUALISATION --- */}
               <div className="xl:col-span-9 space-y-8">
                   
-                  {/* KPI CARDS */}
+                  {/* KPI CARDS : AVEC VERROUILLAGE CIBLÉ SUR LES "INFOS CROUSTILLANTES" */}
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                       
-                      {/* 1. FIRE */}
-                      <div className={`p-6 rounded-[26px] border relative overflow-hidden flex flex-col justify-between h-40 transition-all group ${fireYear ? 'bg-emerald-950/20 border-emerald-500/30 shadow-[0_0_30px_rgba(16,185,129,0.1)]' : 'bg-zinc-900/40 border-white/5'}`}>
-                          <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                      {/* 1. FIRE (Public pour accrocher) */}
+                      <div className={`p-6 rounded-[26px] border relative overflow-hidden flex flex-col justify-between h-40 transition-all group ${fireYear ? 'bg-emerald-950/20 border-emerald-500/30' : 'bg-zinc-900/40 border-white/5'}`}>
                           <div className="flex justify-between items-start relative z-10">
                               <p className={`text-[10px] font-bold uppercase tracking-widest ${fireYear ? "text-emerald-400" : "text-zinc-500"}`}>Liberté Financière</p>
                               <Target size={18} className={fireYear ? "text-emerald-400" : "text-zinc-600"}/>
@@ -270,13 +228,11 @@ export default function ProjectionPage() {
                                       <div className="text-4xl font-black text-white mb-1">Dans {fireYear} ans</div>
                                       <div className="h-1 w-full bg-emerald-900/50 rounded-full mt-2 overflow-hidden"><div className="h-full bg-emerald-500 w-full animate-pulse"></div></div>
                                   </>
-                              ) : (
-                                  <div className="text-3xl font-bold text-zinc-500">Non atteinte</div>
-                              )}
+                              ) : ( <div className="text-3xl font-bold text-zinc-500">Non atteinte</div> )}
                           </div>
                       </div>
 
-                      {/* 2. NET WORTH - CORRECTION € */}
+                      {/* 2. NET WORTH (Public pour voir la progression) */}
                       <div className="p-6 rounded-[26px] bg-zinc-900/40 backdrop-blur-md border border-white/5 flex flex-col justify-between h-40 group hover:border-white/10 transition-all">
                           <div className="flex justify-between items-start">
                               <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">Patrimoine Final (Net)</p>
@@ -290,92 +246,114 @@ export default function ProjectionPage() {
                           </div>
                       </div>
 
-                      {/* 3. PASSIVE INCOME */}
-                      <div className="p-6 rounded-[26px] bg-zinc-900/40 backdrop-blur-md border border-white/5 flex flex-col justify-between h-40 group hover:border-white/10 transition-all">
+                      {/* 3. PASSIVE INCOME (PREMIUM - FLOUTÉ) */}
+                      <div className="p-6 rounded-[26px] bg-zinc-900/40 backdrop-blur-md border border-white/5 flex flex-col justify-between h-40 group relative overflow-hidden">
                           <div className="flex justify-between items-start">
                               <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">Rente Mensuelle</p>
                               <Coins size={18} className="text-blue-500"/>
                           </div>
-                          <div>
-                              <div className="text-3xl lg:text-4xl font-black text-white tracking-tighter">
-                                ~{formatEuro(passiveIncome / 12)}
+                          
+                          {/* Logique de Verrouillage "Inline" */}
+                          {isPro ? (
+                              <div>
+                                  <div className="text-3xl lg:text-4xl font-black text-white tracking-tighter">~{formatEuro(passiveIncome / 12)}</div>
+                                  <p className="text-[10px] text-zinc-500 mt-2">Basé sur Rendement {isDividendStrategy ? "Dividende" : "4%"}</p>
                               </div>
-                              <p className="text-[10px] text-zinc-500 mt-2">Basé sur Rendement {isDividendStrategy ? "Dividende" : "4%"}</p>
-                          </div>
+                          ) : (
+                              <div className="relative">
+                                  <div className="text-3xl lg:text-4xl font-black text-white tracking-tighter blur-md select-none opacity-50">~2 450 €</div>
+                                  <div className="absolute inset-0 flex items-center justify-center">
+                                      <Lock size={24} className="text-white drop-shadow-lg"/>
+                                  </div>
+                                  <p className="text-[10px] text-zinc-500 mt-2 flex items-center gap-1"><Lock size={10}/> Réservé aux membres</p>
+                              </div>
+                          )}
                       </div>
 
-                      {/* 4. TAX LOSS */}
+                      {/* 4. TAX LOSS (PREMIUM - FLOUTÉ - C'est l'info qui fait peur !) */}
                       <div className="p-6 rounded-[26px] bg-red-950/10 backdrop-blur-md border border-red-500/20 flex flex-col justify-between h-40 relative overflow-hidden">
                           <div className="absolute -right-4 -top-4 w-24 h-24 bg-red-500/20 blur-[40px] rounded-full"></div>
                           <div className="flex justify-between items-start relative z-10">
                               <p className="text-[10px] text-red-400 font-bold uppercase tracking-widest">Manque à gagner (CTO)</p>
                               <AlertTriangle size={18} className="text-red-500"/>
                           </div>
-                          <div className="relative z-10">
-                              <div className="text-3xl lg:text-4xl font-black text-red-500 tracking-tighter">
-                                -<AnimatedNumber value={taxDragCost} />
+                          
+                          {/* Logique de Verrouillage "Inline" */}
+                          {isPro ? (
+                              <div className="relative z-10">
+                                  <div className="text-3xl lg:text-4xl font-black text-red-500 tracking-tighter">-<AnimatedNumber value={taxDragCost} /></div>
+                                  <p className="text-[10px] text-red-400/70 mt-2">Impôt sur dividendes & PV</p>
                               </div>
-                              <p className="text-[10px] text-red-400/70 mt-2">Impôt sur dividendes & PV</p>
-                          </div>
+                          ) : (
+                             <div className="relative z-10">
+                                  <div className="text-3xl lg:text-4xl font-black text-red-500 tracking-tighter blur-md select-none opacity-60">-85 000 €</div>
+                                  <div className="absolute inset-0 flex items-center justify-center">
+                                      <Lock size={24} className="text-red-200 drop-shadow-lg"/>
+                                  </div>
+                                  <p className="text-[10px] text-red-400/70 mt-2">Combien perdez-vous ?</p>
+                             </div>
+                          )}
                       </div>
                   </div>
 
-                  {/* CHART */}
-                  <div className="p-1 rounded-[32px] bg-gradient-to-b from-white/10 to-transparent">
-                    <div className="p-8 rounded-[30px] bg-[#0A0A0A] border border-white/5 h-[500px] relative overflow-hidden">
-                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 relative z-10">
-                            <div>
-                                <h3 className="text-lg font-black text-white flex items-center gap-2"><TrendingUp size={20} className="text-emerald-500"/> PROTOCOLE DE RICHESSE</h3>
-                                <p className="text-xs text-zinc-500 font-mono mt-1">
-                                    Croissance {stockGrowth}% + {isDividendStrategy ? `Dividende ${dividendYield}%` : "Capitalisation"}
-                                </p>
-                            </div>
-                            {fireYear && (
-                                <div className="flex items-center gap-2 bg-emerald-500/10 px-4 py-2 rounded-full border border-emerald-500/20 animate-pulse">
-                                    <CheckCircle size={14} className="text-emerald-500"/>
-                                    <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider">Objectif atteint : An {fireYear}</span>
+                  {/* CHART - VERROUILLAGE MASSIF VIA PREMIUM GUARD */}
+                  <PremiumGuard isPro={isPro} title="Projection Patrimoniale" description="Visualisez l'effet boule de neige et comparez la fiscalité PEA vs CTO sur 25 ans.">
+                    <div className="p-1 rounded-[32px] bg-gradient-to-b from-white/10 to-transparent">
+                        <div className="p-8 rounded-[30px] bg-[#0A0A0A] border border-white/5 h-[500px] relative overflow-hidden">
+                            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 relative z-10">
+                                <div>
+                                    <h3 className="text-lg font-black text-white flex items-center gap-2"><TrendingUp size={20} className="text-emerald-500"/> PROTOCOLE DE RICHESSE</h3>
+                                    <p className="text-xs text-zinc-500 font-mono mt-1">Croissance {stockGrowth}% + {isDividendStrategy ? `Dividende ${dividendYield}%` : "Capitalisation"}</p>
                                 </div>
-                            )}
-                        </div>
-                        
-                        <div className="absolute inset-0 pt-24 pb-4 px-4">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <AreaChart data={chartData} margin={{ top: 10, right: 0, left: 0, bottom: 0 }}>
-                                    <defs>
-                                        <linearGradient id="colorPEA" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#10b981" stopOpacity={0.4}/><stop offset="100%" stopColor="#10b981" stopOpacity={0}/></linearGradient>
-                                        <linearGradient id="colorCTO" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#ef4444" stopOpacity={0.1}/><stop offset="100%" stopColor="#ef4444" stopOpacity={0}/></linearGradient>
-                                    </defs>
-                                    <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
-                                    <XAxis dataKey="name" stroke="#52525b" fontSize={10} tickLine={false} axisLine={false} tickMargin={15} interval={'preserveStartEnd'} />
-                                    <YAxis hide />
-                                    <Tooltip 
-                                        contentStyle={{ backgroundColor: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(10px)', borderColor: '#333', borderRadius: '16px', color:'#fff', boxShadow: '0 10px 40px rgba(0,0,0,0.5)' }} 
-                                        itemStyle={{ fontSize: '12px', fontWeight: 'bold' }}
-                                        formatter={(val: any) => formatEuro(Number(val))}
-                                        cursor={{ stroke: '#ffffff20', strokeWidth: 1 }}
-                                    />
-                                    <Area type="monotone" dataKey="PEA" stroke="#10b981" strokeWidth={4} fill="url(#colorPEA)" name="Patrimoine Net (PEA)" animationDuration={1500} />
-                                    <Area type="monotone" dataKey="CTO" stroke="#ef4444" strokeWidth={2} strokeDasharray="4 4" fill="url(#colorCTO)" name="Via CTO (Fiscalisé)" animationDuration={1500} />
-                                    <ReferenceLine y={fireTarget} stroke="#3b82f6" strokeDasharray="3 3" label={{ position: 'top',  value: 'Cible Liberté', fill: '#3b82f6', fontSize: 10, fontWeight: 'bold' }} />
-                                </AreaChart>
-                            </ResponsiveContainer>
+                                {fireYear && (
+                                    <div className="flex items-center gap-2 bg-emerald-500/10 px-4 py-2 rounded-full border border-emerald-500/20 animate-pulse">
+                                        <CheckCircle size={14} className="text-emerald-500"/>
+                                        <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider">Objectif atteint : An {fireYear}</span>
+                                    </div>
+                                )}
+                            </div>
+                            
+                            <div className="absolute inset-0 pt-24 pb-4 px-4">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <AreaChart data={chartData} margin={{ top: 10, right: 0, left: 0, bottom: 0 }}>
+                                        <defs>
+                                            <linearGradient id="colorPEA" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#10b981" stopOpacity={0.4}/><stop offset="100%" stopColor="#10b981" stopOpacity={0}/></linearGradient>
+                                            <linearGradient id="colorCTO" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#ef4444" stopOpacity={0.1}/><stop offset="100%" stopColor="#ef4444" stopOpacity={0}/></linearGradient>
+                                        </defs>
+                                        <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
+                                        <XAxis dataKey="name" stroke="#52525b" fontSize={10} tickLine={false} axisLine={false} tickMargin={15} interval={'preserveStartEnd'} />
+                                        <YAxis hide />
+                                        <Tooltip 
+                                            contentStyle={{ backgroundColor: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(10px)', borderColor: '#333', borderRadius: '16px', color:'#fff', boxShadow: '0 10px 40px rgba(0,0,0,0.5)' }} 
+                                            itemStyle={{ fontSize: '12px', fontWeight: 'bold' }}
+                                            formatter={(val: any) => formatEuro(Number(val))}
+                                            cursor={{ stroke: '#ffffff20', strokeWidth: 1 }}
+                                        />
+                                        <Area type="monotone" dataKey="PEA" stroke="#10b981" strokeWidth={4} fill="url(#colorPEA)" name="Patrimoine Net (PEA)" animationDuration={1500} />
+                                        <Area type="monotone" dataKey="CTO" stroke="#ef4444" strokeWidth={2} strokeDasharray="4 4" fill="url(#colorCTO)" name="Via CTO (Fiscalisé)" animationDuration={1500} />
+                                        <ReferenceLine y={fireTarget} stroke="#3b82f6" strokeDasharray="3 3" label={{ position: 'top',  value: 'Cible Liberté', fill: '#3b82f6', fontSize: 10, fontWeight: 'bold' }} />
+                                    </AreaChart>
+                                </ResponsiveContainer>
+                            </div>
                         </div>
                     </div>
-                  </div>
+                  </PremiumGuard>
 
-                  {/* VERDICT */}
-                  <div className="p-6 rounded-[26px] bg-blue-600/5 border border-blue-500/20 flex items-start gap-4">
-                      <div className="h-10 w-10 rounded-full bg-blue-500/10 flex items-center justify-center shrink-0"><Info className="text-blue-400" size={20}/></div>
-                      <div className="space-y-2">
-                          <h4 className="text-sm font-bold text-blue-400 uppercase tracking-wide">Analyse Stratégique</h4>
-                          <p className="text-sm text-zinc-300 leading-relaxed font-light">
-                              {isDividendStrategy 
-                                ? "En stratégie dividende, l'impact fiscal du CTO est immédiat : chaque année, 30% de vos gains dividendes sont confisqués avant d'être réinvestis. Le PEA est vital pour laisser les intérêts composés agir à 100%."
-                                : "Même en stratégie de capitalisation (Growth), l'avantage fiscal final du PEA (17.2%) contre le CTO (30%) crée un écart de richesse significatif à long terme."
-                              }
-                          </p>
-                      </div>
-                  </div>
+                  {/* VERDICT IA - VERROUILLAGE VIA PREMIUM GUARD */}
+                  <PremiumGuard isPro={isPro} title="Analyse Stratégique IA" description="Débloquez l'analyse experte de votre stratégie et nos recommandations d'optimisation.">
+                    <div className="p-6 rounded-[26px] bg-blue-600/5 border border-blue-500/20 flex items-start gap-4">
+                        <div className="h-10 w-10 rounded-full bg-blue-500/10 flex items-center justify-center shrink-0"><Info className="text-blue-400" size={20}/></div>
+                        <div className="space-y-2">
+                            <h4 className="text-sm font-bold text-blue-400 uppercase tracking-wide">Verdict de l'Expert</h4>
+                            <p className="text-sm text-zinc-300 leading-relaxed font-light">
+                                {isDividendStrategy 
+                                    ? "En stratégie dividende, l'impact fiscal du CTO est immédiat : chaque année, 30% de vos gains dividendes sont confisqués avant d'être réinvestis. Le PEA est vital pour laisser les intérêts composés agir à 100%."
+                                    : "Même en stratégie de capitalisation (Growth), l'avantage fiscal final du PEA (17.2%) contre le CTO (30%) crée un écart de richesse significatif à long terme."
+                                }
+                            </p>
+                        </div>
+                    </div>
+                  </PremiumGuard>
 
               </div>
           </div>

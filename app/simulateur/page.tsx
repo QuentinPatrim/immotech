@@ -398,7 +398,7 @@ export default function SimulateurPage() {
         <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} className="max-w-[1800px] mx-auto space-y-10 relative z-10">
           
           <div className="flex flex-col xl:flex-row justify-between items-start xl:items-end gap-8 pl-2 border-l-4 border-indigo-600 py-2">
-            <div><h1 className="text-4xl md:text-5xl font-black text-white tracking-tight uppercase">Simulateur <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-400">Expert 360°</span></h1></div>
+            <div><h1 className="text-4xl md:text-5xl font-black text-white tracking-tight uppercase">Mon <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-400">Simulateur Immo</span></h1></div>
             <div className="bg-zinc-900/60 backdrop-blur-xl p-1.5 rounded-2xl border border-white/5 flex flex-wrap gap-1 w-full xl:w-auto shadow-2xl">
                 {[{ id: "CAPACITE", label: "Capacité", icon: Wallet }, { id: "RENTABILITE", label: "Projet & Renta", icon: Calculator }, { id: "FISCALITE", label: "Fiscalité Expert", icon: Scale, premium: true }, { id: "PROJETS", label: "Portefeuille", icon: FolderOpen, premium: true }].map((tab) => (
                     <button key={tab.id} onClick={() => setMode(tab.id as any)} className={`flex items-center gap-2 px-5 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-all duration-300 ${mode === tab.id ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/25 scale-105" : "text-zinc-500 hover:text-white hover:bg-white/5"}`}>
@@ -567,7 +567,7 @@ export default function SimulateurPage() {
           )}
 
           {mode === "FISCALITE" && (
-            <PremiumGuard isPro={isPro} title="Fiscalité Expert" description="Optimisez vos impôts avec nos matrices LMNP, SCI et Holding.">
+            <PremiumGuard isPro={isPro} title="Fiscalité Expert" description="Optimisez vos impôts avec nos matrices de comparaison LMNP, location nue et courte durée,">
                 <motion.div key="fiscal" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="grid grid-cols-1 gap-8">
                     {projectType === "LOC" ? (
                         <PremiumCard className="p-10 bg-gradient-to-br from-[#0B0B0F] to-black border-indigo-500/20">

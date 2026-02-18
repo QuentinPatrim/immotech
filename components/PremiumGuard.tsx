@@ -55,7 +55,7 @@ export default function PremiumGuard({ isPro, children, title = "Fonctionnalité
                 </Button>
             </Link>
             
-            <p className="text-[10px] text-zinc-600 mt-4 uppercase tracking-widest font-bold">À partir de 9,90€ / mois</p>
+            <p className="text-[10px] text-zinc-600 mt-4 uppercase tracking-widest font-bold">À partir de 1,99 € / mois</p>
         </div>
 
       </div>
