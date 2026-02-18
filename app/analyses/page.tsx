@@ -14,6 +14,7 @@ import {
   AreaChart, Area, XAxis, Tooltip
 } from "recharts";
 import { supabase } from "@/lib/supabaseClient";
+import PremiumGuard from "@/components/PremiumGuard"; // ✅ Import du Guard
 
 const formatEuro = (val: number) => new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(val);
 
@@ -73,7 +74,7 @@ const runDeepAnalysis = (assets: any[], budget: any, simulations: any[]) => {
     
     const finalScore = Math.min(100, Math.max(0, score));
 
-    // 4. GÉNÉRATION CONSEILS PERSONNALISÉS (Nouveauté)
+    // 4. GÉNÉRATION CONSEILS PERSONNALISÉS
     const tips = [];
 
     // Conseil Cash Trop Plein
@@ -121,7 +122,7 @@ const runDeepAnalysis = (assets: any[], budget: any, simulations: any[]) => {
         });
     }
 
-    // Conseil Défaut (si tout est équilibré)
+    // Conseil Défaut
     if (tips.length === 0) {
         tips.push({
             icon: Rocket,
@@ -137,7 +138,7 @@ const runDeepAnalysis = (assets: any[], budget: any, simulations: any[]) => {
         totals: { cash, crypto, stock, realEstate, totalWealth, cashFlow: savings },
         score: finalScore,
         insights,
-        tips, // On retourne les nouveaux conseils
+        tips, 
         radar: [
             { subject: 'Sécurité', A: Math.min(100, runwayMonths * 15), fullMark: 100 },
             { subject: 'Croissance', A: Math.min(100, (stock + crypto + realEstate) / 1000), fullMark: 100 },
@@ -151,11 +152,11 @@ const runDeepAnalysis = (assets: any[], budget: any, simulations: any[]) => {
 export default function AnalysesPage() {
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
+  const [isPro, setIsPro] = useState(false); // ✅ État PRO
   const [data, setData] = useState<any>(null);
   const [scanText, setScanText] = useState("Connexion au Neural Engine...");
   
   // Simulations graphiques
-  const [simData, setSimData] = useState<any[]>([]);
   const [compoundData, setCompoundData] = useState<any[]>([]);
 
   useEffect(() => {
@@ -173,8 +174,10 @@ export default function AnalysesPage() {
 
     const { data: { session } } = await supabase.auth.getSession();
     if (session) {
-        const { data: profile } = await supabase.from('profiles').select('assets_json, budget_json, simulations_json').eq('id', session.user.id).single();
+        const { data: profile } = await supabase.from('profiles').select('is_pro, assets_json, budget_json, simulations_json').eq('id', session.user.id).single();
         if (profile) {
+            setIsPro(profile.is_pro === true); // ✅ Stockage du statut PRO
+            
             const result = runDeepAnalysis(
                 profile.assets_json || [], 
                 profile.budget_json || {}, 
@@ -188,17 +191,6 @@ export default function AnalysesPage() {
   };
 
   const runSimulations = (wealth: number, monthlySavings: number) => {
-      // Simulation Crash
-      const crash = [];
-      let w = wealth;
-      for(let i=0; i<=5; i++) {
-          crash.push({ year: `An ${i}`, value: Math.round(w) });
-          if(i===1) w = w * 0.7; // -30%
-          else w = w * 1.08; // Rebond
-      }
-      setSimData(crash);
-
-      // Simulation Intérêts Composés
       const compound = [];
       let capital = wealth;
       let total = wealth;
@@ -244,141 +236,142 @@ export default function AnalysesPage() {
                   <p className="text-purple-300 font-mono text-sm animate-pulse">{scanText}</p>
               </div>
           ) : data ? (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-8">
-                
-                {/* 1. SECTION SCORE & DIAGNOSTIC */}
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                    {/* SCORE */}
-                    <div className="p-8 rounded-[32px] bg-zinc-900/40 backdrop-blur-xl border border-white/5 relative overflow-hidden flex flex-col items-center justify-center text-center shadow-2xl">
-                        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-red-500 via-yellow-500 to-emerald-500 opacity-50"></div>
-                        <h2 className="text-zinc-500 text-xs font-bold uppercase tracking-[0.3em] mb-6">SCORE SANTÉ</h2>
-                        <div className="relative">
-                            <svg className="w-48 h-48 transform -rotate-90">
-                                <circle cx="96" cy="96" r="88" stroke="#18181b" strokeWidth="12" fill="transparent" />
-                                <motion.circle 
-                                    initial={{ strokeDasharray: 553, strokeDashoffset: 553 }} 
-                                    animate={{ strokeDashoffset: 553 - (553 * data.score) / 100 }} 
-                                    transition={{ duration: 1.5, ease: "circOut" }}
-                                    cx="96" cy="96" r="88" 
-                                    stroke={data.score > 70 ? "#10b981" : data.score > 40 ? "#eab308" : "#ef4444"} 
-                                    strokeWidth="12" fill="transparent" strokeLinecap="round" 
-                                />
-                            </svg>
-                            <div className="absolute inset-0 flex flex-col items-center justify-center">
-                                <span className="text-6xl font-black text-white">{data.score}</span>
-                                <span className="text-xs text-zinc-500 font-bold uppercase">/ 100</span>
+            // ✅ VERROUILLAGE GLOBAL DE TOUT LE RAPPORT
+            <PremiumGuard isPro={isPro} title="Rapport d'Audit Complet" description="Accédez à votre score de santé, vos alertes critiques et nos recommandations stratégiques.">
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-8">
+                    
+                    {/* 1. SCORE & DIAGNOSTIC */}
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                        {/* SCORE */}
+                        <div className="p-8 rounded-[32px] bg-zinc-900/40 backdrop-blur-xl border border-white/5 relative overflow-hidden flex flex-col items-center justify-center text-center shadow-2xl">
+                            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-red-500 via-yellow-500 to-emerald-500 opacity-50"></div>
+                            <h2 className="text-zinc-500 text-xs font-bold uppercase tracking-[0.3em] mb-6">SCORE SANTÉ</h2>
+                            <div className="relative">
+                                <svg className="w-48 h-48 transform -rotate-90">
+                                    <circle cx="96" cy="96" r="88" stroke="#18181b" strokeWidth="12" fill="transparent" />
+                                    <motion.circle 
+                                        initial={{ strokeDasharray: 553, strokeDashoffset: 553 }} 
+                                        animate={{ strokeDashoffset: 553 - (553 * data.score) / 100 }} 
+                                        transition={{ duration: 1.5, ease: "circOut" }}
+                                        cx="96" cy="96" r="88" 
+                                        stroke={data.score > 70 ? "#10b981" : data.score > 40 ? "#eab308" : "#ef4444"} 
+                                        strokeWidth="12" fill="transparent" strokeLinecap="round" 
+                                    />
+                                </svg>
+                                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                                    <span className="text-6xl font-black text-white">{data.score}</span>
+                                    <span className="text-xs text-zinc-500 font-bold uppercase">/ 100</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* DIAGNOSTIC IA */}
+                        <div className="lg:col-span-2 p-8 rounded-[32px] bg-zinc-900/40 backdrop-blur-xl border border-white/5 flex flex-col">
+                            <div className="flex items-center gap-3 mb-6">
+                                <Sparkles className="text-purple-400" size={20}/>
+                                <h3 className="text-lg font-bold text-white uppercase tracking-wide">Diagnostic IA</h3>
+                            </div>
+                            <div className="flex-1 space-y-4 overflow-y-auto pr-2 custom-scrollbar max-h-[300px]">
+                                {data.insights.length > 0 ? data.insights.map((insight: any, idx: number) => (
+                                    <div key={idx} className={`p-5 rounded-2xl border flex gap-4 items-start transition-all ${
+                                        insight.type === 'success' ? 'bg-emerald-950/20 border-emerald-500/20' : 
+                                        insight.type === 'danger' ? 'bg-red-950/20 border-red-500/20' : 
+                                        'bg-yellow-950/20 border-yellow-500/20'
+                                    }`}>
+                                        <div className={`p-2 rounded-lg shrink-0 ${
+                                            insight.type === 'success' ? 'bg-emerald-500/20 text-emerald-400' : 
+                                            insight.type === 'danger' ? 'bg-red-500/20 text-red-400' : 
+                                            'bg-yellow-500/20 text-yellow-400'
+                                        }`}>
+                                            {insight.type === 'success' ? <CheckCircle size={18}/> : <AlertTriangle size={18}/>}
+                                        </div>
+                                        <div>
+                                            <h4 className={`text-sm font-bold uppercase mb-1 ${
+                                                insight.type === 'success' ? 'text-emerald-400' : 
+                                                insight.type === 'danger' ? 'text-red-400' : 
+                                                'text-yellow-400'
+                                            }`}>{insight.title}</h4>
+                                            <p className="text-xs text-zinc-300 leading-relaxed">{insight.text}</p>
+                                        </div>
+                                    </div>
+                                )) : (
+                                    <div className="text-center py-10 text-zinc-500 italic">Aucune alerte majeure détectée. Votre profil est sain.</div>
+                                )}
                             </div>
                         </div>
                     </div>
 
-                    {/* ALERTS & INSIGHTS (DIAGNOSTIC) */}
-                    <div className="lg:col-span-2 p-8 rounded-[32px] bg-zinc-900/40 backdrop-blur-xl border border-white/5 flex flex-col">
-                        <div className="flex items-center gap-3 mb-6">
-                            <Sparkles className="text-purple-400" size={20}/>
-                            <h3 className="text-lg font-bold text-white uppercase tracking-wide">Diagnostic IA</h3>
-                        </div>
-                        <div className="flex-1 space-y-4 overflow-y-auto pr-2 custom-scrollbar max-h-[300px]">
-                            {data.insights.length > 0 ? data.insights.map((insight: any, idx: number) => (
-                                <div key={idx} className={`p-5 rounded-2xl border flex gap-4 items-start transition-all ${
-                                    insight.type === 'success' ? 'bg-emerald-950/20 border-emerald-500/20' : 
-                                    insight.type === 'danger' ? 'bg-red-950/20 border-red-500/20' : 
-                                    'bg-yellow-950/20 border-yellow-500/20'
-                                }`}>
-                                    <div className={`p-2 rounded-lg shrink-0 ${
-                                        insight.type === 'success' ? 'bg-emerald-500/20 text-emerald-400' : 
-                                        insight.type === 'danger' ? 'bg-red-500/20 text-red-400' : 
-                                        'bg-yellow-500/20 text-yellow-400'
-                                    }`}>
-                                        {insight.type === 'success' ? <CheckCircle size={18}/> : <AlertTriangle size={18}/>}
+                    {/* 2. COACH STRATÉGIQUE */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                        <div className="p-8 rounded-[32px] bg-gradient-to-br from-zinc-900/60 to-black border border-white/5 flex flex-col shadow-xl">
+                            <div className="flex items-center gap-3 mb-6">
+                                <Lightbulb className="text-yellow-400" size={24}/>
+                                <h3 className="text-xl font-bold text-white uppercase tracking-wide">Coach Stratégique</h3>
+                            </div>
+                            <div className="space-y-4">
+                                {data.tips.map((tip: any, idx: number) => (
+                                    <div key={idx} className="p-5 rounded-2xl bg-zinc-900 border border-white/5 flex gap-4 transition-all hover:bg-zinc-800/50">
+                                        <div className={`h-10 w-10 rounded-xl flex items-center justify-center shrink-0 ${tip.bg} ${tip.color}`}>
+                                            <tip.icon size={20}/>
+                                        </div>
+                                        <div>
+                                            <h4 className={`text-sm font-bold uppercase mb-1 ${tip.color}`}>{tip.title}</h4>
+                                            <p className="text-xs text-zinc-300 leading-relaxed">{tip.text}</p>
+                                        </div>
                                     </div>
-                                    <div>
-                                        <h4 className={`text-sm font-bold uppercase mb-1 ${
-                                            insight.type === 'success' ? 'text-emerald-400' : 
-                                            insight.type === 'danger' ? 'text-red-400' : 
-                                            'text-yellow-400'
-                                        }`}>{insight.title}</h4>
-                                        <p className="text-xs text-zinc-300 leading-relaxed">{insight.text}</p>
-                                    </div>
-                                </div>
-                            )) : (
-                                <div className="text-center py-10 text-zinc-500 italic">Aucune alerte majeure détectée. Votre profil est sain.</div>
-                            )}
+                                ))}
+                            </div>
                         </div>
-                    </div>
-                </div>
 
-                {/* 2. NOUVELLE SECTION : COACH STRATÉGIQUE & CONSEILS */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                    
-                    {/* CARTE CONSEILS PERSONNALISÉS */}
-                    <div className="p-8 rounded-[32px] bg-gradient-to-br from-zinc-900/60 to-black border border-white/5 flex flex-col shadow-xl">
-                        <div className="flex items-center gap-3 mb-6">
-                            <Lightbulb className="text-yellow-400" size={24}/>
-                            <h3 className="text-xl font-bold text-white uppercase tracking-wide">Coach Stratégique</h3>
-                        </div>
-                        <div className="space-y-4">
-                            {data.tips.map((tip: any, idx: number) => (
-                                <div key={idx} className="p-5 rounded-2xl bg-zinc-900 border border-white/5 flex gap-4 transition-all hover:bg-zinc-800/50">
-                                    <div className={`h-10 w-10 rounded-xl flex items-center justify-center shrink-0 ${tip.bg} ${tip.color}`}>
-                                        <tip.icon size={20}/>
-                                    </div>
-                                    <div>
-                                        <h4 className={`text-sm font-bold uppercase mb-1 ${tip.color}`}>{tip.title}</h4>
-                                        <p className="text-xs text-zinc-300 leading-relaxed">{tip.text}</p>
-                                    </div>
+                        {/* RADAR & KPIS */}
+                        <div className="p-8 rounded-[32px] bg-zinc-900/40 border border-white/5 flex flex-col">
+                            <h4 className="text-xs font-bold text-zinc-500 uppercase tracking-[0.2em] mb-4">MATRICE D'ÉQUILIBRE</h4>
+                            <div className="h-[250px] w-full mb-6">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <RadarChart cx="50%" cy="50%" outerRadius="70%" data={data.radar}>
+                                        <PolarGrid stroke="#27272a" />
+                                        <PolarAngleAxis dataKey="subject" tick={{ fill: '#a1a1aa', fontSize: 10, fontWeight: 'bold' }} />
+                                        <Radar name="Profil" dataKey="A" stroke="#8b5cf6" strokeWidth={3} fill="#8b5cf6" fillOpacity={0.3} />
+                                        <Tooltip contentStyle={{ backgroundColor: '#09090b', borderColor: '#27272a', borderRadius: '12px' }} itemStyle={{ color: '#fff' }}/>
+                                    </RadarChart>
+                                </ResponsiveContainer>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="bg-black/20 p-3 rounded-xl border border-white/5">
+                                    <p className="text-[10px] text-zinc-500 uppercase font-bold">Épargne Mensuelle</p>
+                                    <p className="text-xl font-black text-white">{formatEuro(data.totals.cashFlow)}</p>
                                 </div>
-                            ))}
+                                <div className="bg-black/20 p-3 rounded-xl border border-white/5">
+                                    <p className="text-[10px] text-zinc-500 uppercase font-bold">Runway Cash</p>
+                                    <p className="text-xl font-black text-white">{data.metrics.runwayMonths.toFixed(1)} <span className="text-xs text-zinc-500 font-normal">mois</span></p>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
-                    {/* RADAR & KPIS */}
-                    <div className="p-8 rounded-[32px] bg-zinc-900/40 border border-white/5 flex flex-col">
-                        <h4 className="text-xs font-bold text-zinc-500 uppercase tracking-[0.2em] mb-4">MATRICE D'ÉQUILIBRE</h4>
-                        <div className="h-[250px] w-full mb-6">
+                    {/* 3. PROJECTION */}
+                    <div className="p-8 rounded-[32px] bg-zinc-900/40 border border-white/5">
+                        <div className="flex justify-between items-center mb-8">
+                            <h3 className="text-lg font-bold text-white uppercase flex items-center gap-2"><TrendingUp size={20} className="text-emerald-500"/> Projection Patrimoine (10 ans)</h3>
+                            <div className="text-xs text-zinc-500 font-mono">Hypothèse : 7% / an</div>
+                        </div>
+                        <div className="h-[300px] w-full">
                             <ResponsiveContainer width="100%" height="100%">
-                                <RadarChart cx="50%" cy="50%" outerRadius="70%" data={data.radar}>
-                                    <PolarGrid stroke="#27272a" />
-                                    <PolarAngleAxis dataKey="subject" tick={{ fill: '#a1a1aa', fontSize: 10, fontWeight: 'bold' }} />
-                                    <Radar name="Profil" dataKey="A" stroke="#8b5cf6" strokeWidth={3} fill="#8b5cf6" fillOpacity={0.3} />
-                                    <Tooltip contentStyle={{ backgroundColor: '#09090b', borderColor: '#27272a', borderRadius: '12px' }} itemStyle={{ color: '#fff' }}/>
-                                </RadarChart>
+                                <AreaChart data={compoundData}>
+                                    <defs>
+                                        <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/><stop offset="95%" stopColor="#10b981" stopOpacity={0}/></linearGradient>
+                                    </defs>
+                                    <XAxis dataKey="year" stroke="#52525b" fontSize={10} tickLine={false} axisLine={false} />
+                                    <Tooltip contentStyle={{ backgroundColor: '#09090b', borderColor: '#27272a', borderRadius: '12px' }} formatter={(val: any) => formatEuro(Number(val))}/>
+                                    <Area type="monotone" dataKey="Total" stroke="#10b981" strokeWidth={3} fill="url(#colorTotal)" name="Patrimoine Total" stackId="1"/>
+                                    <Area type="monotone" dataKey="Capital" stroke="#3f3f46" strokeWidth={2} fill="transparent" name="Capital Versé" stackId="2"/>
+                                </AreaChart>
                             </ResponsiveContainer>
                         </div>
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="bg-black/20 p-3 rounded-xl border border-white/5">
-                                <p className="text-[10px] text-zinc-500 uppercase font-bold">Épargne Mensuelle</p>
-                                <p className="text-xl font-black text-white">{formatEuro(data.totals.cashFlow)}</p>
-                            </div>
-                            <div className="bg-black/20 p-3 rounded-xl border border-white/5">
-                                <p className="text-[10px] text-zinc-500 uppercase font-bold">Runway Cash</p>
-                                <p className="text-xl font-black text-white">{data.metrics.runwayMonths.toFixed(1)} <span className="text-xs text-zinc-500 font-normal">mois</span></p>
-                            </div>
-                        </div>
                     </div>
-                </div>
 
-                {/* 3. PROJECTION INTÉRÊTS COMPOSÉS */}
-                <div className="p-8 rounded-[32px] bg-zinc-900/40 border border-white/5">
-                    <div className="flex justify-between items-center mb-8">
-                        <h3 className="text-lg font-bold text-white uppercase flex items-center gap-2"><TrendingUp size={20} className="text-emerald-500"/> Projection Patrimoine (10 ans)</h3>
-                        <div className="text-xs text-zinc-500 font-mono">Hypothèse : 7% / an</div>
-                    </div>
-                    <div className="h-[300px] w-full">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <AreaChart data={compoundData}>
-                                <defs>
-                                    <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/><stop offset="95%" stopColor="#10b981" stopOpacity={0}/></linearGradient>
-                                </defs>
-                                <XAxis dataKey="year" stroke="#52525b" fontSize={10} tickLine={false} axisLine={false} />
-                                <Tooltip contentStyle={{ backgroundColor: '#09090b', borderColor: '#27272a', borderRadius: '12px' }} formatter={(val: any) => formatEuro(Number(val))}/>
-                                <Area type="monotone" dataKey="Total" stroke="#10b981" strokeWidth={3} fill="url(#colorTotal)" name="Patrimoine Total" stackId="1"/>
-                                <Area type="monotone" dataKey="Capital" stroke="#3f3f46" strokeWidth={2} fill="transparent" name="Capital Versé" stackId="2"/>
-                            </AreaChart>
-                        </ResponsiveContainer>
-                    </div>
-                </div>
-
-            </motion.div>
+                </motion.div>
+            </PremiumGuard>
           ) : null}
 
         </motion.div>
