@@ -10,7 +10,11 @@ import Sidebar from "@/components/Sidebar";
 import { NexusLogo } from "@/components/NexusLogo"; 
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/lib/supabaseClient";
-import OnboardingWizard from "@/components/OnboardingWizard"; // Assure-toi que l'import est correct
+import OnboardingWizard from "@/components/OnboardingWizard"; 
+import NexusChat from "@/components/NexusChat"; 
+
+// Helper pour formater les chiffres envoyés à l'IA
+const formatEuro = (val: number) => new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(val);
 
 const getNextMilestone = (current: number) => {
   if (current < 10000) return 10000;
@@ -27,58 +31,80 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [userName, setUserName] = useState("Investisseur");
   
+  // États Financiers
   const [financialWealth, setFinancialWealth] = useState(0);
   const [realEstateWealth, setRealEstateWealth] = useState(0);
   const [totalNetWorth, setTotalNetWorth] = useState(0);
   const [monthlySavings, setMonthlySavings] = useState(0);
   const [savingsRate, setSavingsRate] = useState(0);
   const [milestone, setMilestone] = useState(10000);
+  
+  // États UX / Premium
   const [isNewUser, setIsNewUser] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [isPro, setIsPro] = useState(false); 
+  const [aiContext, setAiContext] = useState<any>(null); 
 
   const fetchData = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) { router.push("/login"); return; }
 
     if (session?.user) {
-      // Nom Utilisateur
       if (session.user.user_metadata?.full_name) {
           setUserName(session.user.user_metadata.full_name.split(' ')[0]);
       }
 
-      // --- LOGIQUE ONBOARDING UNIQUE (FLAG) ---
       const hasCompletedOnboarding = session.user.user_metadata?.onboarding_complete === true;
       setShowOnboarding(!hasCompletedOnboarding);
 
-      // Récupération PATRIMOINE
-      const { data: profile } = await supabase.from('profiles').select('assets_json, budget_json').eq('id', session.user.id).maybeSingle();
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('is_pro, assets_json, budget_json')
+        .eq('id', session.user.id)
+        .maybeSingle();
       
       let hasAssets = false;
+      let total = 0;
+      let savings = 0;
+
+      let currentIncome = 0;
+      let currentExpenses = 0;
+      let hasBudget = false;
+
+      // Variables pour construire le cerveau de l'IA
+      let cash = 0;
+      let crypto = 0;
+      let stock = 0;
+      let financial = 0; 
+      let realEstate = 0;
+
       if (profile) {
-          let financial = 0; let realEstate = 0;
+          setIsPro(profile.is_pro === true);
+
           if (Array.isArray(profile.assets_json) && profile.assets_json.length > 0) {
               hasAssets = true;
               profile.assets_json.forEach((asset: any) => {
                   const val = Number(asset.value) || 0;
-                  if (asset.type === "Immobilier") { realEstate += val; } else { financial += val; }
+                  if (asset.type === "Immobilier") { 
+                      realEstate += val; 
+                  } else { 
+                      financial += val; 
+                      if (asset.type === "Cash") cash += val;
+                      if (asset.type === "Crypto") crypto += val;
+                      if (asset.type === "Bourse") stock += val;
+                  }
               });
           }
-          const total = financial + realEstate;
+          total = financial + realEstate;
           setFinancialWealth(financial); 
           setRealEstateWealth(realEstate); 
           setTotalNetWorth(total); 
           setMilestone(getNextMilestone(total));
       }
 
-      // Récupération FLUX MENSUEL
       const now = new Date();
       const startOfMonth = new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1)).toISOString().split('T')[0];
-
       const { data: currentMonthHistory } = await supabase.from('monthly_history').select('*').eq('user_id', session.user.id).eq('month', startOfMonth).maybeSingle();
-
-      let currentIncome = 0;
-      let currentExpenses = 0;
-      let hasBudget = false;
 
       if (currentMonthHistory) {
           currentIncome = Number(currentMonthHistory.income) || 0;
@@ -95,11 +121,27 @@ export default function Dashboard() {
           if (currentIncome > 0) hasBudget = true;
       }
 
-      const savings = Math.max(0, currentIncome - currentExpenses);
+      savings = Math.max(0, currentIncome - currentExpenses);
       setMonthlySavings(savings);
       setSavingsRate(currentIncome > 0 ? (savings / currentIncome) * 100 : 0);
 
-      // Si l'onboarding est fait mais qu'il n'y a aucune donnée, on montre les cartes d'initialisation
+      // ✅ LA MAGIE EST ICI : On injecte TOUT le détail dans le contexte IA
+      if (profile) {
+          setAiContext({
+            patrimoine: {
+              total: formatEuro(total),
+              repartition: `Immobilier ${total > 0 ? ((realEstate/total)*100).toFixed(0) : 0}%, Bourse ${total > 0 ? ((stock/total)*100).toFixed(0) : 0}%, Crypto ${total > 0 ? ((crypto/total)*100).toFixed(0) : 0}%, Cash ${total > 0 ? ((cash/total)*100).toFixed(0) : 0}%`,
+              liste_des_actifs: profile.assets_json || [] // L'IA voit chaque compte et sa valeur
+            },
+            budget_mensuel: {
+              revenus_totaux: formatEuro(currentIncome),
+              depenses_totales: formatEuro(currentExpenses),
+              cashflow_epargne: formatEuro(savings),
+              details_des_depenses: (profile.budget_json as any)?.details || [] // L'IA voit maintenant tes "courses", "loyers", etc.
+            }
+          });
+      }
+
       if (hasCompletedOnboarding && !hasAssets && !hasBudget) {
           setIsNewUser(true);
       } else {
@@ -116,10 +158,9 @@ export default function Dashboard() {
   if (loading) return <div className="min-h-screen bg-[#050505]" />;
 
   return (
-    <div className="min-h-screen bg-[#050505] text-zinc-100 font-sans selection:bg-emerald-500/30 selection:text-emerald-200">
+    <div className="min-h-screen bg-[#050505] text-zinc-100 font-sans selection:bg-emerald-500/30 selection:text-emerald-200 relative">
       <Sidebar />
 
-      {/* Lancement de l'Onboarding */}
       {showOnboarding && <OnboardingWizard onFinish={() => { setShowOnboarding(false); fetchData(); }} />}
 
       <main className="md:ml-64 flex-1 w-auto max-w-full p-4 pt-6 pb-24 md:p-8 relative overflow-hidden">
@@ -246,14 +287,21 @@ export default function Dashboard() {
                             <div><p className="font-bold text-white text-base tracking-wide">{item.label}</p><p className="text-xs text-zinc-500">{item.sub}</p></div>
                         </Link>
                     ))}
-                    <div className="relative p-6 rounded-[24px] bg-black/40 border border-white/5 opacity-60 cursor-not-allowed flex items-center gap-5 overflow-hidden grayscale transition-all">
-                        <div className="h-14 w-14 rounded-2xl bg-zinc-800 text-zinc-500 flex items-center justify-center shadow-inner"><Lock size={24}/></div>
-                        <div><p className="font-bold text-zinc-300 text-base">Analyse IA 2.0</p><p className="text-xs text-zinc-600">Bientôt (Pro)</p></div>
+                    
+                    <div onClick={() => {}} className="relative p-6 rounded-[24px] bg-indigo-900/20 border border-indigo-500/30 hover:bg-indigo-900/40 transition-all cursor-pointer flex items-center gap-5 overflow-hidden group">
+                        <div className="h-14 w-14 rounded-2xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center shadow-inner group-hover:scale-110 transition-transform"><Activity size={24}/></div>
+                        <div><p className="font-bold text-white text-base">CFO Assistant</p><p className="text-xs text-indigo-300">Chat avec l'IA</p></div>
                     </div>
                 </div>
               </div>
             </>
           )}
+
+          {/* ✅ LE CHATBOT REÇOIT MAINTENANT L'INTÉGRALITÉ DES DONNÉES */}
+          {!isNewUser && aiContext && (
+             <NexusChat isPro={isPro} financialData={aiContext} />
+          )}
+
         </motion.div>
       </main>
     </div>
