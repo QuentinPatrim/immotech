@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { X, Send, Sparkles, Lock, User, Bot, Lightbulb } from "lucide-react";
+import { X, Send, Sparkles, Lock, Bot, Lightbulb } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +9,7 @@ import Link from "next/link";
 
 interface NexusChatProps {
   isPro: boolean;
-  financialData: any; // C'est ici que la page parente injecte les chiffres
+  financialData: any; 
 }
 
 export default function NexusChat({ isPro, financialData }: NexusChatProps) {
@@ -26,12 +26,10 @@ export default function NexusChat({ isPro, financialData }: NexusChatProps) {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages, isOpen, loading]);
 
-  // CHANGEMENT ICI : La fonction accepte maintenant un texte optionnel (pour les boutons)
   const sendMessage = async (textToSend?: string) => {
     const userMsg = textToSend || input;
     if (!userMsg.trim() || loading) return;
     
-    // On vide l'input seulement si on a tapé manuellement
     if (!textToSend) setInput(""); 
     
     setMessages(prev => [...prev, { role: 'user', text: userMsg }]);
@@ -56,7 +54,6 @@ export default function NexusChat({ isPro, financialData }: NexusChatProps) {
     }
   };
 
-  // LES QUICK ACTIONS (Suggestions)
   const quickActions = [
     "🔥 Analyse mes dépenses et trouve des économies",
     "💼 Où investir mon cashflow ce mois-ci ?",
@@ -65,22 +62,24 @@ export default function NexusChat({ isPro, financialData }: NexusChatProps) {
 
   return (
     <>
+      {/* BOUTON FLOTTANT RESPONSIVE */}
       <motion.button
         whileHover={{ scale: 1.05 }}
         whileTap={{ scale: 0.95 }}
         onClick={() => setIsOpen(!isOpen)}
-        className="fixed bottom-6 right-6 h-14 w-14 rounded-full bg-gradient-to-r from-indigo-600 to-purple-600 flex items-center justify-center shadow-2xl z-50 border border-white/10"
+        className="fixed bottom-24 md:bottom-6 right-4 md:right-6 h-14 w-14 rounded-full bg-gradient-to-r from-indigo-600 to-purple-600 flex items-center justify-center shadow-2xl z-50 border border-white/10"
       >
         {isOpen ? <X className="text-white" /> : <Sparkles className="text-white" />}
       </motion.button>
 
+      {/* FENÊTRE DE CHAT RESPONSIVE */}
       <AnimatePresence>
         {isOpen && (
           <motion.div
             initial={{ opacity: 0, y: 20, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 20, scale: 0.95 }}
-            className="fixed bottom-24 right-6 w-[90vw] md:w-[400px] h-[550px] bg-[#09090b] border border-white/10 rounded-3xl shadow-2xl z-50 flex flex-col overflow-hidden"
+            className="fixed bottom-[120px] md:bottom-24 right-4 md:right-6 w-[calc(100vw-32px)] md:w-[400px] h-[550px] max-h-[60vh] md:max-h-[550px] bg-[#09090b] border border-white/10 rounded-3xl shadow-2xl z-50 flex flex-col overflow-hidden"
           >
             {/* Header */}
             <div className="p-4 border-b border-white/5 bg-zinc-900/50 flex justify-between items-center shrink-0">
@@ -124,7 +123,6 @@ export default function NexusChat({ isPro, financialData }: NexusChatProps) {
             <div className="p-4 border-t border-white/5 bg-zinc-900/30 shrink-0">
                 {isPro ? (
                     <div className="flex flex-col gap-3">
-                        {/* Barre des Quick Actions (Scrollable horizontalement) */}
                         <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide" style={{ scrollbarWidth: 'none' }}>
                             {quickActions.map((action, i) => (
                                 <button
