@@ -206,7 +206,7 @@ export default function PatrimoinePage() {
             <div className="relative overflow-hidden rounded-[24px] md:rounded-[32px] border border-pink-500/20 bg-gradient-to-b from-black to-zinc-950 backdrop-blur-2xl p-6 md:p-10 flex flex-col justify-center shadow-[0_0_40px_-10px_rgba(236,72,153,0.1)] hover:border-pink-500/40 transition-all duration-500 w-full min-w-0 group">
                 <div className="absolute top-0 right-0 w-full h-full bg-gradient-to-br from-pink-500/5 to-transparent pointer-events-none group-hover:from-pink-500/10 transition-colors duration-500"></div>
                 <div className="inline-flex items-center gap-2 md:gap-3 mb-4 md:mb-6 text-pink-400 font-bold uppercase text-[10px] md:text-xs tracking-widest truncate relative z-10">
-                    <ShieldCheck size={18} className="md:w-5 md:h-5 shrink-0"/> Matela de sécurité
+                    <ShieldCheck size={18} className="md:w-5 md:h-5 shrink-0"/> Matelas de sécurité
                 </div>
                 <div className="text-3xl sm:text-4xl md:text-5xl font-black text-white mb-2 truncate max-w-full relative z-10">
                     <AnimatedNumber value={liquidCash} />
