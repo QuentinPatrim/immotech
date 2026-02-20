@@ -16,6 +16,13 @@ const formatMonth = (date: Date) => {
     return new Intl.DateTimeFormat('fr-FR', { month: 'long', year: 'numeric' }).format(date);
 };
 
+const formatEuro = (val: number) => {
+    return new Intl.NumberFormat("fr-FR", {
+        style: "currency",
+        currency: "EUR",
+        maximumFractionDigits: 0,
+    }).format(val);
+};
 export default function BudgetPage() {
     const [selectedDate, setSelectedDate] = useState(new Date()); 
     const [isExistingMonth, setIsExistingMonth] = useState(false); 
@@ -148,7 +155,6 @@ export default function BudgetPage() {
             const startOfCurrentMonth = new Date(now.getFullYear(), now.getMonth(), 1);
             
             if (selectedDate >= startOfCurrentMonth) {
-                 
                  // FILTRE MAGIQUE : On ne garde que les BESOINS pour le futur
                  const recurringExpenses = expenses.filter(e => e.category === 'BESOIN');
                  const recurringTotal = recurringExpenses.reduce((acc, item) => acc + item.amount, 0);
@@ -168,10 +174,9 @@ export default function BudgetPage() {
     };
 
     // --- GESTION DES INPUTS SANS BUG NaN ---
-    // Cette fonction permet de vider l'input ("") tout en mettant 0 dans le state
     const handleAmountChange = (val: string, setter: (v: any) => void) => {
         if (val === "") {
-            setter(""); // Visuellement vide
+            setter(""); 
             return;
         }
         const num = parseFloat(val);
@@ -180,11 +185,10 @@ export default function BudgetPage() {
         }
     };
 
-    // Pour l'income principal
     const handleIncomeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const val = e.target.value;
         if (val === "") {
-            setIncome(0); // 0 pour les calculs
+            setIncome(0);
         } else {
             const num = parseFloat(val);
             if (!isNaN(num)) setIncome(num);
@@ -208,7 +212,6 @@ export default function BudgetPage() {
     };
 
     const updateAmount = (id: string, newAmount: string) => {
-        // On accepte la string vide pour l'UX, mais on stocke 0 si vide
         const val = newAmount === "" ? 0 : parseFloat(newAmount);
         const safeVal = isNaN(val) ? 0 : val;
         setExpenses(expenses.map(e => e.id === id ? { ...e, amount: safeVal } : e));
@@ -219,138 +222,147 @@ export default function BudgetPage() {
     const needsList = expenses.filter(e => e.category === 'BESOIN');
     const wantsList = expenses.filter(e => e.category !== 'BESOIN');
 
-    if (loading && expenses.length === 0) return <div className="min-h-screen bg-[#050505] flex items-center justify-center"><Loader2 className="animate-spin text-emerald-500"/></div>;
+    if (loading && expenses.length === 0) return <div className="min-h-screen bg-[#050505] flex items-center justify-center w-full max-w-[100vw] overflow-x-hidden"><Loader2 className="animate-spin text-emerald-500"/></div>;
 
     return (
-        <div className="min-h-screen bg-[#050505] text-zinc-100 font-sans pb-24 md:pb-8 selection:bg-emerald-500/30 selection:text-emerald-200">
+        // AJOUT OVERFLOW ET MAX-W
+        <div className="min-h-screen bg-[#050505] text-zinc-100 font-sans pb-24 md:pb-8 selection:bg-emerald-500/30 selection:text-emerald-200 overflow-x-hidden w-full max-w-[100vw]">
             <Sidebar />
-            <main className="md:ml-64 flex-1 w-auto max-w-full p-4 md:p-8 relative overflow-hidden">
+            <main className="md:ml-64 flex-1 w-full max-w-[100vw] md:max-w-none p-4 md:p-8 relative overflow-x-hidden">
                 
                 {/* AMBIENT GLOWS */}
-                <div className="fixed top-0 left-64 w-[600px] h-[600px] bg-emerald-900/5 rounded-full blur-[120px] pointer-events-none"></div>
-                <div className="fixed bottom-0 right-0 w-[500px] h-[500px] bg-yellow-900/5 rounded-full blur-[120px] pointer-events-none"></div>
+                <div className="fixed top-0 left-64 w-[600px] h-[600px] bg-emerald-900/5 rounded-full blur-[120px] pointer-events-none -z-10"></div>
+                <div className="fixed bottom-0 right-0 w-[500px] h-[500px] bg-yellow-900/5 rounded-full blur-[120px] pointer-events-none -z-10"></div>
 
-                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="max-w-[1800px] mx-auto space-y-10 relative z-10">
+                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="max-w-[1800px] w-full mx-auto space-y-6 md:space-y-10 relative z-10">
                     
-                    <header className="flex flex-col gap-2 border-l-4 border-yellow-500 pl-6 py-2">
-                        <h1 className="text-4xl md:text-5xl font-black text-white tracking-tight uppercase">
+                    <header className="flex flex-col gap-1 md:gap-2 border-l-4 border-yellow-500 pl-4 md:pl-6 py-2 max-w-full">
+                        <h1 className="text-3xl md:text-5xl font-black text-white tracking-tight uppercase truncate">
                             Mon <span className="text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-orange-500">Budget</span>
                         </h1>
-                        <p className="text-zinc-400 text-lg font-light tracking-wide">Gestion des flux mensuels & Épargne.</p>
+                        <p className="text-zinc-400 text-[10px] md:text-lg font-light tracking-wide truncate">Gestion des flux mensuels & Épargne.</p>
                     </header>
 
                     {/* MOIS & REVENUS (NAVBAR) */}
-                    <div className="flex flex-col md:flex-row justify-between items-center gap-6 bg-zinc-900/40 backdrop-blur-xl p-6 rounded-[30px] border border-white/5 shadow-2xl">
-                        <div className="flex items-center gap-6">
-                            <Button variant="outline" size="icon" onClick={() => changeMonth(-1)} className="rounded-full border-white/10 hover:bg-white/10 text-white w-12 h-12"><ChevronLeft size={24}/></Button>
-                            <div className="text-center min-w-[200px]">
-                                <h2 className="text-3xl font-black text-white capitalize tracking-wide">{formatMonth(selectedDate)}</h2>
-                                <p className="text-xs text-zinc-500 font-bold uppercase tracking-widest mt-1">{isExistingMonth ? "Données enregistrées" : "Mode Édition"}</p>
+                    <div className="flex flex-col xl:flex-row justify-between items-center gap-4 md:gap-6 bg-zinc-900/40 backdrop-blur-xl p-4 md:p-6 rounded-[24px] md:rounded-[30px] border border-white/5 shadow-2xl w-full min-w-0">
+                        <div className="flex items-center justify-between w-full xl:w-auto gap-2 md:gap-6">
+                            <Button variant="outline" size="icon" onClick={() => changeMonth(-1)} className="rounded-full border-white/10 hover:bg-white/10 text-white w-10 h-10 md:w-12 md:h-12 shrink-0"><ChevronLeft size={20}/></Button>
+                            <div className="text-center min-w-[140px] md:min-w-[200px]">
+                                <h2 className="text-xl md:text-3xl font-black text-white capitalize tracking-wide truncate">{formatMonth(selectedDate)}</h2>
+                                <p className="text-[9px] md:text-xs text-zinc-500 font-bold uppercase tracking-widest mt-1 truncate">{isExistingMonth ? "Données enregistrées" : "Mode Édition"}</p>
                             </div>
-                            <Button variant="outline" size="icon" onClick={() => changeMonth(1)} className="rounded-full border-white/10 hover:bg-white/10 text-white w-12 h-12"><ChevronRight size={24}/></Button>
+                            <Button variant="outline" size="icon" onClick={() => changeMonth(1)} className="rounded-full border-white/10 hover:bg-white/10 text-white w-10 h-10 md:w-12 md:h-12 shrink-0"><ChevronRight size={20}/></Button>
                         </div>
-                        <div className="flex items-center gap-6 w-full md:w-auto justify-end">
-                            <div className="flex flex-col items-end">
-                                <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest mb-1">Revenus du mois</span>
-                                <div className="flex items-center gap-2 bg-black/50 px-4 py-2 rounded-xl border border-white/10 relative">
-                                    {/* FIX INPUT REVENU : Utilisation de income directement ou "" si 0 pour UX */}
+                        <div className="flex flex-col sm:flex-row items-center gap-4 md:gap-6 w-full xl:w-auto justify-end mt-2 xl:mt-0">
+                            <div className="flex flex-row sm:flex-col items-center sm:items-end justify-between w-full sm:w-auto bg-black/30 sm:bg-transparent p-3 sm:p-0 rounded-xl sm:rounded-none">
+                                <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest sm:mb-1">Revenus du mois</span>
+                                <div className="flex items-center gap-2 bg-black/50 px-3 md:px-4 py-1.5 md:py-2 rounded-lg md:rounded-xl border border-white/10 relative shrink-0">
                                     <Input 
                                         type="number" 
                                         value={income === 0 ? "" : income} 
                                         onChange={handleIncomeChange} 
-                                        className="h-10 w-32 bg-transparent border-none text-right text-2xl font-black text-white p-0 pr-6 focus-visible:ring-0" 
+                                        className="h-8 md:h-10 w-24 md:w-32 bg-transparent border-none text-right text-xl md:text-2xl font-black text-white p-0 pr-5 md:pr-6 focus-visible:ring-0" 
                                     />
-                                    <span className="text-zinc-500 absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-lg">€</span>
+                                    <span className="text-zinc-500 absolute right-2 md:right-4 top-1/2 -translate-y-1/2 pointer-events-none text-sm md:text-lg">€</span>
                                 </div>
                             </div>
-                            <Button onClick={saveCurrentMonth} className="h-14 px-8 bg-emerald-500 hover:bg-emerald-400 text-black font-bold rounded-2xl shadow-lg shadow-emerald-500/20 text-lg"><Save size={20} className="mr-2"/> Sauvegarder</Button>
+                            <Button onClick={saveCurrentMonth} className="w-full sm:w-auto h-12 md:h-14 px-6 md:px-8 bg-emerald-500 hover:bg-emerald-400 text-black font-bold rounded-xl md:rounded-2xl shadow-lg shadow-emerald-500/20 text-sm md:text-lg shrink-0"><Save size={18} className="mr-2"/> Sauvegarder</Button>
                         </div>
                     </div>
 
                     {/* KPI INVESTISSEMENT DYNAMIQUE */}
-                    <div className="relative p-10 rounded-[40px] bg-gradient-to-br from-emerald-950 to-black border border-emerald-500/20 overflow-hidden text-center md:text-left shadow-2xl group">
-                        <div className="absolute top-0 right-0 p-64 bg-emerald-500/10 blur-[120px] rounded-full group-hover:bg-emerald-500/15 transition-all"></div>
-                        <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-10">
-                            <div className="flex-1">
-                                <p className="text-emerald-500 font-bold text-xs uppercase tracking-[0.2em] flex items-center justify-center md:justify-start gap-2 mb-4"><Target size={16}/> Capacité d'Investissement Nette</p>
-                                <div className="text-7xl md:text-9xl font-black text-white tracking-tighter drop-shadow-2xl">
-                                    {/* Protection contre NaN dans l'affichage */}
+                    <div className="relative p-6 md:p-10 rounded-[24px] md:rounded-[40px] bg-gradient-to-br from-emerald-950 to-black border border-emerald-500/20 overflow-hidden text-center lg:text-left shadow-2xl group w-full min-w-0">
+                        <div className="absolute top-0 right-0 p-32 md:p-64 bg-emerald-500/10 blur-[80px] md:blur-[120px] rounded-full group-hover:bg-emerald-500/15 transition-all"></div>
+                        <div className="relative z-10 flex flex-col lg:flex-row justify-between items-center gap-6 md:gap-10 w-full min-w-0">
+                            <div className="flex-1 min-w-0 w-full">
+                                <p className="text-emerald-500 font-bold text-[10px] md:text-xs uppercase tracking-[0.2em] flex items-center justify-center lg:justify-start gap-2 mb-2 md:mb-4 truncate"><Target size={16}/> Capacité d'Investissement</p>
+                                {/* TAILLE DU TEXTE REDUITE SUR MOBILE */}
+                                <div className="text-5xl sm:text-7xl lg:text-9xl font-black text-white tracking-tighter drop-shadow-2xl truncate max-w-full">
                                     <AnimatedNumber value={isNaN(flowToInvest) ? 0 : flowToInvest} />
                                 </div>
-                                <p className="text-zinc-400 text-sm mt-4 mb-8 font-light">
-                                    Disponible pour l'investissement (après <span className="text-orange-400 font-bold">{Math.round(isNaN(flowToSafety) ? 0 : flowToSafety)}€</span> d'épargne de précaution).
+                                <p className="text-zinc-400 text-xs md:text-sm mt-3 md:mt-4 mb-6 md:mb-8 font-light">
+                                    Disponible (après <span className="text-orange-400 font-bold">{Math.round(isNaN(flowToSafety) ? 0 : flowToSafety)}€</span> d'épargne sécu).
                                 </p>
-                                <Link href="/projection">
-                                    <Button className="bg-white text-black hover:bg-zinc-200 font-bold rounded-full px-8 h-12 shadow-lg hover:scale-105 transition-transform">
-                                        Projeter cette richesse <ArrowRight size={18} className="ml-2"/>
+                                <Link href="/projection" className="w-full lg:w-auto inline-block">
+                                    <Button className="w-full lg:w-auto bg-white text-black hover:bg-zinc-200 font-bold rounded-xl md:rounded-full px-6 md:px-8 h-12 shadow-lg hover:scale-105 transition-transform text-xs md:text-sm">
+                                        Projeter cette richesse <ArrowRight size={16} className="ml-2"/>
                                     </Button>
                                 </Link>
                             </div>
                             
-                            <div className="h-48 w-48 rounded-full border-8 border-zinc-900 bg-zinc-950 flex items-center justify-center relative shrink-0 shadow-2xl">
-                                <div className="absolute inset-0 rounded-full border-8 border-emerald-500" style={{ clipPath: `inset(0 ${100 - (safeIncome > 0 ? (totalSurplus/safeIncome)*100 : 0)}% 0 0)` }}></div>
-                                <div className="flex flex-col items-center">
-                                    <span className="text-4xl font-black text-white">{safeIncome > 0 ? ((totalSurplus/safeIncome)*100).toFixed(0) : 0}%</span>
-                                    <span className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold mt-1">Taux d'Épargne</span>
+                            {/* CHART CERCLE PLUS PETIT SUR MOBILE */}
+                            <div className="h-32 w-32 md:h-48 md:w-48 rounded-full border-4 md:border-8 border-zinc-900 bg-zinc-950 flex items-center justify-center relative shrink-0 shadow-2xl">
+                                <div className="absolute inset-0 rounded-full border-4 md:border-8 border-emerald-500" style={{ clipPath: `inset(0 ${100 - (safeIncome > 0 ? (totalSurplus/safeIncome)*100 : 0)}% 0 0)` }}></div>
+                                <div className="flex flex-col items-center mt-1">
+                                    <span className="text-2xl md:text-4xl font-black text-white leading-none">{safeIncome > 0 ? ((totalSurplus/safeIncome)*100).toFixed(0) : 0}%</span>
+                                    <span className="text-[8px] md:text-[10px] text-zinc-500 uppercase tracking-widest font-bold mt-1">Épargne</span>
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-8 w-full min-w-0">
                         
-                        <div className="space-y-8">
+                        <div className="space-y-4 md:space-y-8 w-full min-w-0">
                             
-                            {/* BESOINS (Card Glass Blue) */}
-                            <div className="p-8 rounded-[32px] bg-zinc-900/30 border border-blue-500/10 backdrop-blur-md">
-                                <h3 className="font-black text-blue-400 uppercase tracking-widest flex items-center gap-3 mb-6"><Home size={20}/> Charges Fixes & Besoins</h3>
-                                <div className="flex gap-3 mb-4 p-2 bg-blue-500/5 rounded-2xl border border-blue-500/10">
-                                    <Input placeholder="Loyer, Crédit..." value={newNeedName} onChange={(e) => setNewNeedName(e.target.value)} className="bg-transparent border-none text-white h-12 placeholder:text-zinc-600 focus-visible:ring-0 text-lg" />
-                                    <div className="w-32 bg-black/40 rounded-xl flex items-center px-3 border border-white/5 relative">
-                                        <Input type="number" placeholder="0" value={newNeedAmount} onChange={(e) => setNewNeedAmount(e.target.value)} className="bg-transparent border-none text-white text-right h-12 font-bold p-0 pr-6 focus-visible:ring-0 text-lg" />
-                                        <span className="text-zinc-500 text-sm absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">€</span>
+                            {/* BESOINS */}
+                            <div className="p-4 md:p-8 rounded-[24px] md:rounded-[32px] bg-zinc-900/30 border border-blue-500/10 backdrop-blur-md w-full min-w-0">
+                                <h3 className="font-black text-blue-400 uppercase tracking-widest flex items-center gap-2 md:gap-3 mb-4 md:mb-6 text-xs md:text-base"><Home size={18} className="md:w-5 md:h-5"/> Charges Fixes & Besoins</h3>
+                                
+                                {/* FORMULAIRE AJOUT ADAPTATIF */}
+                                <div className="flex flex-col sm:flex-row gap-2 md:gap-3 mb-4 p-2 bg-blue-500/5 rounded-xl md:rounded-2xl border border-blue-500/10 w-full min-w-0">
+                                    <Input placeholder="Loyer, Crédit..." value={newNeedName} onChange={(e) => setNewNeedName(e.target.value)} className="bg-black/20 sm:bg-transparent border-white/5 sm:border-none text-white h-10 md:h-12 placeholder:text-zinc-600 focus-visible:ring-0 text-sm md:text-lg flex-1 min-w-0" />
+                                    <div className="flex gap-2 w-full sm:w-auto">
+                                        <div className="flex-1 sm:w-28 md:w-32 bg-black/40 rounded-lg md:rounded-xl flex items-center px-2 md:px-3 border border-white/5 relative shrink-0">
+                                            <Input type="number" placeholder="0" value={newNeedAmount} onChange={(e) => setNewNeedAmount(e.target.value)} className="bg-transparent border-none text-white text-right h-10 md:h-12 font-bold p-0 pr-5 md:pr-6 focus-visible:ring-0 text-sm md:text-lg w-full" />
+                                            <span className="text-zinc-500 text-xs md:text-sm absolute right-2 md:right-3 top-1/2 -translate-y-1/2 pointer-events-none">€</span>
+                                        </div>
+                                        <Button onClick={addNeed} className="bg-blue-600 hover:bg-blue-500 text-white h-10 w-10 md:h-12 md:w-12 p-0 rounded-lg md:rounded-xl shrink-0"><Plus size={20} className="md:w-6 md:h-6" /></Button>
                                     </div>
-                                    <Button onClick={addNeed} className="bg-blue-600 hover:bg-blue-500 text-white h-12 w-12 p-0 rounded-xl"><Plus size={24} /></Button>
                                 </div>
-                                <div className="space-y-3">
+                                
+                                <div className="space-y-2 md:space-y-3 w-full min-w-0">
                                     {needsList.map((item) => (
-                                        <div key={item.id} className="flex justify-between items-center p-3 bg-black/30 rounded-2xl border border-white/5 hover:border-blue-500/30 transition-colors">
-                                            <div className="pl-3"><p className="text-zinc-200 font-bold">{item.name}</p></div>
-                                            <div className="flex items-center gap-2">
-                                                <div className="w-28 relative">
-                                                    {/* FIX INPUT : on autorise le vide */}
-                                                    <Input type="number" value={item.amount === 0 ? "" : item.amount} onChange={(e) => updateAmount(item.id, e.target.value)} className="bg-transparent border-none text-right text-white font-bold h-10 p-0 pr-6 focus-visible:ring-0" />
-                                                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 text-xs pointer-events-none pr-1">€</span>
+                                        <div key={item.id} className="flex justify-between items-center p-2 md:p-3 bg-black/30 rounded-xl md:rounded-2xl border border-white/5 hover:border-blue-500/30 transition-colors w-full min-w-0 gap-2">
+                                            <div className="pl-2 md:pl-3 min-w-0 flex-1"><p className="text-zinc-200 font-bold truncate text-xs md:text-base">{item.name}</p></div>
+                                            <div className="flex items-center gap-1 md:gap-2 shrink-0">
+                                                <div className="w-20 sm:w-24 md:w-28 relative">
+                                                    <Input type="number" value={item.amount === 0 ? "" : item.amount} onChange={(e) => updateAmount(item.id, e.target.value)} className="bg-zinc-900/50 sm:bg-transparent border-white/5 sm:border-none text-right text-white font-bold h-8 md:h-10 p-0 pr-5 md:pr-6 focus-visible:ring-0 text-xs md:text-base rounded-lg" />
+                                                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 text-[10px] md:text-xs pointer-events-none pr-1">€</span>
                                                 </div>
-                                                <button onClick={() => removeExpense(item.id)} className="text-zinc-600 hover:text-red-500 p-2"><Trash2 size={16}/></button>
+                                                <button onClick={() => removeExpense(item.id)} className="text-zinc-600 hover:text-red-500 p-1.5 md:p-2"><Trash2 size={14} className="md:w-4 md:h-4"/></button>
                                             </div>
                                         </div>
                                     ))}
                                 </div>
                             </div>
 
-                            {/* LOISIRS (Card Glass Yellow) */}
-                            <div className="p-8 rounded-[32px] bg-zinc-900/30 border border-yellow-500/10 backdrop-blur-md">
-                                <h3 className="font-black text-yellow-400 uppercase tracking-widest flex items-center gap-3 mb-6"><Coffee size={20}/> Loisirs & Plaisirs</h3>
-                                <div className="flex gap-3 mb-4 p-2 bg-yellow-500/5 rounded-2xl border border-yellow-500/10">
-                                    <Input placeholder="Resto, Vacances..." value={newWantName} onChange={(e) => setNewWantName(e.target.value)} className="bg-transparent border-none text-white h-12 placeholder:text-zinc-600 focus-visible:ring-0 text-lg" />
-                                    <div className="w-32 bg-black/40 rounded-xl flex items-center px-3 border border-white/5 relative">
-                                        <Input type="number" placeholder="0" value={newWantAmount} onChange={(e) => setNewWantAmount(e.target.value)} className="bg-transparent border-none text-white text-right h-12 font-bold p-0 pr-6 focus-visible:ring-0 text-lg" />
-                                        <span className="text-zinc-500 text-sm absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">€</span>
+                            {/* LOISIRS */}
+                            <div className="p-4 md:p-8 rounded-[24px] md:rounded-[32px] bg-zinc-900/30 border border-yellow-500/10 backdrop-blur-md w-full min-w-0">
+                                <h3 className="font-black text-yellow-400 uppercase tracking-widest flex items-center gap-2 md:gap-3 mb-4 md:mb-6 text-xs md:text-base"><Coffee size={18} className="md:w-5 md:h-5"/> Loisirs & Plaisirs</h3>
+                                
+                                {/* FORMULAIRE AJOUT ADAPTATIF */}
+                                <div className="flex flex-col sm:flex-row gap-2 md:gap-3 mb-4 p-2 bg-yellow-500/5 rounded-xl md:rounded-2xl border border-yellow-500/10 w-full min-w-0">
+                                    <Input placeholder="Resto, Vacances..." value={newWantName} onChange={(e) => setNewWantName(e.target.value)} className="bg-black/20 sm:bg-transparent border-white/5 sm:border-none text-white h-10 md:h-12 placeholder:text-zinc-600 focus-visible:ring-0 text-sm md:text-lg flex-1 min-w-0" />
+                                    <div className="flex gap-2 w-full sm:w-auto">
+                                        <div className="flex-1 sm:w-28 md:w-32 bg-black/40 rounded-lg md:rounded-xl flex items-center px-2 md:px-3 border border-white/5 relative shrink-0">
+                                            <Input type="number" placeholder="0" value={newWantAmount} onChange={(e) => setNewWantAmount(e.target.value)} className="bg-transparent border-none text-white text-right h-10 md:h-12 font-bold p-0 pr-5 md:pr-6 focus-visible:ring-0 text-sm md:text-lg w-full" />
+                                            <span className="text-zinc-500 text-xs md:text-sm absolute right-2 md:right-3 top-1/2 -translate-y-1/2 pointer-events-none">€</span>
+                                        </div>
+                                        <Button onClick={addWant} className="bg-yellow-600 hover:bg-yellow-500 text-white h-10 w-10 md:h-12 md:w-12 p-0 rounded-lg md:rounded-xl shrink-0"><Plus size={20} className="md:w-6 md:h-6" /></Button>
                                     </div>
-                                    <Button onClick={addWant} className="bg-yellow-600 hover:bg-yellow-500 text-white h-12 w-12 p-0 rounded-xl"><Plus size={24} /></Button>
                                 </div>
-                                <div className="space-y-3">
+
+                                <div className="space-y-2 md:space-y-3 w-full min-w-0">
                                     {wantsList.map((item) => (
-                                        <div key={item.id} className="flex justify-between items-center p-3 bg-black/30 rounded-2xl border border-white/5 hover:border-yellow-500/30 transition-colors">
-                                            <div className="pl-3"><p className="text-zinc-200 font-bold">{item.name}</p></div>
-                                            <div className="flex items-center gap-2">
-                                                <div className="w-28 relative">
-                                                    {/* FIX INPUT : on autorise le vide */}
-                                                    <Input type="number" value={item.amount === 0 ? "" : item.amount} onChange={(e) => updateAmount(item.id, e.target.value)} className="bg-transparent border-none text-right text-white font-bold h-10 p-0 pr-6 focus-visible:ring-0" />
-                                                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 text-xs pointer-events-none pr-1">€</span>
+                                        <div key={item.id} className="flex justify-between items-center p-2 md:p-3 bg-black/30 rounded-xl md:rounded-2xl border border-white/5 hover:border-yellow-500/30 transition-colors w-full min-w-0 gap-2">
+                                            <div className="pl-2 md:pl-3 min-w-0 flex-1"><p className="text-zinc-200 font-bold truncate text-xs md:text-base">{item.name}</p></div>
+                                            <div className="flex items-center gap-1 md:gap-2 shrink-0">
+                                                <div className="w-20 sm:w-24 md:w-28 relative">
+                                                    <Input type="number" value={item.amount === 0 ? "" : item.amount} onChange={(e) => updateAmount(item.id, e.target.value)} className="bg-zinc-900/50 sm:bg-transparent border-white/5 sm:border-none text-right text-white font-bold h-8 md:h-10 p-0 pr-5 md:pr-6 focus-visible:ring-0 text-xs md:text-base rounded-lg" />
+                                                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 text-[10px] md:text-xs pointer-events-none pr-1">€</span>
                                                 </div>
-                                                <button onClick={() => removeExpense(item.id)} className="text-zinc-600 hover:text-red-500 p-2"><Trash2 size={16}/></button>
+                                                <button onClick={() => removeExpense(item.id)} className="text-zinc-600 hover:text-red-500 p-1.5 md:p-2"><Trash2 size={14} className="md:w-4 md:h-4"/></button>
                                             </div>
                                         </div>
                                     ))}
@@ -359,44 +371,44 @@ export default function BudgetPage() {
                         </div>
 
                         {/* STRATEGIE */}
-                        <div className="space-y-8">
-                            <div className={`p-8 rounded-[32px] border flex flex-col justify-center min-h-[200px] ${isSafe ? 'bg-emerald-950/20 border-emerald-500/20' : 'bg-orange-950/20 border-orange-500/20'}`}>
-                                <div className="flex justify-between mb-4">
-                                    <div className="flex items-center gap-3 font-bold text-sm text-white uppercase tracking-widest"><ShieldCheck size={20} className={isSafe ? "text-emerald-500" : "text-orange-500"}/> Matelas Sécurité</div>
-                                    <span className="text-xs text-zinc-500 font-mono">Cible: {Math.round(safetyTarget)}€ (6 mois)</span>
+                        <div className="space-y-4 md:space-y-8 w-full min-w-0">
+                            <div className={`p-6 md:p-8 rounded-[24px] md:rounded-[32px] border flex flex-col justify-center min-h-[160px] md:min-h-[200px] w-full min-w-0 ${isSafe ? 'bg-emerald-950/20 border-emerald-500/20' : 'bg-orange-950/20 border-orange-500/20'}`}>
+                                <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 w-full min-w-0">
+                                    <div className="flex items-center gap-2 md:gap-3 font-bold text-xs md:text-sm text-white uppercase tracking-widest truncate"><ShieldCheck size={18} className={`shrink-0 ${isSafe ? "text-emerald-500" : "text-orange-500"}`}/> Matelas Sécu</div>
+                                    <span className="text-[10px] md:text-xs text-zinc-500 font-mono truncate">Cible: {Math.round(safetyTarget)}€</span>
                                 </div>
-                                <div className="text-5xl font-black text-white mb-6 tracking-tight"><AnimatedNumber value={currentCash}/> <span className="text-2xl text-zinc-600">€</span></div>
-                                <div className="h-3 bg-zinc-900 rounded-full overflow-hidden border border-white/5">
+                                <div className="text-3xl md:text-5xl font-black text-white mb-4 md:mb-6 tracking-tight truncate max-w-full"><AnimatedNumber value={currentCash}/> <span className="text-lg md:text-2xl text-zinc-600">€</span></div>
+                                <div className="h-2 md:h-3 bg-zinc-900 rounded-full overflow-hidden border border-white/5 w-full">
                                     <motion.div initial={{width:0}} animate={{width: `${Math.min(100, (currentCash/(safetyTarget || 1))*100)}%`}} className={`h-full ${isSafe ? 'bg-emerald-500':'bg-orange-500'}`} />
                                 </div>
-                                {!isSafe && <div className="mt-4 text-xs text-orange-400 flex gap-2 font-bold bg-orange-500/10 p-3 rounded-xl border border-orange-500/20"><AlertTriangle size={14}/> <span>Attention : Il manque {Math.round(safetyGap)}€ pour être serein.</span></div>}
+                                {!isSafe && <div className="mt-3 md:mt-4 text-[10px] md:text-xs text-orange-400 flex items-center gap-2 font-bold bg-orange-500/10 p-2 md:p-3 rounded-lg md:rounded-xl border border-orange-500/20 w-full min-w-0"><AlertTriangle size={14} className="shrink-0"/> <span className="truncate">Il manque {Math.round(safetyGap)}€</span></div>}
                             </div>
 
-                            <div className="p-8 rounded-[32px] bg-zinc-900/40 border border-white/5 backdrop-blur-xl">
-                                <h3 className="font-black text-white text-sm uppercase tracking-widest mb-6">Répartition du Surplus ({Math.round(totalSurplus)}€)</h3>
+                            <div className="p-4 md:p-8 rounded-[24px] md:rounded-[32px] bg-zinc-900/40 border border-white/5 backdrop-blur-xl w-full min-w-0">
+                                <h3 className="font-black text-white text-[10px] md:text-sm uppercase tracking-widest mb-4 md:mb-6 truncate">Répartition ({Math.round(totalSurplus)}€)</h3>
                                 <input 
                                     type="range" min="0" max="100" step="10" 
                                     value={safetyAllocation} onChange={(e) => setSafetyAllocation(Number(e.target.value))} 
                                     disabled={isSafe}
-                                    className="w-full h-3 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-emerald-500 disabled:opacity-50"
+                                    className="w-full h-2 md:h-3 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-emerald-500 disabled:opacity-50"
                                 />
-                                <div className="flex justify-between mt-4 text-[10px] font-black uppercase tracking-widest">
-                                    <div className="p-3 rounded-xl bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">Investir {100-safetyAllocation}% ({Math.round(flowToInvest)}€)</div>
-                                    <div className={`p-3 rounded-xl border ${isSafe ? "bg-zinc-800 text-zinc-600 border-zinc-700" : "bg-orange-500/10 text-orange-500 border-orange-500/20"}`}>Sécuriser {safetyAllocation}% ({Math.round(flowToSafety)}€)</div>
+                                <div className="flex flex-col sm:flex-row justify-between mt-4 text-[9px] md:text-[10px] font-black uppercase tracking-widest gap-2">
+                                    <div className="p-2 md:p-3 rounded-lg md:rounded-xl bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 text-center truncate">Invest {100-safetyAllocation}% ({Math.round(flowToInvest)}€)</div>
+                                    <div className={`p-2 md:p-3 rounded-lg md:rounded-xl border text-center truncate ${isSafe ? "bg-zinc-800 text-zinc-600 border-zinc-700" : "bg-orange-500/10 text-orange-500 border-orange-500/20"}`}>Sécu {safetyAllocation}% ({Math.round(flowToSafety)}€)</div>
                                 </div>
                             </div>
 
                             {/* CHART HISTORY */}
-                            <div className="p-6 rounded-[32px] bg-zinc-900/40 border border-white/5 h-[250px]">
+                            <div className="p-4 md:p-6 rounded-[24px] md:rounded-[32px] bg-zinc-900/40 border border-white/5 h-[200px] md:h-[250px] w-full min-w-0">
                                 <ResponsiveContainer width="100%" height="100%">
-                                    <BarChart data={historyData} barGap={4}>
+                                    <BarChart data={historyData} barGap={2} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
                                         <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
                                         <XAxis dataKey="name" stroke="#52525b" fontSize={10} tickLine={false} axisLine={false} />
-                                        <RechartsTooltip cursor={{fill: '#ffffff05'}} contentStyle={{ backgroundColor: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(10px)', borderColor: '#333', borderRadius: '12px', fontSize:'12px', color: '#fff' }} itemStyle={{ color: '#fff' }} />
-                                        <Legend iconType="circle" wrapperStyle={{ fontSize: '10px', textTransform: 'uppercase', fontWeight: 'bold' }} />
-                                        <Bar dataKey="Revenus" fill="#e4e4e7" radius={[4, 4, 0, 0]} barSize={12} />
-                                        <Bar dataKey="Besoins" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={12} />
-                                        <Bar dataKey="Investi" fill="#10b981" radius={[4, 4, 0, 0]} barSize={12} />
+                                        <RechartsTooltip cursor={{fill: '#ffffff05'}} contentStyle={{ backgroundColor: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(10px)', borderColor: '#333', borderRadius: '12px', fontSize:'12px', color: '#fff' }} itemStyle={{ color: '#fff' }} formatter={(val: any) => formatEuro(val)} />
+                                        <Legend iconType="circle" wrapperStyle={{ fontSize: '9px', textTransform: 'uppercase', fontWeight: 'bold' }} />
+                                        <Bar dataKey="Revenus" fill="#e4e4e7" radius={[4, 4, 0, 0]} barSize={8} />
+                                        <Bar dataKey="Besoins" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={8} />
+                                        <Bar dataKey="Investi" fill="#10b981" radius={[4, 4, 0, 0]} barSize={8} />
                                     </BarChart>
                                 </ResponsiveContainer>
                             </div>
