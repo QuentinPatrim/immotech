@@ -29,7 +29,7 @@ const DossierBancaire = ({ data, refProp }: any) => {
     }, []);
 
     return (
-      <div className="absolute left-[-9999px] top-0 w-0 h-0 overflow-hidden print:static print:w-auto print:h-auto print:overflow-visible">
+      <div className="absolute top-0 left-0 w-0 h-0 opacity-0 pointer-events-none overflow-hidden -z-50 print:static print:w-auto print:h-auto print:opacity-100 print:overflow-visible print:z-auto">
         <style type="text/css" media="print">
           {`
             @page { size: A4; margin: 0; }
@@ -175,20 +175,20 @@ const Help = ({ title, text }: { title: string, text: string }) => (
 );
 
 const PremiumSlider = ({ label, value, min, max, step, unit, onChange }: any) => (
-    <div className="group relative bg-black/40 rounded-2xl p-4 border border-white/5 hover:border-indigo-500/30 transition-all duration-300">
+    <div className="group relative bg-black/40 rounded-2xl p-3 md:p-4 border border-white/5 hover:border-indigo-500/30 transition-all duration-300 w-full overflow-hidden max-w-full">
         <div className="flex justify-between items-end mb-3">
             <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider group-hover:text-indigo-400 transition-colors">{label}</label>
-            <div className="font-mono text-xl font-black text-white group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r group-hover:from-indigo-400 group-hover:to-cyan-400 transition-all">
-                {value} <span className="text-sm text-zinc-600 font-medium">{unit}</span>
+            <div className="font-mono text-lg md:text-xl font-black text-white group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r group-hover:from-indigo-400 group-hover:to-cyan-400 transition-all">
+                {value} <span className="text-xs md:text-sm text-zinc-600 font-medium">{unit}</span>
             </div>
         </div>
-        <Slider value={[value]} min={min} max={max} step={step} onValueChange={(v) => onChange(v[0])} className="py-2 cursor-grab active:cursor-grabbing" />
+        <Slider value={[value]} min={min} max={max} step={step} onValueChange={(v) => onChange(v[0])} className="py-2 cursor-grab active:cursor-grabbing w-full" />
     </div>
 );
 
 const PremiumCard = ({ children, className = "", color = "indigo" }: { children: React.ReactNode, className?: string, color?: string }) => {
     const borderColor = color === "emerald" ? "hover:border-emerald-500/30" : color === "rose" ? "hover:border-rose-500/30" : color === "amber" ? "hover:border-amber-500/30" : color === "blue" ? "hover:border-blue-500/30" : "hover:border-indigo-500/30";
-    return <div className={`relative rounded-[32px] bg-zinc-900/40 backdrop-blur-md border border-white/5 transition-all duration-500 ${borderColor} hover:bg-zinc-900/60 group ${className}`}>{children}</div>;
+    return <div className={`relative w-full overflow-hidden rounded-[24px] md:rounded-[32px] bg-zinc-900/40 backdrop-blur-md border border-white/5 transition-all duration-500 ${borderColor} hover:bg-zinc-900/60 group ${className}`}>{children}</div>;
 };
 
 export default function SimulateurPage() {
@@ -386,23 +386,32 @@ export default function SimulateurPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#020202] text-zinc-100 font-sans pb-24 md:pb-8 selection:bg-indigo-500/30 selection:text-indigo-200">
+    <div className="min-h-screen bg-[#020202] text-zinc-100 font-sans pb-24 md:pb-8 selection:bg-indigo-500/30 selection:text-indigo-200 overflow-x-hidden w-full max-w-[100vw]">
       <Sidebar />
-      <main className="md:ml-64 flex-1 w-auto max-w-full p-4 md:p-8 relative overflow-hidden">
+      <main className="md:ml-64 flex-1 w-full max-w-[100vw] md:max-w-none p-4 md:p-8 relative overflow-x-hidden">
         
         <DossierBancaire refProp={componentRef} data={printData} />
 
-        <div className="fixed top-0 left-64 w-[800px] h-[800px] bg-indigo-900/10 rounded-full blur-[150px] pointer-events-none"></div>
-        <div className="fixed bottom-0 right-0 w-[600px] h-[600px] bg-cyan-900/10 rounded-full blur-[150px] pointer-events-none"></div>
+        <div className="absolute top-0 left-64 w-[800px] h-[800px] bg-indigo-900/10 rounded-full blur-[150px] pointer-events-none -z-10"></div>
+        <div className="absolute bottom-0 right-0 w-[600px] h-[600px] bg-cyan-900/10 rounded-full blur-[150px] pointer-events-none -z-10"></div>
         
-        <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} className="max-w-[1800px] mx-auto space-y-10 relative z-10">
+        <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} className="max-w-[1800px] w-full mx-auto space-y-6 md:space-y-10 relative z-10">
           
-          <div className="flex flex-col xl:flex-row justify-between items-start xl:items-end gap-8 pl-2 border-l-4 border-indigo-600 py-2">
-            <div><h1 className="text-4xl md:text-5xl font-black text-white tracking-tight uppercase">Mon <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-400">Simulateur Immo</span></h1></div>
-            <div className="bg-zinc-900/60 backdrop-blur-xl p-1.5 rounded-2xl border border-white/5 flex flex-wrap gap-1 w-full xl:w-auto shadow-2xl">
-                {[{ id: "CAPACITE", label: "Capacité", icon: Wallet }, { id: "RENTABILITE", label: "Projet & Renta", icon: Calculator }, { id: "FISCALITE", label: "Fiscalité Expert", icon: Scale, premium: true }, { id: "PROJETS", label: "Portefeuille", icon: FolderOpen, premium: true }].map((tab) => (
-                    <button key={tab.id} onClick={() => setMode(tab.id as any)} className={`flex items-center gap-2 px-5 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-all duration-300 ${mode === tab.id ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/25 scale-105" : "text-zinc-500 hover:text-white hover:bg-white/5"}`}>
-                        <tab.icon size={16}/> {tab.label} {tab.premium && <Crown size={12} className="text-yellow-400 ml-1"/>}
+          <div className="flex flex-col xl:flex-row justify-between items-start xl:items-end gap-6 md:gap-8 pl-4 md:pl-2 border-l-4 border-indigo-600 py-2 max-w-full">
+            <div><h1 className="text-3xl md:text-5xl font-black text-white tracking-tight uppercase">Mon <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-400">Simulateur</span></h1></div>
+            
+            {/* CHANGEMENT ICI : Le menu passe en grille 2x2 (Bento Box) sur mobile et reste en ligne sur ordinateur */}
+            <div className="bg-zinc-900/60 backdrop-blur-xl p-1.5 rounded-2xl border border-white/5 grid grid-cols-2 xl:flex gap-1 w-full xl:w-auto max-w-full shadow-2xl">
+                {[
+                    { id: "CAPACITE", label: "Capacité", icon: Wallet }, 
+                    { id: "RENTABILITE", label: "Renta", icon: Calculator }, 
+                    { id: "FISCALITE", label: "Fiscalité", icon: Scale, premium: true }, 
+                    { id: "PROJETS", label: "Projets", icon: FolderOpen, premium: true }
+                ].map((tab) => (
+                    <button key={tab.id} onClick={() => setMode(tab.id as any)} className={`flex items-center justify-center gap-1.5 md:gap-2 px-2 md:px-5 py-2.5 md:py-3 rounded-xl text-[9px] sm:text-[10px] md:text-xs font-bold uppercase tracking-widest transition-all duration-300 ${mode === tab.id ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/25 xl:scale-105" : "text-zinc-500 hover:text-white hover:bg-white/5"}`}>
+                        <tab.icon size={14} className="md:w-4 md:h-4 shrink-0"/> 
+                        <span className="truncate">{tab.label}</span> 
+                        {tab.premium && <Crown size={12} className="text-yellow-400 shrink-0"/>}
                     </button>
                 ))}
             </div>
@@ -411,137 +420,137 @@ export default function SimulateurPage() {
           <AnimatePresence mode="wait">
           
           {mode === "CAPACITE" && (
-            <motion.div key="capa" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-               <div className="lg:col-span-4 space-y-6">
-                    <PremiumCard className="p-8">
-                        <h3 className="text-xs font-black text-indigo-400 uppercase mb-8 flex items-center gap-3 tracking-widest"><Wallet size={18}/> Revenus</h3>
-                        <div className="space-y-6">
-                            <div className="space-y-2"><label className="text-[10px] font-bold text-zinc-500 uppercase">Salaire Net / Mois</label><Input type="number" value={revenue} onChange={e => handleInput(setRevenue, e.target.value)} className="bg-black/40 border-white/10 h-14 text-white font-bold text-xl focus:border-indigo-500"/></div>
-                            <div className="space-y-2"><label className="text-[10px] font-bold text-zinc-500 uppercase">Crédits en cours</label><Input type="number" value={credits} onChange={e => handleInput(setCredits, e.target.value)} className="bg-black/40 border-white/10 h-14 text-white font-bold text-xl focus:border-indigo-500"/></div>
-                            <div className="space-y-2 pt-4 border-t border-white/5"><label className="text-[10px] font-bold text-emerald-500 uppercase">Apport Perso</label><Input type="number" value={apportCapacity} onChange={e => handleInput(setApportCapacity, e.target.value)} className="bg-emerald-900/10 border-emerald-500/20 h-14 text-emerald-400 font-bold text-xl focus:border-emerald-500"/></div>
+            <motion.div key="capa" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="grid grid-cols-1 lg:grid-cols-12 gap-4 md:gap-8 w-full min-w-0">
+               <div className="lg:col-span-4 flex flex-col sm:grid sm:grid-cols-2 lg:flex gap-4 md:gap-6 w-full min-w-0">
+                    <PremiumCard className="p-4 md:p-8">
+                        <h3 className="text-xs font-black text-indigo-400 uppercase mb-4 md:mb-8 flex items-center gap-3 tracking-widest"><Wallet size={18}/> Revenus</h3>
+                        <div className="space-y-4 md:space-y-6 w-full">
+                            <div className="space-y-2"><label className="text-[10px] font-bold text-zinc-500 uppercase">Salaire Net / Mois</label><Input type="number" value={revenue} onChange={e => handleInput(setRevenue, e.target.value)} className="bg-black/40 border-white/10 h-12 md:h-14 text-white font-bold text-lg md:text-xl focus:border-indigo-500 w-full min-w-0"/></div>
+                            <div className="space-y-2"><label className="text-[10px] font-bold text-zinc-500 uppercase">Crédits en cours</label><Input type="number" value={credits} onChange={e => handleInput(setCredits, e.target.value)} className="bg-black/40 border-white/10 h-12 md:h-14 text-white font-bold text-lg md:text-xl focus:border-indigo-500 w-full min-w-0"/></div>
+                            <div className="space-y-2 pt-4 border-t border-white/5"><label className="text-[10px] font-bold text-emerald-500 uppercase">Apport Perso</label><Input type="number" value={apportCapacity} onChange={e => handleInput(setApportCapacity, e.target.value)} className="bg-emerald-900/10 border-emerald-500/20 h-12 md:h-14 text-emerald-400 font-bold text-lg md:text-xl focus:border-emerald-500 w-full min-w-0"/></div>
                         </div>
                     </PremiumCard>
-                    <PremiumCard className="p-8">
-                        <h3 className="text-xs font-black text-blue-400 uppercase mb-8 flex items-center gap-3 tracking-widest"><Landmark size={18}/> Banque</h3>
-                        <div className="space-y-6">
+                    <PremiumCard className="p-4 md:p-8">
+                        <h3 className="text-xs font-black text-blue-400 uppercase mb-4 md:mb-8 flex items-center gap-3 tracking-widest"><Landmark size={18}/> Banque</h3>
+                        <div className="space-y-4 md:space-y-6 w-full min-w-0">
                             <PremiumSlider label="Durée" value={duration} min={10} max={30} step={1} unit="ans" onChange={setDuration}/>
                             <PremiumSlider label="Taux" value={rate} min={1} max={6} step={0.05} unit="%" onChange={setRate}/>
                         </div>
                     </PremiumCard>
                 </div>
-                <div className="lg:col-span-8 p-16 rounded-[48px] bg-gradient-to-br from-zinc-900 via-black to-blue-950/20 border border-white/10 flex flex-col items-center justify-center text-center relative overflow-hidden shadow-2xl">
-                    <p className="text-zinc-500 text-xs font-black uppercase tracking-[0.4em] mb-8">ENVELOPPE GLOBALE</p>
-                    <div className="text-7xl lg:text-[9rem] font-black text-white tracking-tighter"><AnimatedNumber value={totalEnvelope} /></div>
-                    <div className="mt-10 flex gap-6 justify-center text-sm font-bold text-zinc-500 bg-white/5 px-8 py-4 rounded-full border border-white/5 backdrop-blur-md">
-                            <span className="flex items-center gap-2"><Landmark size={14} className="text-blue-500"/> Banque: {formatEuro(maxLoan)}</span>
-                            <span className="text-zinc-700 mx-2">|</span>
-                            <span className="flex items-center gap-2"><PiggyBank size={14} className="text-emerald-500"/> Apport: {formatEuro(Number(apportCapacity))}</span>
+                <div className="lg:col-span-8 p-8 md:p-16 rounded-[32px] md:rounded-[48px] bg-gradient-to-br from-zinc-900 via-black to-blue-950/20 border border-white/10 flex flex-col items-center justify-center text-center relative overflow-hidden shadow-2xl w-full min-w-0">
+                    <p className="text-zinc-500 text-[10px] md:text-xs font-black uppercase tracking-[0.4em] mb-4 md:mb-8 break-words">ENVELOPPE GLOBALE</p>
+                    <div className="text-4xl sm:text-5xl md:text-7xl lg:text-[9rem] font-black text-white tracking-tighter"><AnimatedNumber value={totalEnvelope} /></div>
+                    <div className="mt-6 md:mt-10 flex flex-col md:flex-row gap-3 md:gap-6 justify-center text-xs md:text-sm font-bold text-zinc-500 bg-white/5 px-6 py-3 md:px-8 md:py-4 rounded-3xl md:rounded-full border border-white/5 backdrop-blur-md max-w-full">
+                            <span className="flex items-center justify-center gap-2"><Landmark size={14} className="text-blue-500 shrink-0"/> Banque: {formatEuro(maxLoan)}</span>
+                            <span className="text-zinc-700 hidden md:inline mx-2">|</span>
+                            <span className="flex items-center justify-center gap-2"><PiggyBank size={14} className="text-emerald-500 shrink-0"/> Apport: {formatEuro(Number(apportCapacity))}</span>
                     </div>
                 </div>
             </motion.div>
           )}
 
           {mode === "RENTABILITE" && (
-            <motion.div key="renta" initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.98 }} className="grid grid-cols-1 xl:grid-cols-12 gap-8">
-                <div className="xl:col-span-4 space-y-6">
-                    <PremiumCard className="p-6">
-                        <h3 className="text-xs font-black text-white uppercase flex items-center gap-3 mb-6 tracking-widest"><Building size={18}/> Le Projet</h3>
-                        <div className="bg-black/40 p-4 rounded-2xl mb-6 border border-white/5">
+            <motion.div key="renta" initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.98 }} className="grid grid-cols-1 xl:grid-cols-12 gap-4 md:gap-8 w-full min-w-0">
+                <div className="xl:col-span-4 space-y-4 md:space-y-6 w-full min-w-0">
+                    <PremiumCard className="p-4 md:p-6">
+                        <h3 className="text-xs font-black text-white uppercase flex items-center gap-3 mb-4 md:mb-6 tracking-widest"><Building size={18}/> Le Projet</h3>
+                        <div className="bg-black/40 p-3 md:p-4 rounded-2xl mb-4 md:mb-6 border border-white/5 min-w-0 w-full">
                             <div className="mb-4">
                                 <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block mb-2">Usage</label>
-                                <div className="grid grid-cols-3 gap-2">
+                                <div className="grid grid-cols-3 gap-1 md:gap-2">
                                     {['LOC', 'RP', 'RS'].map(t => (
-                                        <button key={t} onClick={() => setProjectType(t as any)} className={`text-[10px] font-bold py-2 rounded-lg transition-all ${projectType === t ? "bg-zinc-700 text-white shadow-inner" : "text-zinc-500 hover:text-white hover:bg-zinc-800"}`}>{t === 'LOC' ? 'Invest.' : t === 'RP' ? 'Principale' : 'Secondaire'}</button>
+                                        <button key={t} onClick={() => setProjectType(t as any)} className={`text-[9px] md:text-[10px] font-bold py-2 px-1 rounded-lg transition-all ${projectType === t ? "bg-zinc-700 text-white shadow-inner" : "text-zinc-500 hover:text-white hover:bg-zinc-800"}`}>{t === 'LOC' ? 'Invest.' : t === 'RP' ? 'Principale' : 'Secondaire'}</button>
                                     ))}
                                 </div>
                             </div>
                             {projectType === "LOC" && (
                                 <div className="animate-in slide-in-from-top-2 fade-in">
                                     <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block mb-2">Stratégie Locative</label>
-                                    <div className="grid grid-cols-3 gap-2">
+                                    <div className="grid grid-cols-3 gap-1 md:gap-2">
                                         {['LMNP', 'NUE', 'LCD'].map(s => (
-                                            <button key={s} onClick={() => setRentalStrategy(s as any)} className={`text-[10px] font-bold py-2 rounded-lg transition-all ${rentalStrategy === s ? "bg-indigo-600 text-white shadow-lg" : "text-zinc-500 hover:text-white hover:bg-zinc-800"}`}>{s}</button>
+                                            <button key={s} onClick={() => setRentalStrategy(s as any)} className={`text-[9px] md:text-[10px] font-bold py-2 px-1 rounded-lg transition-all ${rentalStrategy === s ? "bg-indigo-600 text-white shadow-lg" : "text-zinc-500 hover:text-white hover:bg-zinc-800"}`}>{s}</button>
                                         ))}
                                     </div>
                                 </div>
                             )}
                         </div>
-                        <div className="space-y-4">
-                            <div><label className="text-[10px] font-bold text-zinc-500 uppercase">Prix Achat</label><Input type="number" value={price} onChange={e => handleInput(setPrice, e.target.value)} className="bg-black/40 border-white/10 h-12 text-white font-bold"/></div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div><label className="text-[10px] font-bold text-zinc-500 uppercase">Travaux</label><Input type="number" value={works} onChange={e => handleInput(setWorks, e.target.value)} className="bg-black/40 border-white/10 h-12 text-white font-bold"/></div>
-                                <div><label className="text-[10px] font-bold text-zinc-500 uppercase">Apport</label><Input type="number" value={apport} onChange={e => handleInput(setApport, e.target.value)} className="bg-black/40 border-white/10 h-12 text-white font-bold"/></div>
+                        <div className="space-y-4 w-full min-w-0">
+                            <div><label className="text-[10px] font-bold text-zinc-500 uppercase">Prix Achat</label><Input type="number" value={price} onChange={e => handleInput(setPrice, e.target.value)} className="bg-black/40 border-white/10 h-10 md:h-12 text-white font-bold min-w-0 w-full"/></div>
+                            <div className="grid grid-cols-2 gap-3 md:gap-4 w-full">
+                                <div><label className="text-[10px] font-bold text-zinc-500 uppercase truncate block">Travaux</label><Input type="number" value={works} onChange={e => handleInput(setWorks, e.target.value)} className="bg-black/40 border-white/10 h-10 md:h-12 text-white font-bold min-w-0 w-full"/></div>
+                                <div><label className="text-[10px] font-bold text-zinc-500 uppercase truncate block">Apport</label><Input type="number" value={apport} onChange={e => handleInput(setApport, e.target.value)} className="bg-black/40 border-white/10 h-10 md:h-12 text-white font-bold min-w-0 w-full"/></div>
                             </div>
                             <div>
                                 <div className="flex items-center justify-between mb-1"><label className="text-[10px] font-bold text-zinc-500 uppercase">Notaire (%)</label></div>
-                                <Input type="number" step="0.1" value={notaryRate} onChange={e => handleInput(setNotaryRate, e.target.value)} className="bg-black/40 border-white/10 h-12 text-white font-bold"/>
+                                <Input type="number" step="0.1" value={notaryRate} onChange={e => handleInput(setNotaryRate, e.target.value)} className="bg-black/40 border-white/10 h-10 md:h-12 text-white font-bold min-w-0 w-full"/>
                             </div>
-                            <div className="pt-4 border-t border-white/5 space-y-3">
+                            <div className="pt-4 border-t border-white/5 space-y-3 w-full">
                                 <h4 className="text-[10px] font-bold text-blue-400 uppercase tracking-wider flex items-center gap-2"><Landmark size={12}/> Financement Bancaire</h4>
                                 <div className="space-y-3">
                                     <PremiumSlider label="Taux" value={rate} min={1} max={6} step={0.05} unit="%" onChange={setRate}/>
                                     <PremiumSlider label="Durée" value={duration} min={10} max={30} step={1} unit="ans" onChange={setDuration}/>
                                 </div>
                             </div>
-                            <div className="pt-4 border-t border-white/5 space-y-4">
+                            <div className="pt-4 border-t border-white/5 space-y-4 w-full">
                                 {projectType === "LOC" && (
-                                    <div><label className="text-[10px] font-bold text-zinc-500 uppercase">Loyer Mensuel CC</label><Input type="number" value={rent} onChange={e => handleInput(setRent, e.target.value)} className="bg-black/40 border-white/10 h-12 text-emerald-400 font-bold"/></div>
+                                    <div><label className="text-[10px] font-bold text-zinc-500 uppercase">Loyer Mensuel CC</label><Input type="number" value={rent} onChange={e => handleInput(setRent, e.target.value)} className="bg-black/40 border-white/10 h-10 md:h-12 text-emerald-400 font-bold min-w-0 w-full"/></div>
                                 )}
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div><label className="text-[10px] font-bold text-zinc-500 uppercase">Charges /m</label><Input type="number" value={charges} onChange={e => handleInput(setCharges, e.target.value)} className="bg-black/40 border-white/10 h-12 text-white font-bold"/></div>
-                                    <div><label className="text-[10px] font-bold text-zinc-500 uppercase">Taxe Foncière /an</label><Input type="number" value={tax} onChange={e => handleInput(setTax, e.target.value)} className="bg-black/40 border-white/10 h-12 text-white font-bold"/></div>
+                                <div className="grid grid-cols-2 gap-3 md:gap-4 w-full">
+                                    <div><label className="text-[10px] font-bold text-zinc-500 uppercase truncate block">Charges /m</label><Input type="number" value={charges} onChange={e => handleInput(setCharges, e.target.value)} className="bg-black/40 border-white/10 h-10 md:h-12 text-white font-bold min-w-0 w-full"/></div>
+                                    <div><label className="text-[10px] font-bold text-zinc-500 uppercase truncate block">Taxe Fonc. /an</label><Input type="number" value={tax} onChange={e => handleInput(setTax, e.target.value)} className="bg-black/40 border-white/10 h-10 md:h-12 text-white font-bold min-w-0 w-full"/></div>
                                 </div>
                             </div>
                         </div>
                     </PremiumCard>
                 </div>
-                <div className="xl:col-span-8 space-y-6">
+                <div className="xl:col-span-8 space-y-4 md:space-y-6 w-full min-w-0">
                     {projectType === "LOC" ? (
-                        <PremiumCard className={`p-10 text-center flex flex-col items-center justify-center min-h-[300px] border transition-all duration-500 ${cashflowNetImpots < 0 ? 'border-rose-500/40' : 'border-emerald-500/20'}`}>
-                            <div className="flex items-center gap-2 mb-6 justify-center">
-                                <span className={`text-xs font-black uppercase tracking-[0.3em] ${cashflowNetImpots > 0 ? 'text-emerald-500' : 'text-rose-500'}`}>CASHFLOW NET D'IMPÔT / MOIS</span>
+                        <PremiumCard className={`p-6 md:p-10 text-center flex flex-col items-center justify-center min-h-[200px] md:min-h-[300px] border transition-all duration-500 ${cashflowNetImpots < 0 ? 'border-rose-500/40' : 'border-emerald-500/20'}`}>
+                            <div className="flex items-center gap-2 mb-4 md:mb-6 justify-center">
+                                <span className={`text-[10px] md:text-xs font-black uppercase tracking-[0.2em] md:tracking-[0.3em] ${cashflowNetImpots > 0 ? 'text-emerald-500' : 'text-rose-500'}`}>CASHFLOW NET / MOIS</span>
                                 <Help title="Cashflow Net" text="Loyers - (Crédit + Charges + Taxe Fonc. + Impôts)."/>
                             </div>
-                            <div className={`text-8xl font-black tracking-tighter mb-8 ${cashflowNetImpots > 0 ? 'text-emerald-400' : 'text-rose-500'}`}>{cashflowNetImpots > 0 ? '+':''}<AnimatedNumber value={Math.round(cashflowNetImpots)}/></div>
-                            <div className="flex justify-center gap-12 text-sm font-bold w-full max-w-lg bg-black/30 p-4 rounded-2xl border border-white/5">
-                                <div className="text-zinc-400 flex flex-col">Avant Impôt <span className="text-white text-lg">{cashflowBrut > 0 ? "+":""}{Math.round(cashflowBrut)}€</span></div>
-                                <div className="w-[1px] bg-white/10"></div>
-                                <div className="text-zinc-400 flex flex-col">Fiscalité Moy. <span className="text-amber-500 text-lg">-{Math.round(Math.min(fiscalData.micro.total, fiscalData.reel.total)/12)}€</span></div>
+                            <div className={`text-6xl md:text-8xl font-black tracking-tighter mb-6 md:mb-8 ${cashflowNetImpots > 0 ? 'text-emerald-400' : 'text-rose-500'}`}>{cashflowNetImpots > 0 ? '+':''}<AnimatedNumber value={Math.round(cashflowNetImpots)}/></div>
+                            <div className="flex flex-col sm:flex-row justify-center gap-2 md:gap-12 text-xs md:text-sm font-bold w-full max-w-lg bg-black/30 p-3 md:p-4 rounded-2xl border border-white/5">
+                                <div className="text-zinc-400 flex flex-row sm:flex-col justify-between sm:justify-start items-center">Avant Impôt <span className="text-white text-sm md:text-lg ml-2 sm:ml-0">{cashflowBrut > 0 ? "+":""}{Math.round(cashflowBrut)}€</span></div>
+                                <div className="hidden sm:block w-[1px] bg-white/10"></div>
+                                <div className="text-zinc-400 flex flex-row sm:flex-col justify-between sm:justify-start items-center">Fiscalité Moy. <span className="text-amber-500 text-sm md:text-lg ml-2 sm:ml-0">-{Math.round(Math.min(fiscalData.micro.total, fiscalData.reel.total)/12)}€</span></div>
                             </div>
                         </PremiumCard>
                     ) : (
-                        <PremiumCard className="p-10 text-center flex flex-col items-center justify-center min-h-[300px] border-amber-500/20">
-                            <div className="text-xs font-black text-amber-500 uppercase tracking-[0.4em] mb-4">COÛT MENSUEL TOTAL</div>
-                            <div className="text-7xl font-black text-white tracking-tighter mb-4">-<AnimatedNumber value={Math.round(monthlyPayment + Number(charges) + (Number(tax)/12))}/></div>
-                            <div className="flex gap-4 text-xs font-bold text-zinc-500 bg-white/5 px-6 py-2 rounded-full border border-white/10">
+                        <PremiumCard className="p-6 md:p-10 text-center flex flex-col items-center justify-center min-h-[200px] md:min-h-[300px] border-amber-500/20">
+                            <div className="text-[10px] md:text-xs font-black text-amber-500 uppercase tracking-[0.2em] md:tracking-[0.4em] mb-4">COÛT MENSUEL TOTAL</div>
+                            <div className="text-5xl md:text-7xl font-black text-white tracking-tighter mb-4">-<AnimatedNumber value={Math.round(monthlyPayment + Number(charges) + (Number(tax)/12))}/></div>
+                            <div className="flex flex-wrap justify-center gap-2 md:gap-4 text-[10px] md:text-xs font-bold text-zinc-500 bg-white/5 px-4 md:px-6 py-2 rounded-full border border-white/10">
                                 <span>Crédit: {Math.round(monthlyPayment)}€</span><span>Charges: {Math.round(Number(charges))}€</span><span>Taxe: {Math.round(Number(tax)/12)}€</span>
                             </div>
                         </PremiumCard>
                     )}
-                    <div className="grid grid-cols-2 gap-6">
-                        <PremiumCard color="indigo" className="p-6 flex flex-col items-center justify-center">
-                            <p className="text-[10px] text-zinc-500 font-bold uppercase mb-2">Coût Projet</p>
-                            <div className="text-5xl font-black text-white">{Math.round(totalCost/1000)}<span className="text-indigo-500 text-2xl">k€</span></div>
+                    <div className="grid grid-cols-2 gap-3 md:gap-6 w-full min-w-0">
+                        <PremiumCard color="indigo" className="p-4 md:p-6 flex flex-col items-center justify-center">
+                            <p className="text-[9px] md:text-[10px] text-zinc-500 font-bold uppercase mb-2 text-center truncate">Coût Projet</p>
+                            <div className="text-3xl md:text-5xl font-black text-white">{Math.round(totalCost/1000)}<span className="text-indigo-500 text-lg md:text-2xl">k€</span></div>
                         </PremiumCard>
                         {projectType === "LOC" ? (
-                            <PremiumCard color="emerald" className="p-6 flex flex-col items-center justify-center">
-                                <p className="text-[10px] text-zinc-500 font-bold uppercase mb-2">Rendement Brut</p>
-                                <div className="text-5xl font-black text-white">{yieldNet.toFixed(2)}<span className="text-emerald-500 text-2xl">%</span></div>
+                            <PremiumCard color="emerald" className="p-4 md:p-6 flex flex-col items-center justify-center">
+                                <p className="text-[9px] md:text-[10px] text-zinc-500 font-bold uppercase mb-2 text-center truncate">Rendement Brut</p>
+                                <div className="text-3xl md:text-5xl font-black text-white">{yieldNet.toFixed(2)}<span className="text-emerald-500 text-lg md:text-2xl">%</span></div>
                             </PremiumCard>
                         ) : (
-                            <PremiumCard color="rose" className="p-6 flex flex-col items-center justify-center">
-                                <p className="text-[10px] text-zinc-500 font-bold uppercase mb-2">Coût Total Crédit</p>
-                                <div className="text-5xl font-black text-white">{formatEuro(Math.round(totalCreditCost))}<span className="text-rose-500 text-2xl text-xs ml-2">Intérêts</span></div>
+                            <PremiumCard color="rose" className="p-4 md:p-6 flex flex-col items-center justify-center">
+                                <p className="text-[9px] md:text-[10px] text-zinc-500 font-bold uppercase mb-2 text-center truncate">Coût Crédit</p>
+                                <div className="text-2xl md:text-5xl font-black text-white">{formatEuro(Math.round(totalCreditCost))}</div>
                             </PremiumCard>
                         )}
                     </div>
                     {/* CHART AMORTISSEMENT */}
-                    <PremiumCard className="p-8 border-white/5 relative overflow-hidden">
+                    <PremiumCard className="p-4 md:p-8 border-white/5 relative overflow-hidden hidden sm:block">
                         <div className="flex items-center justify-between mb-6 relative z-10">
                             <h4 className="text-sm font-black text-white uppercase tracking-widest flex items-center gap-3"><BarChart3 size={18} className="text-blue-500"/> Amortissement</h4>
-                            <div className="text-xs text-zinc-500 font-mono">Projection sur {duration} ans</div>
+                            <div className="text-[10px] md:text-xs text-zinc-500 font-mono">Projection sur {duration} ans</div>
                         </div>
-                        <div className="h-[250px] w-full relative z-10">
+                        <div className="h-[200px] md:h-[250px] w-full min-w-0 relative z-10">
                             <ResponsiveContainer width="100%" height="100%">
                                 <AreaChart data={amortizationSchedule} margin={{ top: 10, right: 0, left: 0, bottom: 0 }}>
                                     <defs>
@@ -558,9 +567,9 @@ export default function SimulateurPage() {
                         </div>
                     </PremiumCard>
                     
-                    <div className="flex gap-4">
-                        <Input placeholder="Nom du projet" value={projectName} onChange={(e) => setProjectName(e.target.value)} className="bg-zinc-900 border-white/10 h-14 rounded-2xl text-white focus:border-indigo-500"/>
-                        <Button onClick={saveSimulation} className="h-14 px-8 bg-white text-black hover:bg-zinc-200 font-bold rounded-2xl gap-2 shadow-lg"><Save size={20}/> Sauvegarder</Button>
+                    <div className="flex flex-col sm:flex-row gap-3 md:gap-4 mt-4 w-full min-w-0">
+                        <Input placeholder="Nom du projet" value={projectName} onChange={(e) => setProjectName(e.target.value)} className="bg-zinc-900 border-white/10 h-12 md:h-14 rounded-2xl text-white focus:border-indigo-500 w-full min-w-0"/>
+                        <Button onClick={saveSimulation} className="h-12 md:h-14 px-6 md:px-8 bg-white text-black hover:bg-zinc-200 font-bold rounded-2xl gap-2 shadow-lg w-full sm:w-auto shrink-0"><Save size={20}/> Sauvegarder</Button>
                     </div>
                 </div>
             </motion.div>
@@ -568,24 +577,24 @@ export default function SimulateurPage() {
 
           {mode === "FISCALITE" && (
             <PremiumGuard isPro={isPro} title="Fiscalité Expert" description="Optimisez vos impôts avec nos matrices de comparaison LMNP, location nue et courte durée,">
-                <motion.div key="fiscal" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="grid grid-cols-1 gap-8">
+                <motion.div key="fiscal" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="grid grid-cols-1 gap-6 md:gap-8 w-full min-w-0">
                     {projectType === "LOC" ? (
-                        <PremiumCard className="p-10 bg-gradient-to-br from-[#0B0B0F] to-black border-indigo-500/20">
-                            <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-8 gap-4">
-                                <div className="flex items-center gap-4">
-                                    <div className="h-12 w-12 rounded-2xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center border border-indigo-500/30"><Scale size={24}/></div>
-                                    <h2 className="text-2xl font-black text-white uppercase">Matrice Fiscale <span className="text-indigo-500">Expert</span></h2>
+                        <PremiumCard className="p-4 md:p-10 bg-gradient-to-br from-[#0B0B0F] to-black border-indigo-500/20 min-w-0">
+                            <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-6 md:mb-8 gap-4 w-full">
+                                <div className="flex items-center gap-3 md:gap-4 shrink-0">
+                                    <div className="h-10 w-10 md:h-12 md:w-12 rounded-xl md:rounded-2xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center border border-indigo-500/30"><Scale size={20} className="md:w-6 md:h-6"/></div>
+                                    <h2 className="text-xl md:text-2xl font-black text-white uppercase truncate">Matrice Fiscale</h2>
                                 </div>
-                                <div className="flex items-center gap-3 bg-zinc-900/80 p-2 rounded-xl border border-white/5">
-                                    <span className="text-[10px] font-bold text-zinc-500 uppercase ml-2">Votre TMI</span>
-                                    <div className="flex gap-1">
+                                <div className="flex items-center gap-2 md:gap-3 bg-zinc-900/80 p-1.5 md:p-2 rounded-xl border border-white/5 w-full md:w-auto overflow-x-auto scrollbar-hide max-w-full">
+                                    <span className="text-[9px] md:text-[10px] font-bold text-zinc-500 uppercase ml-1 md:ml-2 whitespace-nowrap">Votre TMI</span>
+                                    <div className="flex gap-1 shrink-0">
                                         {[0, 11, 30, 41, 45].map((t) => (
-                                            <button key={t} onClick={() => setUserTMI(t)} className={`h-8 w-10 rounded-lg text-xs font-bold transition-all ${userTMI === t ? "bg-indigo-600 text-white" : "bg-zinc-800 text-zinc-500 hover:bg-zinc-700"}`}>{t}%</button>
+                                            <button key={t} onClick={() => setUserTMI(t)} className={`h-7 w-8 md:h-8 md:w-10 rounded-lg text-[10px] md:text-xs font-bold transition-all ${userTMI === t ? "bg-indigo-600 text-white" : "bg-zinc-800 text-zinc-500 hover:bg-zinc-700"}`}>{t}%</button>
                                         ))}
                                     </div>
                                 </div>
                             </div>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6 w-full min-w-0">
                                 <div className="hidden md:block space-y-4 pt-16 text-right text-sm text-zinc-400 font-medium">
                                     <div className="h-10 flex items-center justify-end gap-2">Recettes Locatives <Help title="Recettes" text="Loyer annuel"/></div>
                                     <div className="h-10 flex items-center justify-end gap-2">Charges Déductibles <Help title="Charges" text="Charges copro, TF..."/></div>
@@ -595,83 +604,83 @@ export default function SimulateurPage() {
                                     <div className="h-10 flex items-center justify-end text-white font-bold">Base Imposable</div>
                                     <div className="h-10 flex items-center justify-end text-amber-500">Impôt Final (TMI + PS)</div>
                                 </div>
-                                {/* Colonne MICRO */}
-                                <div className={`rounded-2xl p-6 border transition-all ${fiscalData.micro.total < fiscalData.reel.total ? "bg-emerald-900/10 border-emerald-500/50" : "bg-black/20 border-white/5"}`}>
-                                    <h4 className="text-center font-bold text-white uppercase mb-6">Régime Micro</h4>
-                                    <div className="space-y-4 text-center font-mono text-sm">
-                                        <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-2 md:py-0 border-b border-white/5 md:border-none"><span className="md:hidden text-xs text-zinc-500">Recettes</span><span className="text-white">{formatEuro(Number(rent)*12)}</span></div>
-                                        <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-2 md:py-0 border-b border-white/5 md:border-none"><span className="md:hidden text-xs text-zinc-500">Charges</span><span className="text-zinc-600 italic">Forfaitaire</span></div>
-                                        <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-2 md:py-0 border-b border-white/5 md:border-none"><span className="md:hidden text-xs text-zinc-500">Intérêts</span><span className="text-zinc-600 italic">Non déductible</span></div>
-                                        <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-2 md:py-0 border-b border-white/5 md:border-none"><span className="md:hidden text-xs text-zinc-500">Amortissement</span><span className="text-zinc-600 italic">Non applicable</span></div>
+                                {/* Colonne MICRO - TEXTES RACCOURCIS */}
+                                <div className={`rounded-xl md:rounded-2xl p-4 md:p-6 border transition-all min-w-0 w-full ${fiscalData.micro.total < fiscalData.reel.total ? "bg-emerald-900/10 border-emerald-500/50" : "bg-black/20 border-white/5"}`}>
+                                    <h4 className="text-center text-sm md:text-base font-bold text-white uppercase mb-4 md:mb-6">Régime Micro</h4>
+                                    <div className="space-y-3 md:space-y-4 text-center font-mono text-xs md:text-sm">
+                                        <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-1.5 md:py-0 border-b border-white/5 md:border-none"><span className="md:hidden text-[10px] text-zinc-500">Recettes</span><span className="text-white text-[10px] md:text-sm truncate">{formatEuro(Number(rent)*12)}</span></div>
+                                        <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-1.5 md:py-0 border-b border-white/5 md:border-none"><span className="md:hidden text-[10px] text-zinc-500">Charges</span><span className="text-zinc-600 italic text-[10px] md:text-sm truncate">Forfait</span></div>
+                                        <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-1.5 md:py-0 border-b border-white/5 md:border-none"><span className="md:hidden text-[10px] text-zinc-500">Intérêts</span><span className="text-zinc-600 italic text-[10px] md:text-sm truncate">N/A</span></div>
+                                        <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-1.5 md:py-0 border-b border-white/5 md:border-none"><span className="md:hidden text-[10px] text-zinc-500">Amort.</span><span className="text-zinc-600 italic text-[10px] md:text-sm truncate">N/A</span></div>
                                         <div className="hidden md:block h-1 bg-white/5 my-2"></div>
-                                        <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-2 md:py-0 border-b border-white/5 md:border-none"><span className="md:hidden text-xs text-white font-bold">Base Imp.</span><span className="text-white font-bold text-lg">{formatEuro(fiscalData.micro.base)}</span></div>
-                                        <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-2 md:py-0"><span className="md:hidden text-xs text-amber-500 font-bold">Impôt Total</span><span className="text-amber-500 font-bold">{formatEuro(fiscalData.micro.total)}</span></div>
+                                        <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-1.5 md:py-0 border-b border-white/5 md:border-none"><span className="md:hidden text-[10px] text-white font-bold">Base Imp.</span><span className="text-white font-bold text-sm md:text-lg truncate">{formatEuro(fiscalData.micro.base)}</span></div>
+                                        <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-1.5 md:py-0"><span className="md:hidden text-xs text-amber-500 font-bold">Impôt</span><span className="text-amber-500 font-bold text-xs md:text-base truncate">{formatEuro(fiscalData.micro.total)}</span></div>
                                     </div>
                                 </div>
-                                {/* Colonne REEL */}
-                                <div className={`rounded-2xl p-6 border transition-all ${fiscalData.reel.total <= fiscalData.micro.total ? "bg-emerald-900/10 border-emerald-500/50" : "bg-black/20 border-white/5"}`}>
-                                    <h4 className="text-center font-bold text-white uppercase mb-6">Régime Réel</h4>
-                                    <div className="space-y-4 text-center font-mono text-sm">
-                                        <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-2 md:py-0 border-b border-white/5 md:border-none"><span className="md:hidden text-xs text-zinc-500">Recettes</span><span className="text-white">{formatEuro(Number(rent)*12)}</span></div>
-                                        <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-2 md:py-0 border-b border-white/5 md:border-none"><span className="md:hidden text-xs text-zinc-500">Charges</span><span className="text-zinc-300">-{formatEuro(fiscalData.reel.charges)}</span></div>
-                                        <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-2 md:py-0 border-b border-white/5 md:border-none"><span className="md:hidden text-xs text-blue-400">Intérêts</span><span className="text-blue-400 font-bold">-{formatEuro(Math.round(yearOneInterest))}</span></div>
-                                        <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-2 md:py-0 border-b border-white/5 md:border-none"><span className="md:hidden text-xs text-indigo-400">Amortissement</span><span className="text-indigo-400 font-bold">-{formatEuro(Math.round(fiscalData.reel.amortissement))}</span></div>
+                                {/* Colonne REEL - TEXTES RACCOURCIS */}
+                                <div className={`rounded-xl md:rounded-2xl p-4 md:p-6 border transition-all min-w-0 w-full ${fiscalData.reel.total <= fiscalData.micro.total ? "bg-emerald-900/10 border-emerald-500/50" : "bg-black/20 border-white/5"}`}>
+                                    <h4 className="text-center text-sm md:text-base font-bold text-white uppercase mb-4 md:mb-6">Régime Réel</h4>
+                                    <div className="space-y-3 md:space-y-4 text-center font-mono text-xs md:text-sm">
+                                        <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-1.5 md:py-0 border-b border-white/5 md:border-none"><span className="md:hidden text-[10px] text-zinc-500">Recettes</span><span className="text-white text-[10px] md:text-sm truncate">{formatEuro(Number(rent)*12)}</span></div>
+                                        <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-1.5 md:py-0 border-b border-white/5 md:border-none"><span className="md:hidden text-[10px] text-zinc-500">Charges</span><span className="text-zinc-300 text-[10px] md:text-sm truncate">-{formatEuro(fiscalData.reel.charges)}</span></div>
+                                        <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-1.5 md:py-0 border-b border-white/5 md:border-none"><span className="md:hidden text-[10px] text-blue-400">Intérêts</span><span className="text-blue-400 font-bold text-[10px] md:text-sm truncate">-{formatEuro(Math.round(yearOneInterest))}</span></div>
+                                        <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-1.5 md:py-0 border-b border-white/5 md:border-none"><span className="md:hidden text-[10px] text-indigo-400">Amort.</span><span className="text-indigo-400 font-bold text-[10px] md:text-sm truncate">-{formatEuro(Math.round(fiscalData.reel.amortissement))}</span></div>
                                         <div className="hidden md:block h-1 bg-white/5 my-2"></div>
-                                        <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-2 md:py-0 border-b border-white/5 md:border-none"><span className="md:hidden text-xs text-white font-bold">Base Imp.</span><span className="text-white font-bold text-lg">{fiscalData.reel.base === 0 ? "0 €" : formatEuro(fiscalData.reel.base)}</span></div>
-                                        <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-2 md:py-0"><span className="md:hidden text-xs text-amber-500 font-bold">Impôt Total</span><span className="text-amber-500 font-bold">{formatEuro(fiscalData.reel.total)}</span></div>
+                                        <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-1.5 md:py-0 border-b border-white/5 md:border-none"><span className="md:hidden text-[10px] text-white font-bold">Base Imp.</span><span className="text-white font-bold text-sm md:text-lg truncate">{fiscalData.reel.base === 0 ? "0 €" : formatEuro(fiscalData.reel.base)}</span></div>
+                                        <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-1.5 md:py-0"><span className="md:hidden text-xs text-amber-500 font-bold">Impôt</span><span className="text-amber-500 font-bold text-xs md:text-base truncate">{formatEuro(fiscalData.reel.total)}</span></div>
                                     </div>
                                 </div>
                             </div>
                         </PremiumCard>
                     ) : (
                         // --- MODE PLUS-VALUE (RP / RS) ---
-                        <PremiumCard color="emerald" className="p-10 bg-gradient-to-br from-[#0B0B0F] to-black border-emerald-500/20">
-                            <div className="flex items-center gap-4 mb-8">
-                                <div className="h-12 w-12 rounded-2xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center border border-emerald-500/30"><TrendingUp size={24}/></div>
+                        <PremiumCard color="emerald" className="p-6 md:p-10 bg-gradient-to-br from-[#0B0B0F] to-black border-emerald-500/20">
+                            <div className="flex items-center gap-3 md:gap-4 mb-6 md:mb-8">
+                                <div className="h-10 w-10 md:h-12 md:w-12 rounded-xl md:rounded-2xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center border border-emerald-500/30 shrink-0"><TrendingUp size={20} className="md:w-6 md:h-6"/></div>
                                 <div>
-                                    <h2 className="text-2xl font-black text-white uppercase tracking-tight">Plus-Value <span className="text-emerald-500">Immobilière</span></h2>
-                                    <p className="text-zinc-400 text-sm">Simulation à la revente (Régime des particuliers 2026)</p>
+                                    <h2 className="text-xl md:text-2xl font-black text-white uppercase tracking-tight truncate">Plus-Value</h2>
+                                    <p className="text-[10px] md:text-sm text-zinc-400 truncate">Simulation à la revente (Régime 2026)</p>
                                 </div>
                             </div>
 
                             {projectType === "RP" ? (
-                                <div className="p-10 rounded-3xl bg-gradient-to-br from-amber-900/20 via-zinc-900 to-black border border-amber-500/30 text-center relative overflow-hidden shadow-[0_0_50px_-10px_rgba(245,158,11,0.2)]">
+                                <div className="p-6 md:p-10 rounded-[24px] md:rounded-3xl bg-gradient-to-br from-amber-900/20 via-zinc-900 to-black border border-amber-500/30 text-center relative overflow-hidden shadow-[0_0_50px_-10px_rgba(245,158,11,0.2)]">
                                     <div className="absolute top-0 right-0 p-32 bg-amber-500/10 blur-[80px] rounded-full pointer-events-none"></div>
-                                    <div className="inline-flex p-4 rounded-full bg-amber-500/20 text-amber-400 mb-6 shadow-[0_0_30px_rgba(245,158,11,0.3)]">
-                                        <Crown size={40} />
+                                    <div className="inline-flex p-3 md:p-4 rounded-full bg-amber-500/20 text-amber-400 mb-4 md:mb-6 shadow-[0_0_30px_rgba(245,158,11,0.3)]">
+                                        <Crown size={32} className="md:w-10 md:h-10" />
                                     </div>
-                                    <h3 className="text-3xl font-black text-white uppercase mb-4 tracking-wide">Le Graal Fiscal : <span className="text-amber-400">Exonération Totale</span></h3>
-                                    <p className="text-sm text-zinc-300 max-w-2xl mx-auto leading-relaxed mb-8">
-                                        La plus-value sur Résidence Principale est <strong className="text-white">100% exonérée</strong> d'impôt et de prélèvements sociaux.
+                                    <h3 className="text-xl md:text-3xl font-black text-white uppercase mb-4 tracking-wide">Le Graal Fiscal : <br className="md:hidden"/><span className="text-amber-400">Exonération</span></h3>
+                                    <p className="text-xs md:text-sm text-zinc-300 max-w-2xl mx-auto leading-relaxed mb-6 md:mb-8">
+                                        La plus-value sur Résidence Principale est <strong className="text-white">100% exonérée</strong> d'impôt et de prélèvements.
                                     </p>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-2xl mx-auto text-left">
-                                        <div className="bg-black/50 p-6 rounded-2xl border border-white/5">
-                                            <div className="flex items-center gap-2 mb-4"><p className="text-[10px] text-zinc-500 font-bold uppercase">Prix Revente Estimé</p></div>
-                                            <Input type="number" value={resalePrice} onChange={e => handleInput(setResalePrice, e.target.value)} className="bg-transparent border-white/10 h-14 text-white font-black text-3xl px-0 focus-visible:ring-0 focus:border-amber-500"/>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6 max-w-2xl mx-auto text-left w-full min-w-0">
+                                        <div className="bg-black/50 p-4 md:p-6 rounded-2xl border border-white/5 w-full min-w-0">
+                                            <div className="flex items-center gap-2 mb-2 md:mb-4"><p className="text-[10px] text-zinc-500 font-bold uppercase">Prix Revente Estimé</p></div>
+                                            <Input type="number" value={resalePrice} onChange={e => handleInput(setResalePrice, e.target.value)} className="bg-transparent border-white/10 h-10 md:h-14 text-white font-black text-2xl md:text-3xl px-0 focus-visible:ring-0 focus:border-amber-500 w-full min-w-0"/>
                                         </div>
-                                        <div className="bg-black/50 p-6 rounded-2xl border border-amber-500/20 relative overflow-hidden">
-                                            <div className="absolute right-0 top-0 h-full w-2 bg-amber-500"></div>
+                                        <div className="bg-black/50 p-4 md:p-6 rounded-2xl border border-amber-500/20 relative overflow-hidden w-full min-w-0">
+                                            <div className="absolute right-0 top-0 h-full w-1 md:w-2 bg-amber-500"></div>
                                             <p className="text-[10px] text-amber-500 font-bold uppercase mb-2">Net Vendeur (Gain Brut)</p>
-                                            <p className="text-4xl font-black text-white">{formatEuro(Math.max(0, (Number(resalePrice)||0) - Number(price)))}</p>
-                                            <p className="text-xs text-zinc-500 mt-2 font-bold flex items-center gap-1"><CheckCircle size={12} className="text-emerald-500"/> 0€ d'impôt à payer</p>
+                                            <p className="text-2xl md:text-4xl font-black text-white truncate">{formatEuro(Math.max(0, (Number(resalePrice)||0) - Number(price)))}</p>
+                                            <p className="text-[10px] md:text-xs text-zinc-500 mt-2 font-bold flex items-center gap-1"><CheckCircle size={12} className="text-emerald-500"/> 0€ d'impôt</p>
                                         </div>
                                     </div>
                                 </div>
                             ) : (
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
-                                    <div className="p-8 bg-zinc-900/50 rounded-3xl border border-white/5 space-y-6">
-                                        <h4 className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-4">Paramètres de sortie</h4>
-                                        <div><label className="text-[10px] font-bold text-zinc-500 uppercase">Prix de Revente Estimé</label><Input type="number" value={resalePrice} onChange={e => handleInput(setResalePrice, e.target.value)} className="bg-black/40 border-white/10 h-14 text-white font-bold text-xl"/></div>
-                                        <PremiumSlider label="Années de détention" value={holdingYears} min={1} max={35} step={1} unit="ans" onChange={setHoldingYears}/>
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8 mb-4 md:mb-8 w-full min-w-0">
+                                    <div className="p-6 md:p-8 bg-zinc-900/50 rounded-[24px] md:rounded-3xl border border-white/5 space-y-4 md:space-y-6 w-full min-w-0">
+                                        <h4 className="text-[10px] md:text-xs font-bold text-zinc-500 uppercase tracking-widest mb-2 md:mb-4">Paramètres de sortie</h4>
+                                        <div><label className="text-[10px] font-bold text-zinc-500 uppercase">Prix Revente Estimé</label><Input type="number" value={resalePrice} onChange={e => handleInput(setResalePrice, e.target.value)} className="bg-black/40 border-white/10 h-12 md:h-14 text-white font-bold text-lg md:text-xl w-full min-w-0"/></div>
+                                        <PremiumSlider label="Années détention" value={holdingYears} min={1} max={35} step={1} unit="ans" onChange={setHoldingYears}/>
                                     </div>
-                                    <div className="p-8 bg-zinc-900/50 rounded-3xl border border-white/5 flex flex-col justify-center">
+                                    <div className="p-6 md:p-8 bg-zinc-900/50 rounded-[24px] md:rounded-3xl border border-white/5 flex flex-col justify-center w-full min-w-0">
                                         <div className="flex justify-between items-center mb-4 pb-4 border-b border-white/5">
-                                            <span className="text-xs font-bold text-zinc-400 uppercase flex items-center gap-2">Base Acquisition</span>
-                                            <span className="text-lg font-bold text-white">{formatEuro(capitalGainData.acquisitionPrice)}</span>
+                                            <span className="text-[10px] md:text-xs font-bold text-zinc-400 uppercase flex items-center gap-2">Base Acquisition</span>
+                                            <span className="text-base md:text-lg font-bold text-white truncate max-w-[50%]">{formatEuro(capitalGainData.acquisitionPrice)}</span>
                                         </div>
-                                        <div className="flex justify-between items-center mb-2"><span className="text-sm text-zinc-400">Plus-Value Brute</span><span className="text-xl font-bold text-white">{formatEuro(capitalGainData.grossGain)}</span></div>
-                                        <div className="flex justify-between items-center mb-8"><span className="text-sm text-zinc-400 flex items-center gap-2">Impôt Total (IR + PS)</span><span className={`text-xl font-bold ${capitalGainData.totalTax > 0 ? "text-red-500" : "text-emerald-500"}`}>-{formatEuro(capitalGainData.totalTax)}</span></div>
-                                        <div className="pt-6 border-t border-white/10"><span className="text-xs font-black uppercase tracking-[0.2em] text-emerald-500 block mb-2">NET VENDEUR</span><span className="text-5xl font-black text-white tracking-tighter">{formatEuro(capitalGainData.netGain)}</span></div>
+                                        <div className="flex justify-between items-center mb-2"><span className="text-xs md:text-sm text-zinc-400">Plus-Value Brute</span><span className="text-lg md:text-xl font-bold text-white truncate max-w-[50%]">{formatEuro(capitalGainData.grossGain)}</span></div>
+                                        <div className="flex justify-between items-center mb-6 md:mb-8"><span className="text-xs md:text-sm text-zinc-400 flex items-center gap-2">Impôt (IR + PS)</span><span className={`text-lg md:text-xl font-bold truncate max-w-[50%] ${capitalGainData.totalTax > 0 ? "text-red-500" : "text-emerald-500"}`}>-{formatEuro(capitalGainData.totalTax)}</span></div>
+                                        <div className="pt-4 md:pt-6 border-t border-white/10"><span className="text-[10px] md:text-xs font-black uppercase tracking-[0.2em] text-emerald-500 block mb-1 md:mb-2">NET VENDEUR</span><span className="text-3xl sm:text-4xl md:text-5xl font-black text-white tracking-tighter truncate max-w-full block">{formatEuro(capitalGainData.netGain)}</span></div>
                                     </div>
                                 </div>
                             )}
@@ -683,25 +692,25 @@ export default function SimulateurPage() {
 
           {mode === "PROJETS" && (
             <PremiumGuard isPro={isPro} title="Portefeuille de Projets" description="Sauvegardez vos simulations et générez des dossiers bancaires PDF illimités.">
-                <motion.div key="list" initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.98 }} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <motion.div key="list" initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.98 }} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 w-full min-w-0">
                     {savedSimulations.map((sim) => (
-                        <PremiumCard key={sim.id} className="p-6 group flex flex-col justify-between h-full">
+                        <PremiumCard key={sim.id} className="p-4 md:p-6 group flex flex-col justify-between h-full">
                             <div>
-                                <div className="flex justify-between items-start mb-4">
-                                    <div><h4 className="text-lg font-bold text-white mb-1">{sim.name}</h4><span className="text-[10px] bg-zinc-800 text-zinc-400 px-2 py-1 rounded uppercase tracking-wider">{sim.data.projectType} • {sim.data.rentalStrategy}</span></div>
-                                    <p className="text-[10px] text-zinc-600 font-mono">{new Date(sim.date).toLocaleDateString()}</p>
+                                <div className="flex justify-between items-start mb-3 md:mb-4">
+                                    <div className="min-w-0 pr-2"><h4 className="text-base md:text-lg font-bold text-white mb-1 truncate">{sim.name}</h4><span className="text-[9px] md:text-[10px] bg-zinc-800 text-zinc-400 px-2 py-1 rounded uppercase tracking-wider">{sim.data.projectType} • {sim.data.rentalStrategy}</span></div>
+                                    <p className="text-[9px] md:text-[10px] text-zinc-600 font-mono shrink-0">{new Date(sim.date).toLocaleDateString()}</p>
                                 </div>
-                                <div className="space-y-3 mb-6">
-                                    <div className="flex justify-between items-end border-b border-white/5 pb-2"><span className="text-xs text-zinc-500 font-bold uppercase">Cashflow</span><span className={`text-xl font-black ${sim.data.cashflowNetImpots > 0 ? "text-emerald-400" : "text-rose-500"}`}>{Math.round(sim.data.cashflowNetImpots)}€</span></div>
+                                <div className="space-y-3 mb-4 md:mb-6">
+                                    <div className="flex justify-between items-end border-b border-white/5 pb-2"><span className="text-[10px] md:text-xs text-zinc-500 font-bold uppercase">Cashflow</span><span className={`text-lg md:text-xl font-black ${sim.data.cashflowNetImpots > 0 ? "text-emerald-400" : "text-rose-500"}`}>{Math.round(sim.data.cashflowNetImpots)}€</span></div>
                                 </div>
                             </div>
-                            <div className="flex flex-col gap-2">
-                                <div className="flex gap-2">
-                                    <Button onClick={() => loadSimulation(sim)} className="flex-1 bg-white text-black hover:bg-zinc-200 h-10 rounded-xl text-xs font-bold uppercase shadow-lg"><MousePointerClick size={14} className="mr-2"/> Ouvrir</Button>
-                                    <Button onClick={() => prepareAndPrint(sim)} className="w-10 bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 h-10 rounded-xl"><Printer size={14}/></Button>
-                                    <Button onClick={() => deleteSimulation(sim.id)} className="w-10 bg-rose-500/10 text-rose-500 hover:bg-rose-500/20 h-10 rounded-xl"><Trash2 size={14}/></Button>
+                            <div className="flex flex-col gap-2 w-full min-w-0">
+                                <div className="flex gap-2 w-full">
+                                    <Button onClick={() => loadSimulation(sim)} className="flex-1 min-w-0 bg-white text-black hover:bg-zinc-200 h-10 rounded-xl text-[10px] md:text-xs font-bold uppercase shadow-lg"><MousePointerClick size={14} className="mr-1 md:mr-2 shrink-0"/><span className="truncate">Ouvrir</span></Button>
+                                    <Button onClick={() => prepareAndPrint(sim)} className="w-10 shrink-0 bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 h-10 rounded-xl"><Printer size={14}/></Button>
+                                    <Button onClick={() => deleteSimulation(sim.id)} className="w-10 shrink-0 bg-rose-500/10 text-rose-500 hover:bg-rose-500/20 h-10 rounded-xl"><Trash2 size={14}/></Button>
                                 </div>
-                                <Button onClick={() => importToPatrimoine(sim)} disabled={importingId === sim.id} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white h-10 rounded-xl text-xs font-bold uppercase shadow-lg shadow-emerald-900/20 transition-all">{importingId === sim.id ? "..." : <><Check size={14} className="mr-2"/> Valider cet investissement</>}</Button>
+                                <Button onClick={() => importToPatrimoine(sim)} disabled={importingId === sim.id} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white h-10 rounded-xl text-[10px] md:text-xs font-bold uppercase shadow-lg shadow-emerald-900/20 transition-all">{importingId === sim.id ? "..." : <><Check size={14} className="mr-1 md:mr-2 shrink-0"/> <span className="truncate">Valider cet investissement</span></>}</Button>
                             </div>
                         </PremiumCard>
                     ))}
