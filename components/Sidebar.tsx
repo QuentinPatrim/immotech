@@ -15,7 +15,7 @@ import { NexusLogo } from "@/components/NexusLogo";
 import { supabase } from "@/lib/supabaseClient";
 
 const menuItems = [
-  { name: "Dash", href: "/", icon: LayoutDashboard },
+  { name: "Dash", href: "/dashboard", icon: LayoutDashboard },
   { name: "Patrimoine", href: "/patrimoine", icon: Wallet },
   { name: "Budget", href: "/budget", icon: PieChart },
   { name: "Projets", href: "/projection", icon: TrendingUp },

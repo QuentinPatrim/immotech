@@ -35,8 +35,8 @@ export default function LoginPage() {
           }
         });
         if (error) throw error;
-        // Si succès, on connecte et on redirige
-        router.push("/");
+        // Si succès, on connecte et on redirige vers le dashboard
+        router.push("/dashboard");
       } else {
         // --- CONNEXION ---
         const { data, error } = await supabase.auth.signInWithPassword({
@@ -44,7 +44,8 @@ export default function LoginPage() {
           password,
         });
         if (error) throw error;
-        router.push("/");
+        // CORRECTION APPLIQUÉE ICI : Redirection vers le dashboard au lieu de la racine
+        router.push("/dashboard");
       }
     } catch (error: any) {
       setErrorMsg(error.message || "Une erreur est survenue.");

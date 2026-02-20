@@ -1,308 +1,211 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { TrendingUp, Wallet, ArrowUpRight, Lock, Building, PieChart, Calculator, Activity, Target, Settings } from "lucide-react";
-import AnimatedNumber from "@/components/AnimatedNumber";
-import Sidebar from "@/components/Sidebar";
-import { NexusLogo } from "@/components/NexusLogo"; 
+import Image from "next/image";
+import { ArrowRight, BarChart3, ShieldCheck, Sparkles, Building, BrainCircuit, ChevronRight, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { supabase } from "@/lib/supabaseClient";
-import OnboardingWizard from "@/components/OnboardingWizard"; 
-import NexusChat from "@/components/NexusChat"; 
+import { NexusLogo } from "@/components/NexusLogo"; // Assure-toi que ce chemin est correct
 
-// Helper pour formater les chiffres envoyés à l'IA
-const formatEuro = (val: number) => new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(val);
-
-const getNextMilestone = (current: number) => {
-  if (current < 10000) return 10000;
-  if (current < 50000) return 50000;
-  if (current < 100000) return 100000;
-  if (current < 250000) return 250000;
-  if (current < 500000) return 500000;
-  if (current < 1000000) return 1000000;
-  return Math.ceil((current + 1) / 1000000) * 1000000;
+const fadeIn = {
+  hidden: { opacity: 0, y: 20 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.6 } }
 };
 
-export default function Dashboard() {
-  const router = useRouter();
-  const [loading, setLoading] = useState(true);
-  const [userName, setUserName] = useState("Investisseur");
-  
-  // États Financiers
-  const [financialWealth, setFinancialWealth] = useState(0);
-  const [realEstateWealth, setRealEstateWealth] = useState(0);
-  const [totalNetWorth, setTotalNetWorth] = useState(0);
-  const [monthlySavings, setMonthlySavings] = useState(0);
-  const [savingsRate, setSavingsRate] = useState(0);
-  const [milestone, setMilestone] = useState(10000);
-  
-  // États UX / Premium
-  const [isNewUser, setIsNewUser] = useState(false);
-  const [showOnboarding, setShowOnboarding] = useState(false);
-  const [isPro, setIsPro] = useState(false); 
-  const [aiContext, setAiContext] = useState<any>(null); 
+const staggerContainer = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: { staggerChildren: 0.2 }
+  }
+};
 
-  const fetchData = useCallback(async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) { router.push("/login"); return; }
-
-    if (session?.user) {
-      if (session.user.user_metadata?.full_name) {
-          setUserName(session.user.user_metadata.full_name.split(' ')[0]);
-      }
-
-      const hasCompletedOnboarding = session.user.user_metadata?.onboarding_complete === true;
-      setShowOnboarding(!hasCompletedOnboarding);
-
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('is_pro, assets_json, budget_json')
-        .eq('id', session.user.id)
-        .maybeSingle();
-      
-      let hasAssets = false;
-      let total = 0;
-      let savings = 0;
-
-      let currentIncome = 0;
-      let currentExpenses = 0;
-      let hasBudget = false;
-
-      // Variables pour construire le cerveau de l'IA
-      let cash = 0;
-      let crypto = 0;
-      let stock = 0;
-      let financial = 0; 
-      let realEstate = 0;
-
-      if (profile) {
-          setIsPro(profile.is_pro === true);
-
-          if (Array.isArray(profile.assets_json) && profile.assets_json.length > 0) {
-              hasAssets = true;
-              profile.assets_json.forEach((asset: any) => {
-                  const val = Number(asset.value) || 0;
-                  if (asset.type === "Immobilier") { 
-                      realEstate += val; 
-                  } else { 
-                      financial += val; 
-                      if (asset.type === "Cash") cash += val;
-                      if (asset.type === "Crypto") crypto += val;
-                      if (asset.type === "Bourse") stock += val;
-                  }
-              });
-          }
-          total = financial + realEstate;
-          setFinancialWealth(financial); 
-          setRealEstateWealth(realEstate); 
-          setTotalNetWorth(total); 
-          setMilestone(getNextMilestone(total));
-      }
-
-      const now = new Date();
-      const startOfMonth = new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1)).toISOString().split('T')[0];
-      const { data: currentMonthHistory } = await supabase.from('monthly_history').select('*').eq('user_id', session.user.id).eq('month', startOfMonth).maybeSingle();
-
-      if (currentMonthHistory) {
-          currentIncome = Number(currentMonthHistory.income) || 0;
-          currentExpenses = Number(currentMonthHistory.expenses) || 0;
-          hasBudget = true;
-      } else if (profile && profile.budget_json) {
-          const b = profile.budget_json as any;
-          currentIncome = Number(b.income) || 0;
-          if (Array.isArray(b.details)) {
-              currentExpenses = b.details.reduce((acc: number, item: any) => acc + (Number(item.amount) || 0), 0);
-          } else {
-              currentExpenses = Number(b.expenses) || 0;
-          }
-          if (currentIncome > 0) hasBudget = true;
-      }
-
-      savings = Math.max(0, currentIncome - currentExpenses);
-      setMonthlySavings(savings);
-      setSavingsRate(currentIncome > 0 ? (savings / currentIncome) * 100 : 0);
-
-      if (profile) {
-          setAiContext({
-            patrimoine: {
-              total: formatEuro(total),
-              repartition: `Immobilier ${total > 0 ? ((realEstate/total)*100).toFixed(0) : 0}%, Bourse ${total > 0 ? ((stock/total)*100).toFixed(0) : 0}%, Crypto ${total > 0 ? ((crypto/total)*100).toFixed(0) : 0}%, Cash ${total > 0 ? ((cash/total)*100).toFixed(0) : 0}%`,
-              liste_des_actifs: profile.assets_json || [] 
-            },
-            budget_mensuel: {
-              revenus_totaux: formatEuro(currentIncome),
-              depenses_totales: formatEuro(currentExpenses),
-              cashflow_epargne: formatEuro(savings),
-              details_des_depenses: (profile.budget_json as any)?.details || []
-            }
-          });
-      }
-
-      if (hasCompletedOnboarding && !hasAssets && !hasBudget) {
-          setIsNewUser(true);
-      } else {
-          setIsNewUser(false);
-      }
-    }
-    setLoading(false);
-  }, [router]);
-
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
-
-  if (loading) return <div className="min-h-screen bg-[#050505]" />;
-
+export default function LandingPage() {
   return (
-    <div className="min-h-screen bg-[#050505] text-zinc-100 font-sans selection:bg-emerald-500/30 selection:text-emerald-200 relative">
-      <Sidebar />
+    <div className="min-h-screen bg-[#030303] text-zinc-100 font-sans selection:bg-indigo-500/30 overflow-x-hidden">
+      
+      {/* --- NAVBAR --- */}
+      <nav className="fixed top-0 left-0 right-0 z-50 border-b border-white/5 bg-black/50 backdrop-blur-xl">
+        <div className="max-w-7xl mx-auto px-6 h-16 md:h-20 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 shrink-0">
+                <NexusLogo className="w-full h-full" />
+            </div>
+            <span className="text-xl md:text-2xl font-black tracking-tighter uppercase">Nexus</span>
+          </div>
+          <div className="flex items-center gap-4">
+            <Link href="/login" className="text-sm font-bold text-zinc-400 hover:text-white transition-colors hidden sm:block">
+              Se connecter
+            </Link>
+            <Link href="/login">
+              <Button className="bg-white text-black hover:bg-zinc-200 font-bold rounded-full px-4 md:px-6 shadow-[0_0_20px_rgba(255,255,255,0.2)]">
+                Démarrer <ArrowRight size={16} className="ml-2 hidden sm:block" />
+              </Button>
+            </Link>
+          </div>
+        </div>
+      </nav>
 
-      {showOnboarding && <OnboardingWizard onFinish={() => { setShowOnboarding(false); fetchData(); }} />}
+      {/* --- HERO SECTION --- */}
+      <section className="relative pt-32 pb-20 md:pt-48 md:pb-32 px-6">
+        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[600px] h-[600px] bg-indigo-600/20 rounded-full blur-[120px] pointer-events-none -z-10"></div>
+        <div className="absolute top-1/3 left-1/4 w-[500px] h-[500px] bg-emerald-600/10 rounded-full blur-[120px] pointer-events-none -z-10"></div>
 
-      <main className="md:ml-64 flex-1 w-auto max-w-full p-4 pt-6 pb-24 md:p-8 relative overflow-hidden">
-        
-        <div className="fixed top-0 left-64 w-[500px] h-[500px] bg-emerald-900/10 rounded-full blur-[120px] pointer-events-none"></div>
-        <div className="fixed bottom-0 right-0 w-[500px] h-[500px] bg-blue-900/10 rounded-full blur-[120px] pointer-events-none"></div>
-
-        <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} className="max-w-[1800px] mx-auto space-y-8 md:space-y-12 relative z-10">
+        <motion.div initial="hidden" animate="visible" variants={staggerContainer} className="max-w-5xl mx-auto text-center space-y-8">
+          <motion.div variants={fadeIn} className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-xs font-bold text-zinc-300 uppercase tracking-widest backdrop-blur-md mb-4">
+            <Sparkles size={14} className="text-emerald-400" /> La nouvelle ère de l'investissement
+          </motion.div>
           
-          <header className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 border-l-4 border-emerald-500 pl-4 md:pl-6 py-2">
-            <div>
-                <div className="flex items-center gap-3 mb-5 md:hidden">
-                    <div className="w-12 h-12 min-w-[3rem] min-h-[3rem]"><NexusLogo className="w-full h-full" /></div>
-                    <span className="text-2xl font-black text-white tracking-tighter uppercase font-sans opacity-90">NEXUS</span>
-                </div>
-                <p className="text-zinc-500 text-[10px] md:text-xs font-bold uppercase tracking-[0.2em] mb-1 md:mb-2">VUE D'ENSEMBLE</p>
-                <h1 className="text-3xl sm:text-4xl md:text-6xl font-black text-white tracking-tighter uppercase break-words">
-                    Bonjour, <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-teal-500">{userName}</span>
-                </h1>
-            </div>
-            
-            <div className="flex items-center gap-3 md:gap-4 w-full md:w-auto">
-                {!isNewUser && (
-                    <div className="bg-zinc-900/50 backdrop-blur-md p-3 md:p-4 rounded-[20px] md:rounded-2xl border border-white/5 shadow-xl flex-1 md:flex-none">
-                        <p className="text-[9px] md:text-[10px] text-zinc-400 font-bold uppercase tracking-wider mb-1 flex items-center gap-2"><Wallet size={12} className="text-emerald-500"/> Patrimoine Net</p>
-                        <div className="text-2xl md:text-3xl font-black text-white tracking-tight"><AnimatedNumber value={totalNetWorth}/></div>
-                    </div>
-                )}
-                <Link href="/parametres" className="h-14 w-14 md:h-20 md:w-20 rounded-[20px] md:rounded-2xl bg-zinc-900/50 border border-white/5 flex shrink-0 items-center justify-center text-zinc-400 hover:text-white hover:bg-zinc-800 transition-all shadow-xl backdrop-blur-md group">
-                    <Settings className="w-6 h-6 md:w-7 md:h-7 group-hover:rotate-90 transition-transform duration-500"/>
-                </Link>
-            </div>
-          </header>
-
-          {isNewUser ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-12">
-                  <Link href="/patrimoine" className="group">
-                      <div className="h-full p-12 rounded-[32px] bg-zinc-900/40 border border-white/5 hover:border-emerald-500/30 transition-all cursor-pointer relative overflow-hidden backdrop-blur-xl">
-                          <div className="absolute top-0 right-0 p-40 bg-emerald-500/5 blur-[80px] rounded-full group-hover:bg-emerald-500/10 transition-all"></div>
-                          <div className="relative z-10 flex flex-col items-center text-center space-y-6">
-                              <div className="h-24 w-24 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-500 border border-emerald-500/20 shadow-[0_0_30px_rgba(16,185,129,0.2)]"><Wallet size={40} /></div>
-                              <div>
-                                  <h2 className="text-3xl font-black text-white uppercase tracking-wide mb-2">1. Initialisation</h2>
-                                  <p className="text-zinc-400 text-sm max-w-xs mx-auto font-light">Connectez vos actifs pour calibrer le moteur Nexus.</p>
-                              </div>
-                              <Button className="bg-emerald-500 hover:bg-emerald-400 text-black font-bold rounded-full px-10 py-6 text-lg">Ajouter des actifs <ArrowUpRight className="ml-2" size={20}/></Button>
-                          </div>
-                      </div>
-                  </Link>
-                  <Link href="/budget" className="group">
-                      <div className="h-full p-12 rounded-[32px] bg-zinc-900/40 border border-white/5 hover:border-yellow-500/30 transition-all cursor-pointer relative overflow-hidden backdrop-blur-xl">
-                          <div className="absolute top-0 right-0 p-40 bg-yellow-500/5 blur-[80px] rounded-full group-hover:bg-yellow-500/10 transition-all"></div>
-                          <div className="relative z-10 flex flex-col items-center text-center space-y-6">
-                              <div className="h-24 w-24 rounded-full bg-yellow-500/10 flex items-center justify-center text-yellow-500 border border-yellow-500/20 shadow-[0_0_30px_rgba(234,179,8,0.2)]"><PieChart size={40} /></div>
-                              <div>
-                                  <h2 className="text-3xl font-black text-white uppercase tracking-wide mb-2">2. Calibration Flux</h2>
-                                  <p className="text-zinc-400 text-sm max-w-xs mx-auto font-light">Définissez vos revenus pour calculer votre capacité réelle.</p>
-                              </div>
-                              <Button className="bg-yellow-500 hover:bg-yellow-400 text-black font-bold rounded-full px-10 py-6 text-lg">Configurer Budget <ArrowUpRight className="ml-2" size={20}/></Button>
-                          </div>
-                      </div>
-                  </Link>
-              </div>
-          ) : (
-            <>
-              {/* CHAGEMENT ICI : La grille Bento Box pour mobile (grid-cols-2) et desktop (lg:grid-cols-2) */}
-              <div className="grid grid-cols-2 lg:grid-cols-2 gap-3 md:gap-8">
-                <Link href="/patrimoine" className="group h-full">
-                    <div className="relative overflow-hidden rounded-[24px] md:rounded-[40px] border border-white/5 bg-zinc-900/40 backdrop-blur-md p-4 md:p-10 h-full transition-all duration-500 hover:border-emerald-500/30 hover:bg-zinc-900/60 shadow-2xl flex flex-col justify-between min-h-[150px] md:min-h-[220px]">
-                        <div className="relative z-10 flex flex-col justify-between h-full">
-                            <div className="flex justify-between items-start mb-6 md:mb-10">
-                                <div className="flex flex-col md:flex-row items-start md:items-center gap-3 md:gap-4">
-                                    <div className="h-10 w-10 md:h-14 md:w-14 rounded-xl md:rounded-2xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center border border-emerald-500/20 shadow-lg"><Wallet className="w-5 h-5 md:w-6 md:h-6"/></div>
-                                    <div><span className="text-white font-black text-sm md:text-xl tracking-wide uppercase block">Financier</span><span className="text-[9px] md:text-xs text-zinc-500 font-mono hidden md:block">LIQUIDITÉ & BOURSE</span></div>
-                                </div>
-                                <div className="hidden md:flex h-10 w-10 rounded-full border border-white/10 items-center justify-center text-zinc-500 group-hover:text-white transition-colors"><ArrowUpRight size={18}/></div>
-                            </div>
-                            <div><div className="text-2xl sm:text-3xl md:text-6xl lg:text-7xl font-black text-white tracking-tighter mb-2 md:mb-3 group-hover:translate-x-2 transition-transform"><AnimatedNumber value={financialWealth} /></div><div className="h-1 w-12 md:w-24 bg-emerald-500 rounded-full group-hover:w-full transition-all duration-700 ease-out"></div></div>
-                        </div>
-                    </div>
-                </Link>
-                <Link href="/patrimoine" className="group h-full">
-                    <div className="relative overflow-hidden rounded-[24px] md:rounded-[40px] border border-white/5 bg-zinc-900/40 backdrop-blur-md p-4 md:p-10 h-full transition-all duration-500 hover:border-blue-500/30 hover:bg-zinc-900/60 shadow-2xl flex flex-col justify-between min-h-[150px] md:min-h-[220px]">
-                        <div className="relative z-10 flex flex-col justify-between h-full">
-                            <div className="flex justify-between items-start mb-6 md:mb-10">
-                                <div className="flex flex-col md:flex-row items-start md:items-center gap-3 md:gap-4">
-                                    <div className="h-10 w-10 md:h-14 md:w-14 rounded-xl md:rounded-2xl bg-blue-500/10 text-blue-500 flex items-center justify-center border border-blue-500/20 shadow-lg"><Building className="w-5 h-5 md:w-6 md:h-6"/></div>
-                                    <div><span className="text-white font-black text-sm md:text-xl tracking-wide uppercase block">Immobilier</span><span className="text-[9px] md:text-xs text-zinc-500 font-mono hidden md:block">PIERRE & SCPI</span></div>
-                                </div>
-                                <div className="hidden md:flex h-10 w-10 rounded-full border border-white/10 items-center justify-center text-zinc-500 group-hover:text-white transition-colors"><ArrowUpRight size={18}/></div>
-                            </div>
-                            <div><div className="text-2xl sm:text-3xl md:text-6xl lg:text-7xl font-black text-white tracking-tighter mb-2 md:mb-3 group-hover:translate-x-2 transition-transform"><AnimatedNumber value={realEstateWealth} /></div><div className="h-1 w-12 md:w-24 bg-blue-500 rounded-full group-hover:w-full transition-all duration-700 ease-out"></div></div>
-                        </div>
-                    </div>
-                </Link>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-8">
-                <Link href="/budget" className="group md:col-span-1">
-                    <div className="p-6 md:p-8 rounded-[24px] md:rounded-[32px] bg-zinc-900/40 backdrop-blur-md border border-white/5 hover:border-yellow-500/30 transition-all h-full flex flex-col justify-center relative overflow-hidden shadow-xl">
-                        <div className="relative z-10">
-                            <div className="flex justify-between items-center mb-6 md:mb-8"><p className="text-[10px] md:text-xs font-bold text-zinc-400 uppercase flex items-center gap-2 tracking-widest"><Activity size={14} className="text-yellow-500"/> Flux Mensuel</p><span className="text-[9px] md:text-[10px] font-black px-2 md:px-3 py-1 rounded-full bg-yellow-500/10 text-yellow-500">{savingsRate.toFixed(0)}% TAUX</span></div>
-                            <div className="text-4xl md:text-5xl font-black text-white tracking-tighter">+<AnimatedNumber value={monthlySavings}/></div>
-                            <p className="text-[10px] md:text-xs text-zinc-500 mt-2 font-medium">Épargne disponible ce mois-ci</p>
-                        </div>
-                    </div>
-                </Link>
-                <div className="md:col-span-2 p-6 md:p-8 rounded-[24px] md:rounded-[32px] bg-zinc-900/40 backdrop-blur-md border border-white/5 flex flex-col justify-center relative overflow-hidden shadow-xl group">
-                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-500 via-blue-500 to-purple-500 opacity-30 group-hover:opacity-60 transition-opacity"></div>
-                    <div className="flex flex-row justify-between items-end mb-6 md:mb-8 gap-4">
-                        <div><p className="text-[10px] md:text-xs font-bold text-purple-400 uppercase mb-2 md:mb-3 tracking-[0.2em] flex items-center gap-2"><Target size={14}/> Prochain Palier</p><div className="text-3xl sm:text-4xl md:text-5xl lg:text-5xl font-black text-white tracking-tighter"><AnimatedNumber value={milestone}/></div></div>
-                        <div className="text-right"><span className="text-4xl md:text-6xl font-black text-white/10 group-hover:text-white/20 transition-colors">{milestone > 0 ? ((totalNetWorth / milestone) * 100).toFixed(0) : 0}%</span></div>
-                    </div>
-                    <div className="h-3 md:h-4 w-full bg-black/50 rounded-full overflow-hidden border border-white/5 p-[2px]"><motion.div initial={{ width: 0 }} animate={{ width: `${Math.min(100, (totalNetWorth / milestone) * 100)}%` }} transition={{ duration: 1.5, ease: "circOut" }} className="h-full bg-gradient-to-r from-purple-600 to-blue-500 rounded-full" /></div>
-                </div>
-              </div>
-
-              <div>
-                <h3 className="text-[10px] md:text-xs font-bold text-zinc-500 uppercase tracking-[0.2em] mb-4 md:mb-6 pl-2">Accès Rapide</h3>
-                {/* CHANGEMENT ICI : La grille accès rapide passe en 2x2 sur mobile */}
-                <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
-                    {[{ href: "/projection", label: "Projection", sub: "Futur & Intérêts", icon: TrendingUp, color: "text-purple-400", bg: "bg-purple-500/10", border: "hover:border-purple-500/30" }, { href: "/simulateur", label: "Simulateur Immo", sub: "Rentabilité", icon: Calculator, color: "text-blue-400", bg: "bg-blue-500/10", border: "hover:border-blue-500/30" }, { href: "/budget", label: "Mon Budget", sub: "Flux mensuels", icon: PieChart, color: "text-yellow-400", bg: "bg-yellow-500/10", border: "hover:border-yellow-500/30" },].map((item) => (
-                        <Link key={item.href} href={item.href} className={`p-4 md:p-6 rounded-[20px] md:rounded-[24px] bg-zinc-900/40 border border-white/5 ${item.border} hover:bg-zinc-900/60 transition-all flex flex-col md:flex-row items-start md:items-center gap-3 md:gap-5 group backdrop-blur-sm`}>
-                            <div className={`h-10 w-10 md:h-14 md:w-14 rounded-xl md:rounded-2xl ${item.bg} ${item.color} flex items-center justify-center group-hover:scale-110 transition-transform shadow-inner`}><item.icon className="w-5 h-5 md:w-6 md:h-6"/></div>
-                            <div><p className="font-bold text-white text-sm md:text-base tracking-wide">{item.label}</p><p className="text-[9px] md:text-xs text-zinc-500">{item.sub}</p></div>
-                        </Link>
-                    ))}
-                    
-                    <div onClick={() => {}} className="relative p-4 md:p-6 rounded-[20px] md:rounded-[24px] bg-indigo-900/20 border border-indigo-500/30 hover:bg-indigo-900/40 transition-all cursor-pointer flex flex-col md:flex-row items-start md:items-center gap-3 md:gap-5 overflow-hidden group">
-                        <div className="h-10 w-10 md:h-14 md:w-14 rounded-xl md:rounded-2xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center shadow-inner group-hover:scale-110 transition-transform"><Activity className="w-5 h-5 md:w-6 md:h-6"/></div>
-                        <div><p className="font-bold text-white text-sm md:text-base">CFO Assistant</p><p className="text-[9px] md:text-xs text-indigo-300">Chat avec l'IA</p></div>
-                    </div>
-                </div>
-              </div>
-            </>
-          )}
-
-          {!isNewUser && aiContext && (
-             <NexusChat isPro={isPro} financialData={aiContext} />
-          )}
-
+          <motion.h1 variants={fadeIn} className="text-5xl sm:text-7xl md:text-8xl font-black tracking-tighter leading-[1.1]">
+            Reprenez le contrôle <br className="hidden md:block" />
+            de votre <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 via-teal-400 to-indigo-500">patrimoine.</span>
+          </motion.h1>
+          
+          <motion.p variants={fadeIn} className="text-lg md:text-2xl text-zinc-400 max-w-2xl mx-auto font-light leading-relaxed">
+            Le tableau de bord ultime pour les investisseurs exigeants. Suivi 360°, simulateurs immobiliers avancés et intelligence artificielle fiscale.
+          </motion.p>
+          
+          <motion.div variants={fadeIn} className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-8">
+            <Link href="/login" className="w-full sm:w-auto">
+              <Button className="w-full sm:w-auto h-14 px-8 text-base bg-emerald-500 hover:bg-emerald-400 text-black font-black uppercase tracking-wide rounded-2xl shadow-[0_0_40px_rgba(16,185,129,0.3)] transition-all hover:scale-105">
+                Créer mon compte gratuit
+              </Button>
+            </Link>
+            <Link href="#features" className="w-full sm:w-auto">
+              <Button variant="outline" className="w-full sm:w-auto h-14 px-8 text-base border-white/10 hover:bg-white/5 text-white font-bold rounded-2xl backdrop-blur-md">
+                Découvrir l'outil <ChevronRight size={18} className="ml-2" />
+              </Button>
+            </Link>
+          </motion.div>
         </motion.div>
-      </main>
+      </section>
+
+      {/* --- MOCKUP FUTURISTE --- */}
+      <section className="px-6 pb-20 md:pb-32">
+        <motion.div 
+          initial={{ opacity: 0, y: 40 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.8 }}
+          className="max-w-6xl mx-auto rounded-[32px] md:rounded-[48px] border border-white/10 bg-[#0A0A0C] p-2 md:p-4 shadow-2xl relative overflow-hidden"
+        >
+          {/* Fausse barre de menu Mac */}
+          <div className="flex gap-2 p-3 md:p-4 border-b border-white/5 bg-black/40 relative z-10">
+            <div className="w-3 h-3 rounded-full bg-red-500/80"></div>
+            <div className="w-3 h-3 rounded-full bg-amber-500/80"></div>
+            <div className="w-3 h-3 rounded-full bg-emerald-500/80"></div>
+          </div>
+          
+          <div className="aspect-video bg-black rounded-b-[24px] md:rounded-b-[40px] relative overflow-hidden group">
+             {/* VRAIE IMAGE FINTECH SOMBRE ET FONCTIONNELLE */}
+             <Image 
+                src="https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?q=80&w=2560&auto=format&fit=crop" 
+                alt="Aperçu du Dashboard Nexus Futuriste" 
+                fill
+                className="object-cover opacity-70 group-hover:opacity-100 transition-opacity duration-700 scale-100 group-hover:scale-105 transition-transform"
+             />
+             
+             {/* Filtre pour assombrir le bas de l'image et la fondre dans le site */}
+             <div className="absolute inset-0 bg-gradient-to-t from-[#030303] via-[#030303]/20 to-transparent pointer-events-none"></div>
+             <div className="absolute inset-0 shadow-[inset_0_0_100px_rgba(0,0,0,0.8)] pointer-events-none rounded-b-[24px] md:rounded-b-[40px]"></div>
+          </div>
+        </motion.div>
+      </section>
+
+      {/* --- FEATURES BENTO BOX --- */}
+      <section id="features" className="py-20 md:py-32 px-6 bg-black relative">
+        <div className="max-w-7xl mx-auto space-y-16">
+          <div className="text-center space-y-4">
+            <h2 className="text-3xl md:text-5xl font-black uppercase tracking-tight">L'arsenal <span className="text-indigo-400">Complet</span></h2>
+            <p className="text-zinc-400 text-lg max-w-2xl mx-auto">Remplacez vos 15 fichiers Excel par un terminal de contrôle unique, conçu pour la performance.</p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="md:col-span-2 p-8 md:p-12 rounded-[32px] bg-zinc-900/50 border border-white/5 hover:border-white/10 transition-all group overflow-hidden relative">
+              <div className="absolute -right-20 -bottom-20 w-64 h-64 bg-emerald-500/10 blur-[60px] group-hover:bg-emerald-500/20 transition-all"></div>
+              <BarChart3 size={32} className="text-emerald-400 mb-6" />
+              <h3 className="text-2xl md:text-3xl font-black text-white mb-4">Vision Patrimoniale 360°</h3>
+              <p className="text-zinc-400 leading-relaxed max-w-md">Synchronisez vos actifs immobiliers, boursiers, cryptos et livrets. Suivez votre Net Worth en temps réel et analysez votre diversification comme un Family Office.</p>
+            </div>
+
+            <div className="p-8 md:p-12 rounded-[32px] bg-zinc-900/50 border border-white/5 hover:border-white/10 transition-all group overflow-hidden relative">
+              <div className="absolute -right-20 -top-20 w-64 h-64 bg-blue-500/10 blur-[60px] group-hover:bg-blue-500/20 transition-all"></div>
+              <Building size={32} className="text-blue-400 mb-6" />
+              <h3 className="text-2xl font-black text-white mb-4">Simulateur Immo PRO</h3>
+              <p className="text-zinc-400 leading-relaxed">Générez des dossiers bancaires PDF en un clic. Calculez votre cashflow net d'impôts et simulez la fiscalité LMNP vs Nue instantanément.</p>
+            </div>
+
+            <div className="p-8 md:p-12 rounded-[32px] bg-zinc-900/50 border border-white/5 hover:border-white/10 transition-all group overflow-hidden relative">
+               <div className="absolute -left-20 -bottom-20 w-64 h-64 bg-indigo-500/10 blur-[60px] group-hover:bg-indigo-500/20 transition-all"></div>
+              <BrainCircuit size={32} className="text-indigo-400 mb-6" />
+              <h3 className="text-2xl font-black text-white mb-4">Analyses IA</h3>
+              <p className="text-zinc-400 leading-relaxed">Un expert fiscal dans votre poche. Notre IA analyse votre profil et vous suggère des stratégies d'optimisation (PEA vs CTO, Assurance Vie).</p>
+            </div>
+
+            <div className="md:col-span-2 p-8 md:p-12 rounded-[32px] bg-zinc-900/50 border border-white/5 hover:border-white/10 transition-all group overflow-hidden relative">
+              <div className="absolute top-1/2 right-10 -translate-y-1/2 w-64 h-64 bg-yellow-500/10 blur-[60px] group-hover:bg-yellow-500/20 transition-all"></div>
+              <ShieldCheck size={32} className="text-yellow-400 mb-6" />
+              <h3 className="text-2xl md:text-3xl font-black text-white mb-4">Budget & Cashflow Sécurisé</h3>
+              <p className="text-zinc-400 leading-relaxed max-w-md">Paramétrez vos flux mensuels, calculez votre capacité d'investissement et sécurisez votre matelas de précaution de manière automatisée.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* --- PRICING --- */}
+      <section id="pricing" className="py-20 md:py-32 px-6">
+        <div className="max-w-5xl mx-auto">
+          <div className="text-center space-y-4 mb-16">
+            <h2 className="text-3xl md:text-5xl font-black uppercase tracking-tight">Investissez en vous.</h2>
+            <p className="text-zinc-400 text-lg">Des tarifs simples, rentabilisés dès la première optimisation fiscale.</p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+            <div className="p-8 md:p-10 rounded-[32px] bg-zinc-900/30 border border-white/10 flex flex-col">
+              <h3 className="text-xl font-bold text-zinc-300 uppercase tracking-widest mb-2">Essentiel</h3>
+              <div className="text-4xl font-black text-white mb-6">Gratuit</div>
+              <ul className="space-y-4 mb-8 flex-1">
+                <li className="flex items-center gap-3 text-zinc-300"><Check size={18} className="text-emerald-500" /> Suivi de Patrimoine (Manquant)</li>
+                <li className="flex items-center gap-3 text-zinc-300"><Check size={18} className="text-emerald-500" /> Gestion de Budget</li>
+                <li className="flex items-center gap-3 text-zinc-300"><Check size={18} className="text-emerald-500" /> Simulateur Immo (Basique)</li>
+              </ul>
+              <Link href="/login">
+                <Button variant="outline" className="w-full h-12 rounded-xl border-white/10 hover:bg-white/5 text-white font-bold">Commencer</Button>
+              </Link>
+            </div>
+
+            <div className="p-8 md:p-10 rounded-[32px] bg-gradient-to-b from-indigo-900/20 to-black border border-indigo-500/50 shadow-[0_0_50px_rgba(99,102,241,0.1)] flex flex-col relative overflow-hidden">
+              <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-emerald-400 via-indigo-500 to-purple-500"></div>
+              <div className="absolute top-6 right-6 bg-indigo-500/20 text-indigo-300 text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full border border-indigo-500/30">Populaire</div>
+              
+              <h3 className="text-xl font-bold text-indigo-400 uppercase tracking-widest mb-2">Nexus Premium</h3>
+              <div className="text-4xl font-black text-white mb-1">1,99 € <span className="text-lg text-zinc-500 font-normal">/mois</span></div>
+              <p className="text-sm text-zinc-400 mb-6">Sans engagement. Rentabilisé au 1er euro.</p>
+              
+              <ul className="space-y-4 mb-8 flex-1">
+                <li className="flex items-center gap-3 text-zinc-100 font-medium"><Check size={18} className="text-indigo-400" /> Tout le plan Gratuit</li>
+                <li className="flex items-center gap-3 text-zinc-100 font-medium"><Check size={18} className="text-indigo-400" /> Projections Financières sur 40 ans</li>
+                <li className="flex items-center gap-3 text-zinc-100 font-medium"><Check size={18} className="text-indigo-400" /> Matrice Fiscale LMNP / SCI / Nue</li>
+                <li className="flex items-center gap-3 text-zinc-100 font-medium"><Check size={18} className="text-indigo-400" /> Dossiers Bancaires PDF Illimités</li>
+                <li className="flex items-center gap-3 text-zinc-100 font-medium"><Check size={18} className="text-indigo-400" /> Intelligence Artificielle Débloquée</li>
+              </ul>
+              <Link href="/login">
+                <Button className="w-full h-12 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold shadow-lg shadow-indigo-900/20">Devenir Premium</Button>
+              </Link>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* --- FOOTER --- */}
+      <footer className="border-t border-white/5 py-12 px-6 text-center text-zinc-500 text-sm">
+        <div className="flex items-center justify-center gap-2 mb-4">
+            <div className="w-6 h-6 shrink-0">
+                <NexusLogo className="w-full h-full" />
+            </div>
+            <span className="font-black tracking-widest uppercase text-white">Nexus</span>
+        </div>
+        <p>© 2026 Nexus Wealth Management. Tous droits réservés.</p>
+        <p className="mt-2 text-xs">Conçu pour les investisseurs déterminés.</p>
+      </footer>
+
     </div>
   );
 }
