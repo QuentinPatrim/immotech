@@ -386,9 +386,10 @@ export default function SimulateurPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#020202] text-zinc-100 font-sans pb-24 md:pb-8 selection:bg-indigo-500/30 selection:text-indigo-200 overflow-x-hidden w-full max-w-[100vw]">
+    <div className="min-h-screen bg-[#020202] text-zinc-100 font-sans pb-24 md:pb-8 selection:bg-indigo-500/30 selection:text-indigo-200 overflow-x-hidden">
       <Sidebar />
-      <main className="md:ml-64 flex-1 w-full max-w-[100vw] md:max-w-none p-4 md:p-8 relative overflow-x-hidden">
+      {/* CORRECTION : Remplacement de w-full par md:w-auto min-w-0 */}
+      <main className="md:ml-64 flex-1 w-full md:w-auto min-w-0 p-4 md:p-8 relative overflow-x-hidden">
         
         <DossierBancaire refProp={componentRef} data={printData} />
 
@@ -400,7 +401,6 @@ export default function SimulateurPage() {
           <div className="flex flex-col xl:flex-row justify-between items-start xl:items-end gap-6 md:gap-8 pl-4 md:pl-2 border-l-4 border-indigo-600 py-2 max-w-full">
             <div><h1 className="text-3xl md:text-5xl font-black text-white tracking-tight uppercase">Mon <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-400">Simulateur</span></h1></div>
             
-            {/* CHANGEMENT ICI : Le menu passe en grille 2x2 (Bento Box) sur mobile et reste en ligne sur ordinateur */}
             <div className="bg-zinc-900/60 backdrop-blur-xl p-1.5 rounded-2xl border border-white/5 grid grid-cols-2 xl:flex gap-1 w-full xl:w-auto max-w-full shadow-2xl">
                 {[
                     { id: "CAPACITE", label: "Capacité", icon: Wallet }, 
@@ -576,7 +576,7 @@ export default function SimulateurPage() {
           )}
 
           {mode === "FISCALITE" && (
-            <PremiumGuard isPro={isPro} title="Fiscalité Expert" description="Optimisez vos impôts avec nos matrices de comparaison LMNP, location nue et courte durée,">
+            <PremiumGuard isPro={isPro} title="Fiscalité Expert" description="Optimisez vos impôts avec nos matrices de comparaison LMNP, location nue et courte durée.">
                 <motion.div key="fiscal" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="grid grid-cols-1 gap-6 md:gap-8 w-full min-w-0">
                     {projectType === "LOC" ? (
                         <PremiumCard className="p-4 md:p-10 bg-gradient-to-br from-[#0B0B0F] to-black border-indigo-500/20 min-w-0">

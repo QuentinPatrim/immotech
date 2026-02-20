@@ -53,7 +53,8 @@ export default function ProjectionPage() {
 
           const assets = profile.assets_json || [];
           const financialWealth = assets.filter((a: any) => a.type !== 'Immobilier').reduce((acc: number, a: any) => acc + a.value, 0);
-          setInitialCapital(financialWealth);
+          // CORRECTION : Arrondi propre à 2 décimales
+          setInitialCapital(Number(financialWealth.toFixed(2)));
 
           const budget = profile.budget_json || { income: 0, expenses: 0 };
           const income = Number(budget.income) || 0;
@@ -62,7 +63,10 @@ export default function ProjectionPage() {
               expenses = budget.details.reduce((acc: number, item: any) => acc + item.amount, 0);
           }
           
-          setMonthlyContribution(Math.max(0, income - expenses));
+          // CORRECTION : Arrondi propre à 2 décimales
+          const epargne = Math.max(0, income - expenses);
+          setMonthlyContribution(Number(epargne.toFixed(2)));
+          
           setMonthlyExpenses(expenses);
           setFireTarget(expenses * 12 * 25); 
       }
@@ -133,9 +137,10 @@ export default function ProjectionPage() {
   if (loading) return <div className="min-h-screen bg-[#050505] flex items-center justify-center w-full max-w-[100vw]"><Loader2 className="animate-spin text-emerald-500 w-10 h-10"/></div>;
 
   return (
-    <div className="min-h-screen bg-[#050505] text-zinc-100 font-sans pb-24 md:pb-8 selection:bg-emerald-500/30 selection:text-emerald-200 overflow-x-hidden w-full max-w-[100vw]">
+    <div className="min-h-screen bg-[#050505] text-zinc-100 font-sans pb-24 md:pb-8 selection:bg-emerald-500/30 selection:text-emerald-200 overflow-x-hidden">
       <Sidebar />
-      <main className="md:ml-64 flex-1 w-full max-w-[100vw] md:max-w-none p-4 md:p-8 relative overflow-x-hidden">
+      {/* CORRECTION : w-full md:w-auto min-w-0 pour le responsive PC */}
+      <main className="md:ml-64 flex-1 w-full md:w-auto min-w-0 p-4 md:p-8 relative overflow-x-hidden">
         
         <div className="absolute top-0 left-64 w-[500px] h-[500px] bg-emerald-500/5 rounded-full blur-[120px] pointer-events-none -z-10"></div>
         <div className="absolute bottom-0 right-0 w-[500px] h-[500px] bg-blue-500/5 rounded-full blur-[120px] pointer-events-none -z-10"></div>
@@ -293,7 +298,6 @@ export default function ProjectionPage() {
                   </div>
 
                   {/* --- ZONE PREMIUM UNIFIÉE --- */}
-                  {/* Un seul PremiumGuard qui englobe TOUT le contenu Premium restant */}
                   <PremiumGuard isPro={isPro} title="Débloquez la Projection Complète" description="Accédez au graphique interactif sur 40 ans, à la comparaison fiscale PEA vs CTO et à l'analyse stratégique par IA.">
                     <div className="space-y-6 md:space-y-8 w-full min-w-0">
                         {/* CHART */}
@@ -352,7 +356,6 @@ export default function ProjectionPage() {
                         </div>
                     </div>
                   </PremiumGuard>
-                  {/* --- FIN ZONE PREMIUM UNIFIÉE --- */}
 
               </div>
           </div>

@@ -12,17 +12,13 @@ import AnimatedNumber from "@/components/AnimatedNumber";
 import { supabase } from "@/lib/supabaseClient";
 import Link from "next/link"; 
 
+// --- HELPERS ---
+const formatEuro = (val: number) => new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(val);
+
 const formatMonth = (date: Date) => {
     return new Intl.DateTimeFormat('fr-FR', { month: 'long', year: 'numeric' }).format(date);
 };
 
-const formatEuro = (val: number) => {
-    return new Intl.NumberFormat("fr-FR", {
-        style: "currency",
-        currency: "EUR",
-        maximumFractionDigits: 0,
-    }).format(val);
-};
 export default function BudgetPage() {
     const [selectedDate, setSelectedDate] = useState(new Date()); 
     const [isExistingMonth, setIsExistingMonth] = useState(false); 
@@ -77,11 +73,8 @@ export default function BudgetPage() {
                 const b = profile.budget_json as any;
                 setIncome(Number(b.income) || 0);
                 
-                // IMPORTANT : Si le profil a bien été sauvegardé avec la nouvelle logique, 
-                // il ne contient QUE les besoins.
                 if (Array.isArray(b.details)) setExpenses(b.details);
             } else {
-                // Pas de profil, on part de zéro
                 setIncome(0);
                 setExpenses([]);
             }
@@ -113,7 +106,6 @@ export default function BudgetPage() {
         setSelectedDate(newDate);
     };
 
-    // Calculs sécurisés (évite NaN)
     const safeIncome = isNaN(income) ? 0 : income;
     const totalExp = expenses.reduce((acc, i) => acc + (isNaN(i.amount) ? 0 : i.amount), 0);
     const totalSurplus = Math.max(0, safeIncome - totalExp); 
@@ -126,14 +118,12 @@ export default function BudgetPage() {
     const flowToSafety = totalSurplus * effectiveSafetyRate;
     const flowToInvest = totalSurplus - flowToSafety; 
 
-    // --- FONCTION DE SAUVEGARDE MODIFIÉE ---
     const saveCurrentMonth = async () => {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
         setLoading(true);
         const saveDate = new Date(Date.UTC(selectedDate.getFullYear(), selectedDate.getMonth(), 1)).toISOString().split('T')[0];
 
-        // 1. On sauvegarde l'historique complet pour ce mois précis (Besoins + Envies)
         const { error } = await supabase.from('monthly_history').upsert({
             user_id: user.id, 
             month: saveDate, 
@@ -148,14 +138,10 @@ export default function BudgetPage() {
             triggerHaptic("success");
             setIsExistingMonth(true);
             
-            // 2. MISE A JOUR DU PROFIL (TEMPLATE)
-            // On ne met à jour le profil que si on modifie le mois en cours ou un mois futur.
-            // On ne veut pas qu'une modification sur un vieux mois (ex: janvier 2020) change nos charges actuelles.
             const now = new Date();
             const startOfCurrentMonth = new Date(now.getFullYear(), now.getMonth(), 1);
             
             if (selectedDate >= startOfCurrentMonth) {
-                 // FILTRE MAGIQUE : On ne garde que les BESOINS pour le futur
                  const recurringExpenses = expenses.filter(e => e.category === 'BESOIN');
                  const recurringTotal = recurringExpenses.reduce((acc, item) => acc + item.amount, 0);
 
@@ -163,33 +149,28 @@ export default function BudgetPage() {
                     budget_json: { 
                         income: safeIncome, 
                         expenses: recurringTotal, 
-                        details: recurringExpenses // Adieu les loisirs, à bientôt les charges fixes
+                        details: recurringExpenses 
                     }
                  }).eq('id', user.id);
             }
-            
             fetchHistoryGraph(user.id);
         }
         setLoading(false);
     };
 
-    // --- GESTION DES INPUTS SANS BUG NaN ---
     const handleAmountChange = (val: string, setter: (v: any) => void) => {
         if (val === "") {
             setter(""); 
             return;
         }
         const num = parseFloat(val);
-        if (!isNaN(num)) {
-            setter(num);
-        }
+        if (!isNaN(num)) setter(num);
     };
 
     const handleIncomeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const val = e.target.value;
-        if (val === "") {
-            setIncome(0);
-        } else {
+        if (val === "") setIncome(0);
+        else {
             const num = parseFloat(val);
             if (!isNaN(num)) setIncome(num);
         }
@@ -225,12 +206,11 @@ export default function BudgetPage() {
     if (loading && expenses.length === 0) return <div className="min-h-screen bg-[#050505] flex items-center justify-center w-full max-w-[100vw] overflow-x-hidden"><Loader2 className="animate-spin text-emerald-500"/></div>;
 
     return (
-        // AJOUT OVERFLOW ET MAX-W
-        <div className="min-h-screen bg-[#050505] text-zinc-100 font-sans pb-24 md:pb-8 selection:bg-emerald-500/30 selection:text-emerald-200 overflow-x-hidden w-full max-w-[100vw]">
+        <div className="min-h-screen bg-[#050505] text-zinc-100 font-sans pb-24 md:pb-8 selection:bg-emerald-500/30 selection:text-emerald-200 overflow-x-hidden">
             <Sidebar />
-            <main className="md:ml-64 flex-1 w-full max-w-[100vw] md:max-w-none p-4 md:p-8 relative overflow-x-hidden">
+            {/* CORRECTION ICI : w-full md:w-auto min-w-0 pour empêcher le débordement sur PC */}
+            <main className="md:ml-64 flex-1 w-full md:w-auto min-w-0 p-4 md:p-8 relative overflow-x-hidden">
                 
-                {/* AMBIENT GLOWS */}
                 <div className="fixed top-0 left-64 w-[600px] h-[600px] bg-emerald-900/5 rounded-full blur-[120px] pointer-events-none -z-10"></div>
                 <div className="fixed bottom-0 right-0 w-[500px] h-[500px] bg-yellow-900/5 rounded-full blur-[120px] pointer-events-none -z-10"></div>
 
@@ -243,7 +223,6 @@ export default function BudgetPage() {
                         <p className="text-zinc-400 text-[10px] md:text-lg font-light tracking-wide truncate">Gestion des flux mensuels & Épargne.</p>
                     </header>
 
-                    {/* MOIS & REVENUS (NAVBAR) */}
                     <div className="flex flex-col xl:flex-row justify-between items-center gap-4 md:gap-6 bg-zinc-900/40 backdrop-blur-xl p-4 md:p-6 rounded-[24px] md:rounded-[30px] border border-white/5 shadow-2xl w-full min-w-0">
                         <div className="flex items-center justify-between w-full xl:w-auto gap-2 md:gap-6">
                             <Button variant="outline" size="icon" onClick={() => changeMonth(-1)} className="rounded-full border-white/10 hover:bg-white/10 text-white w-10 h-10 md:w-12 md:h-12 shrink-0"><ChevronLeft size={20}/></Button>
@@ -270,13 +249,11 @@ export default function BudgetPage() {
                         </div>
                     </div>
 
-                    {/* KPI INVESTISSEMENT DYNAMIQUE */}
                     <div className="relative p-6 md:p-10 rounded-[24px] md:rounded-[40px] bg-gradient-to-br from-emerald-950 to-black border border-emerald-500/20 overflow-hidden text-center lg:text-left shadow-2xl group w-full min-w-0">
                         <div className="absolute top-0 right-0 p-32 md:p-64 bg-emerald-500/10 blur-[80px] md:blur-[120px] rounded-full group-hover:bg-emerald-500/15 transition-all"></div>
                         <div className="relative z-10 flex flex-col lg:flex-row justify-between items-center gap-6 md:gap-10 w-full min-w-0">
                             <div className="flex-1 min-w-0 w-full">
                                 <p className="text-emerald-500 font-bold text-[10px] md:text-xs uppercase tracking-[0.2em] flex items-center justify-center lg:justify-start gap-2 mb-2 md:mb-4 truncate"><Target size={16}/> Capacité d'Investissement</p>
-                                {/* TAILLE DU TEXTE REDUITE SUR MOBILE */}
                                 <div className="text-5xl sm:text-7xl lg:text-9xl font-black text-white tracking-tighter drop-shadow-2xl truncate max-w-full">
                                     <AnimatedNumber value={isNaN(flowToInvest) ? 0 : flowToInvest} />
                                 </div>
@@ -290,7 +267,6 @@ export default function BudgetPage() {
                                 </Link>
                             </div>
                             
-                            {/* CHART CERCLE PLUS PETIT SUR MOBILE */}
                             <div className="h-32 w-32 md:h-48 md:w-48 rounded-full border-4 md:border-8 border-zinc-900 bg-zinc-950 flex items-center justify-center relative shrink-0 shadow-2xl">
                                 <div className="absolute inset-0 rounded-full border-4 md:border-8 border-emerald-500" style={{ clipPath: `inset(0 ${100 - (safeIncome > 0 ? (totalSurplus/safeIncome)*100 : 0)}% 0 0)` }}></div>
                                 <div className="flex flex-col items-center mt-1">
@@ -304,12 +280,9 @@ export default function BudgetPage() {
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-8 w-full min-w-0">
                         
                         <div className="space-y-4 md:space-y-8 w-full min-w-0">
-                            
-                            {/* BESOINS */}
                             <div className="p-4 md:p-8 rounded-[24px] md:rounded-[32px] bg-zinc-900/30 border border-blue-500/10 backdrop-blur-md w-full min-w-0">
                                 <h3 className="font-black text-blue-400 uppercase tracking-widest flex items-center gap-2 md:gap-3 mb-4 md:mb-6 text-xs md:text-base"><Home size={18} className="md:w-5 md:h-5"/> Charges Fixes & Besoins</h3>
                                 
-                                {/* FORMULAIRE AJOUT ADAPTATIF */}
                                 <div className="flex flex-col sm:flex-row gap-2 md:gap-3 mb-4 p-2 bg-blue-500/5 rounded-xl md:rounded-2xl border border-blue-500/10 w-full min-w-0">
                                     <Input placeholder="Loyer, Crédit..." value={newNeedName} onChange={(e) => setNewNeedName(e.target.value)} className="bg-black/20 sm:bg-transparent border-white/5 sm:border-none text-white h-10 md:h-12 placeholder:text-zinc-600 focus-visible:ring-0 text-sm md:text-lg flex-1 min-w-0" />
                                     <div className="flex gap-2 w-full sm:w-auto">
@@ -337,11 +310,9 @@ export default function BudgetPage() {
                                 </div>
                             </div>
 
-                            {/* LOISIRS */}
                             <div className="p-4 md:p-8 rounded-[24px] md:rounded-[32px] bg-zinc-900/30 border border-yellow-500/10 backdrop-blur-md w-full min-w-0">
                                 <h3 className="font-black text-yellow-400 uppercase tracking-widest flex items-center gap-2 md:gap-3 mb-4 md:mb-6 text-xs md:text-base"><Coffee size={18} className="md:w-5 md:h-5"/> Loisirs & Plaisirs</h3>
                                 
-                                {/* FORMULAIRE AJOUT ADAPTATIF */}
                                 <div className="flex flex-col sm:flex-row gap-2 md:gap-3 mb-4 p-2 bg-yellow-500/5 rounded-xl md:rounded-2xl border border-yellow-500/10 w-full min-w-0">
                                     <Input placeholder="Resto, Vacances..." value={newWantName} onChange={(e) => setNewWantName(e.target.value)} className="bg-black/20 sm:bg-transparent border-white/5 sm:border-none text-white h-10 md:h-12 placeholder:text-zinc-600 focus-visible:ring-0 text-sm md:text-lg flex-1 min-w-0" />
                                     <div className="flex gap-2 w-full sm:w-auto">
@@ -370,11 +341,10 @@ export default function BudgetPage() {
                             </div>
                         </div>
 
-                        {/* STRATEGIE */}
                         <div className="space-y-4 md:space-y-8 w-full min-w-0">
                             <div className={`p-6 md:p-8 rounded-[24px] md:rounded-[32px] border flex flex-col justify-center min-h-[160px] md:min-h-[200px] w-full min-w-0 ${isSafe ? 'bg-emerald-950/20 border-emerald-500/20' : 'bg-orange-950/20 border-orange-500/20'}`}>
                                 <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4 w-full min-w-0">
-                                    <div className="flex items-center gap-2 md:gap-3 font-bold text-xs md:text-sm text-white uppercase tracking-widest truncate"><ShieldCheck size={18} className={`shrink-0 ${isSafe ? "text-emerald-500" : "text-orange-500"}`}/> Matelas Sécu</div>
+                                    <div className="flex items-center gap-2 md:gap-3 font-bold text-xs md:text-sm text-white uppercase tracking-widest truncate"><ShieldCheck size={18} className={`shrink-0 ${isSafe ? "text-emerald-500" : "text-orange-500"}`}/> Matelas de Sécurité</div>
                                     <span className="text-[10px] md:text-xs text-zinc-500 font-mono truncate">Cible: {Math.round(safetyTarget)}€</span>
                                 </div>
                                 <div className="text-3xl md:text-5xl font-black text-white mb-4 md:mb-6 tracking-tight truncate max-w-full"><AnimatedNumber value={currentCash}/> <span className="text-lg md:text-2xl text-zinc-600">€</span></div>
@@ -398,13 +368,12 @@ export default function BudgetPage() {
                                 </div>
                             </div>
 
-                            {/* CHART HISTORY */}
                             <div className="p-4 md:p-6 rounded-[24px] md:rounded-[32px] bg-zinc-900/40 border border-white/5 h-[200px] md:h-[250px] w-full min-w-0">
                                 <ResponsiveContainer width="100%" height="100%">
                                     <BarChart data={historyData} barGap={2} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
                                         <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
                                         <XAxis dataKey="name" stroke="#52525b" fontSize={10} tickLine={false} axisLine={false} />
-                                        <RechartsTooltip cursor={{fill: '#ffffff05'}} contentStyle={{ backgroundColor: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(10px)', borderColor: '#333', borderRadius: '12px', fontSize:'12px', color: '#fff' }} itemStyle={{ color: '#fff' }} formatter={(val: any) => formatEuro(val)} />
+                                        <RechartsTooltip cursor={{fill: '#ffffff05'}} contentStyle={{ backgroundColor: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(10px)', borderColor: '#333', borderRadius: '12px', fontSize:'12px', color: '#fff' }} itemStyle={{ color: '#fff' }} formatter={(val: any) => formatEuro(val)}/>
                                         <Legend iconType="circle" wrapperStyle={{ fontSize: '9px', textTransform: 'uppercase', fontWeight: 'bold' }} />
                                         <Bar dataKey="Revenus" fill="#e4e4e7" radius={[4, 4, 0, 0]} barSize={8} />
                                         <Bar dataKey="Besoins" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={8} />
