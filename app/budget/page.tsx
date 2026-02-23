@@ -297,7 +297,7 @@ export default function BudgetPage() {
 
                 const newDetails = [...existingWants, ...validRecurringForFuture];
                 const fNeeds = validRecurringForFuture.filter(e => e.category === 'BESOIN').reduce((s, i) => s + i.amount, 0);
-                const fWants = existingWants.reduce((s, i) => s + i.amount, 0);
+                const fWants = existingWants.reduce((s: number, i: any) => s + i.amount, 0);
                 const fSaves = validRecurringForFuture.filter(e => e.category === 'EPARGNE').reduce((s, i) => s + i.amount, 0);
                 
                 await supabase.from('monthly_history').update({
@@ -346,7 +346,7 @@ export default function BudgetPage() {
                     const context = canvas.getContext("2d");
                     if (context) {
                         canvas.height = viewport.height; canvas.width = viewport.width;
-                        await page.render({ canvasContext: context, viewport: viewport }).promise;
+                        await page.render({ canvasContext: context, viewport: viewport, canvas: canvas }).promise;
                         base64Image = canvas.toDataURL("image/jpeg", 0.9);
                     } else throw new Error("Erreur canvas");
                 } catch (err) { throw new Error("Impossible de lire ce PDF. Essayez une capture d'écran."); }
