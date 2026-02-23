@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { supabase } from "@/lib/supabaseClient";
 import OnboardingWizard from "@/components/OnboardingWizard"; 
 import NexusChat from "@/components/NexusChat"; 
+import { OnboardingModal } from "@/components/OnboardingModal"; // <-- AJOUT DU GUIDE D'ACCUEIL
 
 // Helper pour formater les chiffres envoyés à l'IA
 const formatEuro = (val: number) => new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(val);
@@ -158,6 +159,10 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-[#050505] text-zinc-100 font-sans selection:bg-emerald-500/30 selection:text-emerald-200 relative">
+      
+      {/* LE NOUVEAU GUIDE D'ACCUEIL EST ICI */}
+      <OnboardingModal />
+      
       <Sidebar />
 
       {showOnboarding && <OnboardingWizard onFinish={() => { setShowOnboarding(false); fetchData(); }} />}
