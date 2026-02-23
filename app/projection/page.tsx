@@ -23,25 +23,25 @@ const TUTORIAL_STEPS = [
   {
     title: "La machine à voyager dans le temps",
     subtitle: "ÉTAPE 1 : LA PROJECTION",
-    description: "Bienvenue dans le simulateur de richesse. C'est ici que vous allez découvrir la puissance des 'Intérêts Composés'. Autrement dit : comment votre argent génère des petits, qui génèrent eux-mêmes des petits.",
+    description: "Bienvenue dans le simulateur de votre patrimoine futur. C'est ici que vous allez découvrir la puissance des 'Intérêts Composés'. Autrement dit : comment votre argent génère des petits, qui génèrent eux-mêmes des petits.",
     icon: Calendar, color: "text-emerald-400", bgGlow: "bg-emerald-500/20",
   },
   {
     title: "Livret A vs Bourse",
     subtitle: "ÉTAPE 2 : LE BON OUTIL AU BON ENDROIT",
-    description: "Le Livret A est génial pour votre Matelas de Sécurité, mais il ne vous rendra jamais riche car son rendement couvre à peine l'inflation. Pour bâtir une vraie fortune sur 10 ou 20 ans, il faut se tourner vers les actions ou l'immobilier.",
+    description: "Le Livret A est génial pour votre Matelas de Sécurité, mais il ne vous rendra jamais riche car son rendement couvre à peine l'inflation. Pour bâtir une vraie rente sur 10 ou 20 ans, il faut se tourner vers les actions ou dans certains cas l'immobilier.",
     icon: Landmark, color: "text-blue-400", bgGlow: "bg-blue-500/20",
   },
   {
     title: "Le secret : Le DCA",
     subtitle: "ÉTAPE 3 : DOLLAR COST AVERAGING",
-    description: "Le mot fait peur, mais l'idée est enfantine : Investir la même somme, tous les mois, quoi qu'il arrive. La bourse monte ? Vous achetez. La bourse baisse ? C'est les soldes, vous achetez moins cher. C'est la stratégie n°1 des millionnaires sereins.",
+    description: "Le mot fait peur, mais l'idée est enfantine : Investir la même somme, tous les mois, quoi qu'il arrive. La bourse monte ? Vous achetez. La bourse baisse ? C'est les soldes, vous achetez moins cher. C'est la stratégie long terme la plus importante à maitriser.",
     icon: TrendingUp, color: "text-purple-400", bgGlow: "bg-purple-500/20",
   },
   {
     title: "CTO vs PEA",
     subtitle: "ÉTAPE 4 : LE BOUCLIER FISCAL",
-    description: "L'État prend généralement 30% de vos gains en bourse (sur un Compte Titres Ordinaire - CTO). Mais en France, si vous ouvrez un Plan d'Épargne en Actions (PEA) et que vous n'y touchez pas pendant 5 ans, cet impôt tombe à 17,2%. Une différence colossale à long terme.",
+    description: "L'État prend 30% de vos gains en bourse (sur un Compte Titres Ordinaire - CTO). Mais en France, si vous ouvrez un Plan d'Épargne en Actions (PEA) et que vous n'y touchez pas pendant 5 ans, cet impôt tombe à 17,2%. Une différence colossale à long terme.",
     icon: ShieldCheck, color: "text-yellow-400", bgGlow: "bg-yellow-500/20",
   }
 ];
