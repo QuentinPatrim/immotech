@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import Sidebar from "@/components/Sidebar";
 import { motion, AnimatePresence } from "framer-motion";
-import { Calculator, Home, Building, Wallet, Landmark, CheckCircle, PieChart as PieIcon, Scale, BedDouble, Armchair, Briefcase, Save, HelpCircle, FileText, Trash2, FolderOpen, MousePointerClick, TrendingUp, AlertTriangle, Crown, BarChart3, Check, Printer, Shield, PiggyBank } from "lucide-react";
+import { Calculator, Home, Building, Wallet, Landmark, CheckCircle, PieChart as PieIcon, Scale, BedDouble, Armchair, Briefcase, Save, HelpCircle, FileText, Trash2, FolderOpen, MousePointerClick, TrendingUp, AlertTriangle, Crown, BarChart3, Check, Printer, Shield, PiggyBank, BookOpen, X, Info, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
@@ -16,6 +16,97 @@ import PremiumGuard from "@/components/PremiumGuard";
 
 const formatEuro = (val: number) => new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(val);
 
+// ==========================================
+// 1. POP-UP D'ACCUEIL : MASTERCLASS IMMO
+// ==========================================
+const TUTORIAL_STEPS = [
+  {
+    title: "Devenez un investisseur pro",
+    subtitle: "LE SIMULATEUR IMMOBILIER",
+    description: "L'immobilier est le meilleur moyen de s'enrichir grâce à l'argent de la banque. Ce simulateur est divisé en 4 étapes pour vous guider de la recherche de votre budget jusqu'à l'impression de votre dossier bancaire.",
+    icon: Building, color: "text-indigo-400", bgGlow: "bg-indigo-500/20",
+  },
+  {
+    title: "Étape 1 : Le Budget",
+    subtitle: "ONGLET CAPACITÉ",
+    description: "Avant de visiter des biens, il faut savoir combien la banque peut vous prêter. Renseignez vos revenus et votre apport. L'algorithme calcule instantanément votre enveloppe d'achat maximale.",
+    icon: Wallet, color: "text-blue-400", bgGlow: "bg-blue-500/20",
+  },
+  {
+    title: "Étape 2 : Le vrai rendement",
+    subtitle: "ONGLET RENTABILITÉ",
+    description: "Vous avez repéré une annonce ? Entrez son prix et le loyer espéré. Nexus va générer votre tableau d'amortissement et vous donner le chiffre clé : le Cashflow (l'argent net qui rentre ou sort de votre poche chaque mois).",
+    icon: Calculator, color: "text-emerald-400", bgGlow: "bg-emerald-500/20",
+  },
+  {
+    title: "Étape 3 : Gommer l'impôt",
+    subtitle: "ONGLET FISCALITÉ (PREMIUM)",
+    description: "Les impôts peuvent tuer la rentabilité d'un projet. Cet onglet compare les régimes fiscaux (LMNP, Micro, Réel) pour vous montrer comment utiliser l'amortissement comptable afin de payer 0€ d'impôt légalement.",
+    icon: Scale, color: "text-yellow-400", bgGlow: "bg-yellow-500/20",
+  },
+  {
+    title: "Étape 4 : Convaincre la banque",
+    subtitle: "ONGLET PROJETS & EXPORT",
+    description: "Sauvegardez vos meilleures simulations. En un clic, générez un dossier PDF professionnel et chiffré à poser sur le bureau de votre banquier pour obtenir votre prêt plus facilement.",
+    icon: FolderOpen, color: "text-purple-400", bgGlow: "bg-purple-500/20",
+  }
+];
+
+function SimulateurTutorialModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }) {
+  const [currentStep, setCurrentStep] = useState(0);
+  useEffect(() => { if (isOpen) setCurrentStep(0); }, [isOpen]);
+  if (!isOpen) return null;
+  const StepIcon = TUTORIAL_STEPS[currentStep].icon;
+  const handleNext = () => { if (currentStep < TUTORIAL_STEPS.length - 1) setCurrentStep(prev => prev + 1); else onClose(); };
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/90 backdrop-blur-md" onClick={onClose} />
+      <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} className="relative w-full max-w-2xl bg-[#0A0A0C] border border-white/10 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+        <div className={`absolute top-0 left-1/2 -translate-x-1/2 w-[500px] h-[500px] blur-[100px] rounded-full transition-colors duration-700 opacity-20 pointer-events-none ${TUTORIAL_STEPS[currentStep].bgGlow}`} />
+        <button onClick={onClose} className="absolute top-5 right-5 text-zinc-500 hover:text-white transition-colors z-20 bg-black/50 p-2 rounded-full backdrop-blur-md border border-white/5"><X size={20} /></button>
+        <div className="p-8 sm:p-12 relative z-10 flex-1 overflow-y-auto">
+          <AnimatePresence mode="wait">
+            <motion.div key={currentStep} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.3 }} className="flex flex-col items-center text-center space-y-6">
+              <div className={`w-20 h-20 rounded-3xl bg-[#121214] border border-white/10 flex items-center justify-center shadow-2xl ${TUTORIAL_STEPS[currentStep].color}`}><StepIcon size={40} /></div>
+              <div className="space-y-3"><p className={`text-xs font-black uppercase tracking-[0.2em] ${TUTORIAL_STEPS[currentStep].color}`}>{TUTORIAL_STEPS[currentStep].subtitle}</p><h2 className="text-3xl sm:text-4xl font-black text-white tracking-tight leading-tight">{TUTORIAL_STEPS[currentStep].title}</h2></div>
+              <p className="text-zinc-300 text-base sm:text-lg leading-relaxed mt-4 max-w-xl font-medium">{TUTORIAL_STEPS[currentStep].description}</p>
+            </motion.div>
+          </AnimatePresence>
+        </div>
+        <div className="bg-[#121214] border-t border-white/10 p-6 sm:p-8 flex items-center justify-between relative z-10 shrink-0">
+            <div className="flex gap-2.5">{TUTORIAL_STEPS.map((_, index) => (<div key={index} className={`h-2 rounded-full transition-all duration-300 ${index === currentStep ? "w-8 bg-white" : "w-2 bg-zinc-700"}`} />))}</div>
+            <Button onClick={handleNext} className="bg-white hover:bg-zinc-200 hover:scale-105 active:scale-95 text-black font-black uppercase tracking-widest rounded-xl px-8 py-6 text-sm transition-all shadow-[0_0_30px_rgba(255,255,255,0.2)]">
+                {currentStep === TUTORIAL_STEPS.length - 1 ? <span className="flex items-center gap-3">J'ai compris <Check size={18} /></span> : <span className="flex items-center gap-3">Suivant <ArrowRight size={18} /></span>}
+            </Button>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+// ==========================================
+// 2. BULLE D'AIDE OPAQUE (BUG Z-INDEX CORRIGÉ)
+// ==========================================
+const HelpTooltip = ({ title, text }: { title?: string, text: string }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  return (
+    <div className="relative inline-flex items-center ml-2 cursor-pointer z-50" onMouseEnter={() => setIsOpen(true)} onMouseLeave={() => setIsOpen(false)} onClick={() => setIsOpen(!isOpen)}>
+      <div className={`p-1.5 rounded-full transition-colors ${isOpen ? "bg-white/20 text-white" : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-300"}`}><Info size={14} /></div>
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div initial={{ opacity: 0, y: 10, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 10, scale: 0.95 }} transition={{ duration: 0.15 }} className="absolute bottom-[130%] left-1/2 -translate-x-1/2 w-64 md:w-72 p-4 bg-[#1A1A1E] text-white text-xs rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.9)] border border-zinc-600 text-center leading-relaxed font-sans normal-case tracking-normal z-[99999]">
+            {title && <span className="block text-[10px] font-black text-indigo-400 uppercase tracking-wider mb-2">{title}</span>}
+            {text}
+            <div className="absolute top-full left-1/2 -translate-x-1/2 border-[6px] border-transparent border-t-[#1A1A1E]"></div>
+            <div className="absolute top-full left-1/2 -translate-x-1/2 border-[7px] border-transparent border-t-zinc-600 -z-10 mt-[1px]"></div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
 // --- COMPOSANT DOSSIER BANCAIRE (VERSION FINALE PDF) ---
 const DossierBancaire = ({ data, refProp }: any) => {
     const d = data || {};
@@ -24,21 +115,13 @@ const DossierBancaire = ({ data, refProp }: any) => {
     const isRP = d.projectType === "RP";
     
     const [dateStr, setDateStr] = useState("");
-    useEffect(() => {
-        setDateStr(new Date().toLocaleDateString("fr-FR"));
-    }, []);
+    useEffect(() => { setDateStr(new Date().toLocaleDateString("fr-FR")); }, []);
 
     return (
       <div className="absolute top-0 left-0 w-0 h-0 opacity-0 pointer-events-none overflow-hidden -z-50 print:static print:w-auto print:h-auto print:opacity-100 print:overflow-visible print:z-auto">
         <style type="text/css" media="print">
-          {`
-            @page { size: A4; margin: 0; }
-            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; background-color: white; }
-            nav, aside, header, .sidebar-mobile, button { display: none !important; }
-            .print-container { width: 100%; height: 100%; margin: 0; padding: 0; }
-          `}
+          {`@page { size: A4; margin: 0; } body { -webkit-print-color-adjust: exact; print-color-adjust: exact; background-color: white; } nav, aside, header, .sidebar-mobile, button { display: none !important; } .print-container { width: 100%; height: 100%; margin: 0; padding: 0; }`}
         </style>
-
         <div ref={refProp} className="print-container bg-white text-black font-sans mx-auto relative print:w-full print:max-w-[210mm] print:min-h-[297mm] print:p-[10mm]">
             <div className="flex flex-col h-full justify-between p-8 md:p-12">
                 <div>
@@ -164,16 +247,6 @@ const DossierBancaire = ({ data, refProp }: any) => {
 };
 
 // --- COMPOSANTS UI ---
-const Help = ({ title, text }: { title: string, text: string }) => (
-  <div className="group/help relative inline-flex items-center ml-2 align-middle cursor-help z-[999]">
-    <HelpCircle size={14} className="text-zinc-500 group-hover/help:text-indigo-400 transition-colors duration-300"/>
-    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 w-64 md:w-72 p-4 bg-[#121217] border border-white/10 rounded-xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.8)] opacity-0 invisible group-hover/help:visible group-hover/help:opacity-100 transition-all duration-200 z-[9999] translate-y-2 group-hover/help:translate-y-0 backdrop-blur-xl">
-        <span className="block text-[10px] font-black text-indigo-400 uppercase tracking-wider mb-2">{title}</span>
-        <span className="block text-xs text-zinc-300 leading-relaxed font-light">{text}</span>
-    </div>
-  </div>
-);
-
 const PremiumSlider = ({ label, value, min, max, step, unit, onChange }: any) => (
     <div className="group relative bg-black/40 rounded-2xl p-3 md:p-4 border border-white/5 hover:border-indigo-500/30 transition-all duration-300 w-full overflow-hidden max-w-full">
         <div className="flex justify-between items-end mb-3">
@@ -186,9 +259,10 @@ const PremiumSlider = ({ label, value, min, max, step, unit, onChange }: any) =>
     </div>
 );
 
+// FIX : Suppression du overflow-hidden pour laisser les bulles Tooltips s'afficher par dessus !
 const PremiumCard = ({ children, className = "", color = "indigo" }: { children: React.ReactNode, className?: string, color?: string }) => {
     const borderColor = color === "emerald" ? "hover:border-emerald-500/30" : color === "rose" ? "hover:border-rose-500/30" : color === "amber" ? "hover:border-amber-500/30" : color === "blue" ? "hover:border-blue-500/30" : "hover:border-indigo-500/30";
-    return <div className={`relative w-full overflow-hidden rounded-[24px] md:rounded-[32px] bg-zinc-900/40 backdrop-blur-md border border-white/5 transition-all duration-500 ${borderColor} hover:bg-zinc-900/60 group ${className}`}>{children}</div>;
+    return <div className={`relative w-full rounded-[24px] md:rounded-[32px] bg-zinc-900/40 backdrop-blur-md border border-white/5 transition-all duration-500 ${borderColor} hover:bg-zinc-900/60 group hover:z-50 ${className}`}>{children}</div>;
 };
 
 export default function SimulateurPage() {
@@ -197,6 +271,7 @@ export default function SimulateurPage() {
   const [projectName, setProjectName] = useState("");
   const [importingId, setImportingId] = useState<number | null>(null);
   const [isPro, setIsPro] = useState(false);
+  const [isTutorialOpen, setIsTutorialOpen] = useState(false);
 
   const componentRef = useRef(null);
   const [printData, setPrintData] = useState<any>(null); 
@@ -253,6 +328,9 @@ export default function SimulateurPage() {
 
   useEffect(() => {
     const init = async () => {
+        const hasSeenTutorial = localStorage.getItem("nexus_simulateur_tuto_seen");
+        if (!hasSeenTutorial) setTimeout(() => setIsTutorialOpen(true), 800);
+
         const { data: { session } } = await supabase.auth.getSession();
         if (session) {
             const { data } = await supabase.from('profiles').select('is_pro, simulations_json').eq('id', session.user.id).single();
@@ -387,8 +465,10 @@ export default function SimulateurPage() {
 
   return (
     <div className="min-h-screen bg-[#020202] text-zinc-100 font-sans pb-24 md:pb-8 selection:bg-indigo-500/30 selection:text-indigo-200 overflow-x-hidden">
+      
+      <SimulateurTutorialModal isOpen={isTutorialOpen} onClose={() => { setIsTutorialOpen(false); localStorage.setItem("nexus_simulateur_tuto_seen", "true"); }} />
+      
       <Sidebar />
-      {/* CORRECTION : Remplacement de w-full par md:w-auto min-w-0 */}
       <main className="md:ml-64 flex-1 w-full md:w-auto min-w-0 p-4 md:p-8 relative overflow-x-hidden">
         
         <DossierBancaire refProp={componentRef} data={printData} />
@@ -399,21 +479,29 @@ export default function SimulateurPage() {
         <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} className="max-w-[1800px] w-full mx-auto space-y-6 md:space-y-10 relative z-10">
           
           <div className="flex flex-col xl:flex-row justify-between items-start xl:items-end gap-6 md:gap-8 pl-4 md:pl-2 border-l-4 border-indigo-600 py-2 max-w-full">
-            <div><h1 className="text-3xl md:text-5xl font-black text-white tracking-tight uppercase">Mon <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-400">Simulateur</span></h1></div>
+            <div>
+                <h1 className="text-3xl md:text-5xl font-black text-white tracking-tight uppercase">Mon <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-400">Simulateur</span></h1>
+                <p className="text-zinc-400 text-[10px] md:text-lg font-light tracking-wide truncate mt-1">Créez votre empire immobilier, étape par étape.</p>
+            </div>
             
-            <div className="bg-zinc-900/60 backdrop-blur-xl p-1.5 rounded-2xl border border-white/5 grid grid-cols-2 xl:flex gap-1 w-full xl:w-auto max-w-full shadow-2xl">
-                {[
-                    { id: "CAPACITE", label: "Capacité", icon: Wallet }, 
-                    { id: "RENTABILITE", label: "Renta", icon: Calculator }, 
-                    { id: "FISCALITE", label: "Fiscalité", icon: Scale, premium: true }, 
-                    { id: "PROJETS", label: "Projets", icon: FolderOpen, premium: true }
-                ].map((tab) => (
-                    <button key={tab.id} onClick={() => setMode(tab.id as any)} className={`flex items-center justify-center gap-1.5 md:gap-2 px-2 md:px-5 py-2.5 md:py-3 rounded-xl text-[9px] sm:text-[10px] md:text-xs font-bold uppercase tracking-widest transition-all duration-300 ${mode === tab.id ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/25 xl:scale-105" : "text-zinc-500 hover:text-white hover:bg-white/5"}`}>
-                        <tab.icon size={14} className="md:w-4 md:h-4 shrink-0"/> 
-                        <span className="truncate">{tab.label}</span> 
-                        {tab.premium && <Crown size={12} className="text-yellow-400 shrink-0"/>}
-                    </button>
-                ))}
+            <div className="flex items-center gap-4">
+                <div className="bg-zinc-900/60 backdrop-blur-xl p-1.5 rounded-2xl border border-white/5 grid grid-cols-2 xl:flex gap-1 w-full xl:w-auto max-w-full shadow-2xl">
+                    {[
+                        { id: "CAPACITE", label: "Capacité", icon: Wallet }, 
+                        { id: "RENTABILITE", label: "Renta", icon: Calculator }, 
+                        { id: "FISCALITE", label: "Fiscalité", icon: Scale, premium: true }, 
+                        { id: "PROJETS", label: "Projets", icon: FolderOpen, premium: true }
+                    ].map((tab) => (
+                        <button key={tab.id} onClick={() => setMode(tab.id as any)} className={`flex items-center justify-center gap-1.5 md:gap-2 px-2 md:px-5 py-2.5 md:py-3 rounded-xl text-[9px] sm:text-[10px] md:text-xs font-bold uppercase tracking-widest transition-all duration-300 ${mode === tab.id ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/25 xl:scale-105" : "text-zinc-500 hover:text-white hover:bg-white/5"}`}>
+                            <tab.icon size={14} className="md:w-4 md:h-4 shrink-0"/> 
+                            <span className="truncate">{tab.label}</span> 
+                            {tab.premium && <Crown size={12} className="text-yellow-400 shrink-0"/>}
+                        </button>
+                    ))}
+                </div>
+                <button onClick={() => setIsTutorialOpen(true)} className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 border border-white/10 text-zinc-400 hover:text-white hover:bg-white/10 transition-all text-xs font-bold uppercase tracking-widest shrink-0">
+                    <BookOpen size={14} /> Guide
+                </button>
             </div>
           </div>
 
@@ -439,10 +527,12 @@ export default function SimulateurPage() {
                     </PremiumCard>
                 </div>
                 <div className="lg:col-span-8 p-8 md:p-16 rounded-[32px] md:rounded-[48px] bg-gradient-to-br from-zinc-900 via-black to-blue-950/20 border border-white/10 flex flex-col items-center justify-center text-center relative overflow-hidden shadow-2xl w-full min-w-0">
-                    <p className="text-zinc-500 text-[10px] md:text-xs font-black uppercase tracking-[0.4em] mb-4 md:mb-8 break-words">ENVELOPPE GLOBALE</p>
+                    <p className="text-zinc-500 text-[10px] md:text-xs font-black uppercase tracking-[0.4em] mb-4 md:mb-8 break-words flex items-center justify-center">
+                        ENVELOPPE GLOBALE D'ACHAT <HelpTooltip text="La somme totale que vous pouvez dépenser (Apport + Prêt bancaire). Votre taux d'endettement maximal est fixé à 35% par la loi."/>
+                    </p>
                     <div className="text-4xl sm:text-5xl md:text-7xl lg:text-[9rem] font-black text-white tracking-tighter"><AnimatedNumber value={totalEnvelope} /></div>
                     <div className="mt-6 md:mt-10 flex flex-col md:flex-row gap-3 md:gap-6 justify-center text-xs md:text-sm font-bold text-zinc-500 bg-white/5 px-6 py-3 md:px-8 md:py-4 rounded-3xl md:rounded-full border border-white/5 backdrop-blur-md max-w-full">
-                            <span className="flex items-center justify-center gap-2"><Landmark size={14} className="text-blue-500 shrink-0"/> Banque: {formatEuro(maxLoan)}</span>
+                            <span className="flex items-center justify-center gap-2"><Landmark size={14} className="text-blue-500 shrink-0"/> Prêt Banque: {formatEuro(maxLoan)}</span>
                             <span className="text-zinc-700 hidden md:inline mx-2">|</span>
                             <span className="flex items-center justify-center gap-2"><PiggyBank size={14} className="text-emerald-500 shrink-0"/> Apport: {formatEuro(Number(apportCapacity))}</span>
                     </div>
@@ -453,9 +543,9 @@ export default function SimulateurPage() {
           {mode === "RENTABILITE" && (
             <motion.div key="renta" initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.98 }} className="grid grid-cols-1 xl:grid-cols-12 gap-4 md:gap-8 w-full min-w-0">
                 <div className="xl:col-span-4 space-y-4 md:space-y-6 w-full min-w-0">
-                    <PremiumCard className="p-4 md:p-6">
+                    <PremiumCard className="p-4 md:p-6 relative z-20">
                         <h3 className="text-xs font-black text-white uppercase flex items-center gap-3 mb-4 md:mb-6 tracking-widest"><Building size={18}/> Le Projet</h3>
-                        <div className="bg-black/40 p-3 md:p-4 rounded-2xl mb-4 md:mb-6 border border-white/5 min-w-0 w-full">
+                        <div className="bg-black/40 p-3 md:p-4 rounded-2xl mb-4 md:mb-6 border border-white/5 min-w-0 w-full relative z-20">
                             <div className="mb-4">
                                 <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block mb-2">Usage</label>
                                 <div className="grid grid-cols-3 gap-1 md:gap-2">
@@ -507,12 +597,12 @@ export default function SimulateurPage() {
                 <div className="xl:col-span-8 space-y-4 md:space-y-6 w-full min-w-0">
                     {projectType === "LOC" ? (
                         <PremiumCard className={`p-6 md:p-10 text-center flex flex-col items-center justify-center min-h-[200px] md:min-h-[300px] border transition-all duration-500 ${cashflowNetImpots < 0 ? 'border-rose-500/40' : 'border-emerald-500/20'}`}>
-                            <div className="flex items-center gap-2 mb-4 md:mb-6 justify-center">
+                            <div className="flex items-center gap-2 mb-4 md:mb-6 justify-center z-10">
                                 <span className={`text-[10px] md:text-xs font-black uppercase tracking-[0.2em] md:tracking-[0.3em] ${cashflowNetImpots > 0 ? 'text-emerald-500' : 'text-rose-500'}`}>CASHFLOW NET / MOIS</span>
-                                <Help title="Cashflow Net" text="Loyers - (Crédit + Charges + Taxe Fonc. + Impôts)."/>
+                                <HelpTooltip title="Cashflow Net" text="Loyers - (Crédit + Charges + Taxe Foncière + Impôts). C'est le vrai chiffre qui compte à la fin du mois."/>
                             </div>
-                            <div className={`text-6xl md:text-8xl font-black tracking-tighter mb-6 md:mb-8 ${cashflowNetImpots > 0 ? 'text-emerald-400' : 'text-rose-500'}`}>{cashflowNetImpots > 0 ? '+':''}<AnimatedNumber value={Math.round(cashflowNetImpots)}/></div>
-                            <div className="flex flex-col sm:flex-row justify-center gap-2 md:gap-12 text-xs md:text-sm font-bold w-full max-w-lg bg-black/30 p-3 md:p-4 rounded-2xl border border-white/5">
+                            <div className={`text-6xl md:text-8xl font-black tracking-tighter mb-6 md:mb-8 z-10 ${cashflowNetImpots > 0 ? 'text-emerald-400' : 'text-rose-500'}`}>{cashflowNetImpots > 0 ? '+':''}<AnimatedNumber value={Math.round(cashflowNetImpots)}/></div>
+                            <div className="flex flex-col sm:flex-row justify-center gap-2 md:gap-12 text-xs md:text-sm font-bold w-full max-w-lg bg-black/30 p-3 md:p-4 rounded-2xl border border-white/5 z-10">
                                 <div className="text-zinc-400 flex flex-row sm:flex-col justify-between sm:justify-start items-center">Avant Impôt <span className="text-white text-sm md:text-lg ml-2 sm:ml-0">{cashflowBrut > 0 ? "+":""}{Math.round(cashflowBrut)}€</span></div>
                                 <div className="hidden sm:block w-[1px] bg-white/10"></div>
                                 <div className="text-zinc-400 flex flex-row sm:flex-col justify-between sm:justify-start items-center">Fiscalité Moy. <span className="text-amber-500 text-sm md:text-lg ml-2 sm:ml-0">-{Math.round(Math.min(fiscalData.micro.total, fiscalData.reel.total)/12)}€</span></div>
@@ -528,26 +618,29 @@ export default function SimulateurPage() {
                         </PremiumCard>
                     )}
                     <div className="grid grid-cols-2 gap-3 md:gap-6 w-full min-w-0">
-                        <PremiumCard color="indigo" className="p-4 md:p-6 flex flex-col items-center justify-center">
+                        <PremiumCard color="indigo" className="p-4 md:p-6 flex flex-col items-center justify-center relative">
+                            <div className="absolute top-2 right-2"><HelpTooltip title="Coût Projet" text="Prix + Travaux + Notaire. Ne prend pas en compte le coût du crédit sur 20 ans."/></div>
                             <p className="text-[9px] md:text-[10px] text-zinc-500 font-bold uppercase mb-2 text-center truncate">Coût Projet</p>
                             <div className="text-3xl md:text-5xl font-black text-white">{Math.round(totalCost/1000)}<span className="text-indigo-500 text-lg md:text-2xl">k€</span></div>
                         </PremiumCard>
                         {projectType === "LOC" ? (
-                            <PremiumCard color="emerald" className="p-4 md:p-6 flex flex-col items-center justify-center">
+                            <PremiumCard color="emerald" className="p-4 md:p-6 flex flex-col items-center justify-center relative">
+                                <div className="absolute top-2 right-2"><HelpTooltip title="Rendement Brut" text="(Loyer annuel / Coût d'achat total) * 100."/></div>
                                 <p className="text-[9px] md:text-[10px] text-zinc-500 font-bold uppercase mb-2 text-center truncate">Rendement Brut</p>
                                 <div className="text-3xl md:text-5xl font-black text-white">{yieldNet.toFixed(2)}<span className="text-emerald-500 text-lg md:text-2xl">%</span></div>
                             </PremiumCard>
                         ) : (
-                            <PremiumCard color="rose" className="p-4 md:p-6 flex flex-col items-center justify-center">
+                            <PremiumCard color="rose" className="p-4 md:p-6 flex flex-col items-center justify-center relative">
+                                <div className="absolute top-2 right-2"><HelpTooltip title="Coût du crédit" text="L'argent total que la banque va gagner grâce aux intérêts que vous allez lui payer."/></div>
                                 <p className="text-[9px] md:text-[10px] text-zinc-500 font-bold uppercase mb-2 text-center truncate">Coût Crédit</p>
                                 <div className="text-2xl md:text-5xl font-black text-white">{formatEuro(Math.round(totalCreditCost))}</div>
                             </PremiumCard>
                         )}
                     </div>
                     {/* CHART AMORTISSEMENT */}
-                    <PremiumCard className="p-4 md:p-8 border-white/5 relative overflow-hidden hidden sm:block">
+                    <PremiumCard className="p-4 md:p-8 border-white/5 relative hidden sm:block overflow-hidden">
                         <div className="flex items-center justify-between mb-6 relative z-10">
-                            <h4 className="text-sm font-black text-white uppercase tracking-widest flex items-center gap-3"><BarChart3 size={18} className="text-blue-500"/> Amortissement</h4>
+                            <h4 className="text-sm font-black text-white uppercase tracking-widest flex items-center gap-3"><BarChart3 size={18} className="text-blue-500"/> Amortissement <HelpTooltip text="La courbe bleue montre comment votre capital restant dû diminue chaque mois. La rouge montre l'accumulation de vos intérêts payés."/></h4>
                             <div className="text-[10px] md:text-xs text-zinc-500 font-mono">Projection sur {duration} ans</div>
                         </div>
                         <div className="h-[200px] md:h-[250px] w-full min-w-0 relative z-10">
@@ -579,8 +672,8 @@ export default function SimulateurPage() {
             <PremiumGuard isPro={isPro} title="Fiscalité Expert" description="Optimisez vos impôts avec nos matrices de comparaison LMNP, location nue et courte durée.">
                 <motion.div key="fiscal" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="grid grid-cols-1 gap-6 md:gap-8 w-full min-w-0">
                     {projectType === "LOC" ? (
-                        <PremiumCard className="p-4 md:p-10 bg-gradient-to-br from-[#0B0B0F] to-black border-indigo-500/20 min-w-0">
-                            <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-6 md:mb-8 gap-4 w-full">
+                        <PremiumCard className="p-4 md:p-10 bg-gradient-to-br from-[#0B0B0F] to-black border-indigo-500/20 min-w-0 overflow-hidden">
+                            <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-6 md:mb-8 gap-4 w-full relative z-10">
                                 <div className="flex items-center gap-3 md:gap-4 shrink-0">
                                     <div className="h-10 w-10 md:h-12 md:w-12 rounded-xl md:rounded-2xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center border border-indigo-500/30"><Scale size={20} className="md:w-6 md:h-6"/></div>
                                     <h2 className="text-xl md:text-2xl font-black text-white uppercase truncate">Matrice Fiscale</h2>
@@ -594,12 +687,12 @@ export default function SimulateurPage() {
                                     </div>
                                 </div>
                             </div>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6 w-full min-w-0">
-                                <div className="hidden md:block space-y-4 pt-16 text-right text-sm text-zinc-400 font-medium">
-                                    <div className="h-10 flex items-center justify-end gap-2">Recettes Locatives <Help title="Recettes" text="Loyer annuel"/></div>
-                                    <div className="h-10 flex items-center justify-end gap-2">Charges Déductibles <Help title="Charges" text="Charges copro, TF..."/></div>
-                                    <div className="h-10 flex items-center justify-end gap-2 text-blue-400">Intérêts d'Emprunt <Help title="Intérêts" text="100% déductibles au réel"/></div>
-                                    <div className="h-10 flex items-center justify-end gap-2 text-indigo-400">Amortissement (LMNP) <Help title="Amortissement" text="Charge fictive"/></div>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6 w-full min-w-0 relative z-10">
+                                <div className="hidden md:block space-y-4 pt-16 text-right text-sm text-zinc-400 font-medium relative z-20">
+                                    <div className="h-10 flex items-center justify-end gap-2">Recettes Locatives <HelpTooltip title="Recettes" text="Loyer annuel total perçu."/></div>
+                                    <div className="h-10 flex items-center justify-end gap-2">Charges Déductibles <HelpTooltip title="Charges" text="Charges de copropriété, Taxe Foncière, assurance PNO..."/></div>
+                                    <div className="h-10 flex items-center justify-end gap-2 text-blue-400">Intérêts d'Emprunt <HelpTooltip title="Intérêts" text="Sont 100% déductibles vos impôts lors d'une déclaration au régime réel !"/></div>
+                                    <div className="h-10 flex items-center justify-end gap-2 text-indigo-400">Amortissement (LMNP) <HelpTooltip title="Amortissement" text="La vraie magie de l'immobilier : une perte de valeur du bien 'fictive' sur le papier, que l'on soustrait à vos revenus locatifs pour ramener l'impôt à 0."/></div>
                                     <div className="h-1 p-0 m-0"></div>
                                     <div className="h-10 flex items-center justify-end text-white font-bold">Base Imposable</div>
                                     <div className="h-10 flex items-center justify-end text-amber-500">Impôt Final (TMI + PS)</div>
@@ -634,8 +727,8 @@ export default function SimulateurPage() {
                         </PremiumCard>
                     ) : (
                         // --- MODE PLUS-VALUE (RP / RS) ---
-                        <PremiumCard color="emerald" className="p-6 md:p-10 bg-gradient-to-br from-[#0B0B0F] to-black border-emerald-500/20">
-                            <div className="flex items-center gap-3 md:gap-4 mb-6 md:mb-8">
+                        <PremiumCard color="emerald" className="p-6 md:p-10 bg-gradient-to-br from-[#0B0B0F] to-black border-emerald-500/20 overflow-hidden">
+                            <div className="flex items-center gap-3 md:gap-4 mb-6 md:mb-8 relative z-10">
                                 <div className="h-10 w-10 md:h-12 md:w-12 rounded-xl md:rounded-2xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center border border-emerald-500/30 shrink-0"><TrendingUp size={20} className="md:w-6 md:h-6"/></div>
                                 <div>
                                     <h2 className="text-xl md:text-2xl font-black text-white uppercase tracking-tight truncate">Plus-Value</h2>
@@ -646,14 +739,14 @@ export default function SimulateurPage() {
                             {projectType === "RP" ? (
                                 <div className="p-6 md:p-10 rounded-[24px] md:rounded-3xl bg-gradient-to-br from-amber-900/20 via-zinc-900 to-black border border-amber-500/30 text-center relative overflow-hidden shadow-[0_0_50px_-10px_rgba(245,158,11,0.2)]">
                                     <div className="absolute top-0 right-0 p-32 bg-amber-500/10 blur-[80px] rounded-full pointer-events-none"></div>
-                                    <div className="inline-flex p-3 md:p-4 rounded-full bg-amber-500/20 text-amber-400 mb-4 md:mb-6 shadow-[0_0_30px_rgba(245,158,11,0.3)]">
+                                    <div className="inline-flex p-3 md:p-4 rounded-full bg-amber-500/20 text-amber-400 mb-4 md:mb-6 shadow-[0_0_30px_rgba(245,158,11,0.3)] relative z-10">
                                         <Crown size={32} className="md:w-10 md:h-10" />
                                     </div>
-                                    <h3 className="text-xl md:text-3xl font-black text-white uppercase mb-4 tracking-wide">Le Graal Fiscal : <br className="md:hidden"/><span className="text-amber-400">Exonération</span></h3>
-                                    <p className="text-xs md:text-sm text-zinc-300 max-w-2xl mx-auto leading-relaxed mb-6 md:mb-8">
+                                    <h3 className="text-xl md:text-3xl font-black text-white uppercase mb-4 tracking-wide relative z-10">Le Graal Fiscal : <br className="md:hidden"/><span className="text-amber-400">Exonération</span></h3>
+                                    <p className="text-xs md:text-sm text-zinc-300 max-w-2xl mx-auto leading-relaxed mb-6 md:mb-8 relative z-10">
                                         La plus-value sur Résidence Principale est <strong className="text-white">100% exonérée</strong> d'impôt et de prélèvements.
                                     </p>
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6 max-w-2xl mx-auto text-left w-full min-w-0">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6 max-w-2xl mx-auto text-left w-full min-w-0 relative z-10">
                                         <div className="bg-black/50 p-4 md:p-6 rounded-2xl border border-white/5 w-full min-w-0">
                                             <div className="flex items-center gap-2 mb-2 md:mb-4"><p className="text-[10px] text-zinc-500 font-bold uppercase">Prix Revente Estimé</p></div>
                                             <Input type="number" value={resalePrice} onChange={e => handleInput(setResalePrice, e.target.value)} className="bg-transparent border-white/10 h-10 md:h-14 text-white font-black text-2xl md:text-3xl px-0 focus-visible:ring-0 focus:border-amber-500 w-full min-w-0"/>
@@ -667,7 +760,7 @@ export default function SimulateurPage() {
                                     </div>
                                 </div>
                             ) : (
-                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8 mb-4 md:mb-8 w-full min-w-0">
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8 mb-4 md:mb-8 w-full min-w-0 relative z-10">
                                     <div className="p-6 md:p-8 bg-zinc-900/50 rounded-[24px] md:rounded-3xl border border-white/5 space-y-4 md:space-y-6 w-full min-w-0">
                                         <h4 className="text-[10px] md:text-xs font-bold text-zinc-500 uppercase tracking-widest mb-2 md:mb-4">Paramètres de sortie</h4>
                                         <div><label className="text-[10px] font-bold text-zinc-500 uppercase">Prix Revente Estimé</label><Input type="number" value={resalePrice} onChange={e => handleInput(setResalePrice, e.target.value)} className="bg-black/40 border-white/10 h-12 md:h-14 text-white font-bold text-lg md:text-xl w-full min-w-0"/></div>
@@ -675,7 +768,7 @@ export default function SimulateurPage() {
                                     </div>
                                     <div className="p-6 md:p-8 bg-zinc-900/50 rounded-[24px] md:rounded-3xl border border-white/5 flex flex-col justify-center w-full min-w-0">
                                         <div className="flex justify-between items-center mb-4 pb-4 border-b border-white/5">
-                                            <span className="text-[10px] md:text-xs font-bold text-zinc-400 uppercase flex items-center gap-2">Base Acquisition</span>
+                                            <span className="text-[10px] md:text-xs font-bold text-zinc-400 uppercase flex items-center gap-2">Base Acquisition <HelpTooltip text="Prix achat + Notaire + Forfait travaux"/></span>
                                             <span className="text-base md:text-lg font-bold text-white truncate max-w-[50%]">{formatEuro(capitalGainData.acquisitionPrice)}</span>
                                         </div>
                                         <div className="flex justify-between items-center mb-2"><span className="text-xs md:text-sm text-zinc-400">Plus-Value Brute</span><span className="text-lg md:text-xl font-bold text-white truncate max-w-[50%]">{formatEuro(capitalGainData.grossGain)}</span></div>
