@@ -2,14 +2,14 @@
 
 import { useState, useRef, useEffect } from "react";
 import { toPng } from 'html-to-image';
-import { Download, Sparkles, Copy, Loader2, Linkedin, LayoutTemplate, BookOpen, GraduationCap, Calculator, TrendingUp, Quote, UploadCloud, CheckCircle2, FileText, Edit3, Wand2, Palette, Layers, ChevronLeft, ChevronRight, Square, Smartphone, Menu, X } from "lucide-react";
+import { Download, Loader2, Linkedin, LayoutTemplate, BookOpen, GraduationCap, Calculator, TrendingUp, Quote, UploadCloud, CheckCircle2, Edit3, Wand2, Palette, Layers, ChevronLeft, ChevronRight, Square, Smartphone, Menu, X, Sparkles, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/lib/supabaseClient";
 import { NexusLogo } from "@/components/NexusLogo";
-import { AreaChart, Area, ResponsiveContainer, CartesianGrid, XAxis, Tooltip } from "recharts";
+import { AreaChart, Area, ResponsiveContainer, CartesianGrid, XAxis } from "recharts";
 import { Switch } from "@/components/ui/switch";
 
 // --- SÉCURITÉ ---
@@ -142,23 +142,33 @@ export default function NexusStudio() {
   };
 
   const updateKpi = (index: number, key: 'value' | 'label', val: string) => {
-      // Helper pour mettre à jour kpi_1_value, kpi_1_label, etc.
       const realKey = `kpi_${index + 1}_${key}`;
       updateData(realKey, val);
   };
 
-  // --- DOWNLOAD ---
+  // --- DOWNLOAD FIXÉ (GHOST ZONE SECURE) ---
   const downloadAll = async () => {
     const pagesToDownload = format === "SINGLE" ? [0] : [0, 1, 2, 3];
+    
     for (const i of pagesToDownload) {
         const ref = exportRefs.current[i];
         if (ref) {
-            await new Promise(r => setTimeout(r, 150)); 
-            const dataUrl = await toPng(ref, { cacheBust: true, pixelRatio: 2, backgroundColor: '#08080A' });
-            const link = document.createElement('a');
-            link.download = format === "SINGLE" ? `nexus-post-${Date.now()}.png` : `nexus-slide-${i + 1}.png`;
-            link.href = dataUrl;
-            link.click();
+            // On attend que le DOM soit bien prêt
+            await new Promise(r => setTimeout(r, 250)); 
+            
+            try {
+                const dataUrl = await toPng(ref, { 
+                    cacheBust: true, 
+                    pixelRatio: 2, 
+                    backgroundColor: '#08080A'
+                });
+                const link = document.createElement('a');
+                link.download = format === "SINGLE" ? `nexus-post-${Date.now()}.png` : `nexus-slide-${i + 1}.png`;
+                link.href = dataUrl;
+                link.click();
+            } catch (error) {
+                console.error("Erreur export image:", error);
+            }
         }
     }
   };
@@ -178,7 +188,7 @@ export default function NexusStudio() {
             {showNoise && <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 pointer-events-none mix-blend-overlay z-0"></div>}
             {showGrid && <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px] pointer-events-none z-0"></div>}
             
-            {/* Header Compacté pour Carrousel */}
+            {/* Header */}
             <div className={`px-8 ${isSingle ? 'pt-8 pb-6' : 'pt-6 pb-2'} bg-gradient-to-b from-white/5 to-transparent border-b border-white/5 relative z-10 shrink-0`}>
                 <div className={`absolute top-0 right-0 w-[300px] h-[300px] ${T.bg} blur-[120px] opacity-20 pointer-events-none`}></div>
                 <div className="flex justify-between items-start mb-2">
@@ -194,7 +204,7 @@ export default function NexusStudio() {
             </div>
 
             {/* Corps */}
-            <div className="flex-1 px-8 py-4 relative z-10 flex flex-col justify-center gap-4">
+            <div className={`flex-1 px-8 ${isSingle ? 'py-6 gap-6' : 'py-3 gap-2'} relative z-10 flex flex-col justify-center`}>
                 
                 {/* PAGE 1: KPIs */}
                 {(isSingle || pageIndex === 0) && (
@@ -210,12 +220,12 @@ export default function NexusStudio() {
 
                 {/* PAGE 2: Analyse */}
                 {(isSingle || pageIndex === 1) && (
-                    <div className="space-y-4">
-                        <div className="space-y-2">
+                    <div className={`space-y-3 ${!isSingle && 'scale-100 origin-top'}`}>
+                        <div className="space-y-1">
                             <h3 className="text-[10px] font-black text-zinc-500 uppercase tracking-widest flex items-center gap-2"><BookOpen size={12}/> {data.intro_title}</h3>
                             <p className="text-[11px] text-zinc-200 leading-relaxed text-justify border-l-2 border-white/20 pl-3">{data.intro_text}</p>
                         </div>
-                        <div className="space-y-2">
+                        <div className="space-y-1">
                             <h3 className={`text-[10px] font-black uppercase tracking-widest flex items-center gap-2 ${T.text}`}><GraduationCap size={12}/> {data.analysis_title}</h3>
                             <div className={`bg-white/5 border rounded-xl p-3 space-y-2 ${glassEffect ? 'backdrop-blur-sm border-white/10' : 'border-white/5'}`}>
                                 {data.analysis_points?.map((pt: string, i: number) => (
@@ -230,7 +240,7 @@ export default function NexusStudio() {
                 {(isSingle || pageIndex === 2) && (
                     <div className="space-y-3 h-full flex flex-col justify-center">
                         <div className={`bg-zinc-900/50 border rounded-xl p-4 flex flex-col justify-start ${glassEffect ? 'backdrop-blur-sm border-white/10' : 'border-white/5'}`}>
-                            <h3 className="text-[9px] font-black text-zinc-500 uppercase tracking-widest flex items-center gap-2 mb-2"><Calculator size={10}/> {data.example_title}</h3>
+                            <h3 className="text-[9px] font-black text-zinc-500 uppercase tracking-widest flex items-center gap-2 mb-1"><Calculator size={10}/> {data.example_title}</h3>
                             <p className="text-[10px] text-zinc-300 leading-relaxed italic">"{data.example_text}"</p>
                         </div>
                         {data.show_chart && (
@@ -273,7 +283,7 @@ export default function NexusStudio() {
   return (
     <div className="min-h-screen bg-[#050505] text-zinc-100 p-4 md:p-8 font-sans flex flex-col lg:flex-row gap-8 lg:gap-12">
       
-      {/* COMMANDES */}
+      {/* --- COLONNE GAUCHE : COMMANDES (Responsive FIX: h-auto pour le scroll mobile) --- */}
       <div className="w-full lg:w-1/3 flex flex-col h-auto lg:h-[calc(100vh-4rem)]">
         <div className="flex items-center gap-3 mb-6 shrink-0">
             <div className="w-10 h-10 bg-gradient-to-br from-indigo-600 to-violet-600 rounded-xl flex items-center justify-center text-white"><LayoutTemplate size={20}/></div>
@@ -286,6 +296,8 @@ export default function NexusStudio() {
         </div>
 
         <div className="flex-1 lg:overflow-y-auto pr-0 lg:pr-2 space-y-6 scrollbar-hide">
+            
+            {/* MODE GÉNÉRATEUR */}
             {activeTab === "generator" && (
                 <div className="space-y-6 animate-in fade-in slide-in-from-left-4">
                     <div className="bg-zinc-900/50 p-6 rounded-3xl border border-white/5 space-y-4">
@@ -302,7 +314,7 @@ export default function NexusStudio() {
                 </div>
             )}
 
-            {/* ÉDITEUR COMPLET RESTAURÉ */}
+            {/* ÉDITEUR COMPLET */}
             {activeTab === "editor" && (
                 <div className="space-y-6 animate-in fade-in slide-in-from-right-4 pb-20">
                     <div className="space-y-3 bg-zinc-900/50 p-4 rounded-2xl border border-white/5">
@@ -368,8 +380,8 @@ export default function NexusStudio() {
       {/* --- DROITE : VISUALISATION --- */}
       <div className="flex-1 bg-[#0A0A0C] rounded-[40px] border border-white/5 p-4 lg:p-12 flex flex-col items-center justify-center relative overflow-hidden">
         
-        {/* SCALE RESPONSIVE */}
-        <div className="scale-[0.6] sm:scale-75 md:scale-90 lg:scale-100 origin-center transition-transform duration-300">
+        {/* SCALE RESPONSIVE : Le conteneur se réduit sur mobile */}
+        <div className="scale-[0.55] sm:scale-75 md:scale-90 lg:scale-100 origin-center transition-transform duration-300">
             {format === "CAROUSEL" ? (
                 <div className="flex flex-col items-center gap-8">
                     <div className="relative flex items-center group">
@@ -390,8 +402,8 @@ export default function NexusStudio() {
             <Download className="mr-2"/> {format === "SINGLE" ? "Télécharger l'image" : "Télécharger les 4 pages"}
         </Button>
 
-        {/* GHOST ZONE POUR EXPORT */}
-        <div className="fixed top-0 left-[-9999px] w-0 h-0 overflow-visible opacity-0 pointer-events-none">
+        {/* GHOST ZONE FIXÉE : On rend les images derrière le site (z-index négatif) pour que le navigateur les "peigne" */}
+        <div className="fixed top-0 left-0 -z-50 opacity-0 pointer-events-none flex flex-col gap-4">
             {[0, 1, 2, 3].map(i => (
                 <div key={`export-${i}`} ref={el => { exportRefs.current[i] = el }}>
                     {renderVisualPage(i)}
