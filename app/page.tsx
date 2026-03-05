@@ -1,260 +1,260 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { useRef, useEffect, useState } from "react";
+import { motion, useScroll, useTransform } from "framer-motion";
 import Link from "next/link";
 import Image from "next/image";
-import { ArrowRight, ChevronRight, LineChart, Building2, Shield, Brain, CheckCircle2, Zap } from "lucide-react";
+import { ArrowRight, ChevronRight, LineChart, Building2, Shield, Brain, CheckCircle2, Zap, Lock, ChevronDown, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { NexusLogo } from "@/components/NexusLogo"; 
+import { NexusLogo } from "@/components/NexusLogo";
 
 export default function LandingPagePro() {
+  const [isMounted, setIsMounted] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  // --- LOGIQUE DE DÉFILEMENT APPLE (Scroll-jacking) ---
+  const { scrollYProgress } = useScroll({
+    target: containerRef,
+    offset: ["start start", "end start"]
+  });
+
+  // Animations liées au défilement (Disparition du logo d'intro)
+  // L'intro s'efface sur les premiers 15% de défilement de la page globale
+  const introOpacity = useTransform(scrollYProgress, [0, 0.05], [1, 0]);
+  const introScale = useTransform(scrollYProgress, [0, 0.05], [1, 0.8]);
+  const introBlur = useTransform(scrollYProgress, [0, 0.05], ["blur(0px)", "blur(20px)"]);
+
+  // Apparition du Hero (Le texte "Votre patrimoine...")
+  const heroOpacity = useTransform(scrollYProgress, [0.03, 0.08], [0, 1]);
+  const heroY = useTransform(scrollYProgress, [0.03, 0.08], [50, 0]);
+
   return (
-    <div className="min-h-screen bg-[#020202] text-white selection:bg-emerald-500/30 overflow-x-hidden font-sans">
+    <div ref={containerRef} className="bg-[#020202] text-white selection:bg-emerald-500/30 font-sans relative">
       
-      {/* --- NAVBAR --- */}
-      <nav className="fixed top-0 left-0 right-0 z-50 border-b border-white/[0.06] bg-[#020202]/80 backdrop-blur-xl supports-[backdrop-filter]:bg-[#020202]/60">
-        <div className="max-w-[1200px] mx-auto px-6 h-16 md:h-20 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-7 h-7 text-emerald-500 animate-pulse-slow">
-                <NexusLogo className="w-full h-full" />
+      {/* --- NAVBAR FLOTTANTE (Apparaît avec un délai) --- */}
+      {isMounted && (
+        <motion.div 
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 2, duration: 1 }}
+          className="fixed top-4 left-1/2 -translate-x-1/2 w-[95%] max-w-[1200px] z-50"
+        >
+          <nav className="h-14 md:h-16 px-4 md:px-6 rounded-full border border-white/10 bg-[#0a0a0a]/60 backdrop-blur-2xl flex items-center justify-between shadow-[0_10px_40px_rgba(0,0,0,0.5)]">
+            <div className="flex items-center gap-3">
+              <div className="w-5 h-5 md:w-6 md:h-6 text-emerald-500">
+                  <NexusLogo className="w-full h-full" />
+              </div>
+              <span className="text-base md:text-lg font-bold tracking-tight uppercase">Nexus</span>
             </div>
-            <span className="text-xl font-bold tracking-tight uppercase hidden md:block">Nexus</span>
-          </div>
-          <div className="flex items-center gap-3 md:gap-6">
-            <Link href="/login" className="text-sm font-medium text-zinc-400 hover:text-white transition-colors hidden sm:block">
-              Connexion
-            </Link>
-            <Link href="/login">
-              <Button className="bg-emerald-500 hover:bg-emerald-400 text-black font-bold rounded-full px-4 md:px-6 py-2 md:py-2.5 text-sm transition-all hover:shadow-[0_0_20px_rgba(16,185,129,0.4)]">
-                Démarrer <ArrowRight size={16} className="ml-2 hidden md:block" />
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </nav>
+            <div className="flex items-center gap-4">
+              <Link href="/login" className="text-sm font-medium text-zinc-400 hover:text-white transition-colors hidden sm:block">
+                Connexion
+              </Link>
+              <Link href="/login">
+                <Button className="bg-white hover:bg-zinc-200 text-black font-bold rounded-full px-4 md:px-5 py-2 text-xs md:text-sm transition-all hover:scale-105">
+                  Démarrer
+                </Button>
+              </Link>
+            </div>
+          </nav>
+        </motion.div>
+      )}
 
-      {/* --- HERO SECTION --- */}
-      {/* J'ai réduit le padding-top ici (pt-28 md:pt-40) pour remonter le contenu */}
-      <section className="relative pt-28 pb-12 md:pt-40 md:pb-16 px-6 overflow-hidden">
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1000px] h-[600px] bg-blue-600/20 blur-[150px] rounded-full pointer-events-none -z-10 opacity-40 mix-blend-screen"></div>
-        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-emerald-600/15 blur-[120px] rounded-full pointer-events-none -z-10 opacity-50 mix-blend-screen"></div>
+      {/* ========================================================= */}
+      {/* 1. SÉQUENCE D'INTRO CINÉMATIQUE (APPLE STYLE)             */}
+      {/* ========================================================= */}
+      <div className="h-[150vh] relative z-40">
+        <motion.div 
+          style={{ opacity: introOpacity, scale: introScale, filter: introBlur }}
+          className="sticky top-0 h-screen w-full flex flex-col items-center justify-center overflow-hidden"
+        >
+          {/* Fond Premium Optimisé Anti-Lag (Radial au lieu de Blur) */}
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-[radial-gradient(circle_at_center,rgba(16,185,129,0.1),transparent_60%)] pointer-events-none"></div>
 
-        <div className="max-w-[1000px] mx-auto text-center space-y-8 relative z-10">
-          
-          {/* ANIMATIONS CORRIGÉES (Directes, anti-bug d'opacité) */}
-          <motion.h1 
-            initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7 }}
-            className="text-5xl sm:text-7xl md:text-8xl font-black tracking-tighter leading-[1.05] text-white"
+          {/* Logo Animé */}
+          <motion.div
+            initial={{ opacity: 0, filter: "blur(30px)", scale: 0.8 }}
+            animate={{ opacity: 1, filter: "blur(0px)", scale: 1 }}
+            transition={{ duration: 2, ease: [0.16, 1, 0.3, 1] }}
+            className="flex flex-col items-center gap-6 z-10"
           >
-            Votre patrimoine, <br />
-            enfin <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 via-cyan-400 to-indigo-500">clair.</span>
-          </motion.h1>
-          
-          <motion.p 
-            initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7, delay: 0.1 }}
-            className="text-lg md:text-2xl text-zinc-400 max-w-3xl mx-auto font-medium leading-relaxed"
-          >
-            Adieu Excel. Nexus agrège tous vos comptes, analyse vos investissements et optimise votre fiscalité en temps réel.
-          </motion.p>
-          
-          <motion.div 
-            initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7, delay: 0.2 }}
-            className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4"
-          >
-            <Link href="/login" className="w-full sm:w-auto">
-              <Button className="w-full sm:w-auto h-12 md:h-14 px-8 text-base bg-white hover:bg-zinc-200 text-black font-bold rounded-full transition-all hover:scale-[1.02] active:scale-[0.98]">
-                Créer mon compte gratuit
-              </Button>
-            </Link>
-            <Link href="#features" className="w-full sm:w-auto">
-              <Button variant="ghost" className="w-full sm:w-auto h-12 md:h-14 px-8 text-base text-zinc-300 hover:text-white hover:bg-white/5 font-medium rounded-full transition-all">
-                Voir les fonctionnalités <ChevronRight size={18} className="ml-1" />
-              </Button>
-            </Link>
+            {/* FIX: Suppression du cercle autour du logo (rounded-full & fond shadow enlevés) */}
+            <div className="w-24 h-24 md:w-32 md:h-32 text-emerald-500 drop-shadow-[0_0_25px_rgba(16,185,129,0.4)]">
+              <NexusLogo className="w-full h-full" />
+            </div>
+            <h1 className="text-5xl md:text-8xl font-black tracking-widest uppercase text-transparent bg-clip-text bg-gradient-to-b from-white to-zinc-600">
+              Nexus
+            </h1>
           </motion.div>
+
+          {/* Indicateur de Scroll */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 2.5, duration: 1 }}
+            className="absolute bottom-12 flex flex-col items-center gap-3 text-zinc-500"
+          >
+            <span className="text-[10px] uppercase tracking-[0.3em] font-bold">Défiler pour explorer</span>
+            <ChevronDown size={20} className="animate-bounce text-zinc-400" />
+          </motion.div>
+        </motion.div>
+      </div>
+
+      {/* ========================================================= */}
+      {/* 2. LE CONTENU PRINCIPAL (Apparaît au scroll)              */}
+      {/* ========================================================= */}
+      
+      {/* HERO SECTION */}
+      <section className="relative pb-20 px-6 overflow-hidden flex flex-col items-center justify-center min-h-screen -mt-[50vh] z-30 pointer-events-none">
+        <div className="max-w-[1000px] mx-auto text-center space-y-8 relative z-10 pointer-events-auto pt-40">
+          
+          <motion.div style={{ opacity: heroOpacity, y: heroY }} className="space-y-8">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-white/10 bg-white/5 text-xs font-medium text-zinc-300 backdrop-blur-md">
+              <Sparkles size={14} className="text-emerald-400" /> L'intelligence financière redéfinie
+            </div>
+
+            <h2 className="text-5xl sm:text-7xl md:text-[5.5rem] font-black tracking-tighter leading-[1.05] text-white">
+              Votre patrimoine, <br />
+              enfin <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 via-cyan-400 to-indigo-500">clair.</span>
+            </h2>
+            
+            <p className="text-lg md:text-2xl text-zinc-400 max-w-2xl mx-auto font-medium leading-relaxed">
+              Adieu Excel. Nexus agrège tous vos comptes, analyse vos investissements et optimise votre fiscalité en temps réel.
+            </p>
+            
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-6">
+              <Link href="/login" className="w-full sm:w-auto">
+                <Button className="w-full sm:w-auto h-14 px-8 text-base bg-emerald-500 hover:bg-emerald-400 text-black font-black rounded-full transition-all hover:shadow-[0_0_30px_rgba(16,185,129,0.3)] hover:scale-[1.02]">
+                  Créer mon compte gratuit <ArrowRight size={18} className="ml-2" />
+                </Button>
+              </Link>
+            </div>
+          </motion.div>
+
         </div>
       </section>
 
-      {/* --- MOCKUP "BIJOU" AVEC ELEMENTS FLOTTANTS --- */}
-      <section className="px-4 md:px-6 pb-24 relative z-20">
-        <motion.div 
-          initial={{ opacity: 0, y: 40 }} 
-          whileInView={{ opacity: 1, y: 0 }} 
-          viewport={{ once: true, margin: "-100px" }} 
-          transition={{ duration: 0.8 }}
-          className="max-w-[1100px] mx-auto relative"
-        >
-          
-          {/* ELEMENT FLOTTANT 1 : Bouclier (Top Left) */}
-          <motion.div 
-            animate={{ y: [0, -15, 0] }}
-            transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
-            className="hidden md:flex absolute -left-12 -top-10 w-24 h-24 bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl items-center justify-center shadow-[0_0_50px_rgba(99,102,241,0.2)] z-30"
-          >
-            <div className="absolute inset-0 bg-indigo-500/20 rounded-3xl blur-md"></div>
-            <Shield className="text-indigo-400 relative z-10" size={40} />
-          </motion.div>
+      {/* DASHBOARD MOCKUP */}
+      <section className="px-4 pb-20 relative z-30">
+        <div className="mt-10 max-w-[1100px] mx-auto w-full relative">
+          {/* Fonds optimisés anti-lag */}
+          <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-[radial-gradient(circle_at_center,rgba(59,130,246,0.1),transparent_60%)] -z-10"></div>
+          <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-[radial-gradient(circle_at_center,rgba(16,185,129,0.1),transparent_60%)] -z-10"></div>
 
-          {/* ELEMENT FLOTTANT 2 : Éclair (Top Right) */}
-          <motion.div 
-            animate={{ y: [0, 15, 0] }}
-            transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
-            className="hidden md:flex absolute -right-8 top-20 w-20 h-20 bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl items-center justify-center shadow-[0_0_50px_rgba(6,182,212,0.2)] z-30"
-          >
-            <div className="absolute inset-0 bg-cyan-500/20 rounded-3xl blur-md"></div>
-            <Zap className="text-cyan-400 relative z-10" size={32} />
-          </motion.div>
-
-          {/* ELEMENT FLOTTANT 3 : Graphique (Bottom Left) */}
-          <motion.div 
-            animate={{ y: [0, -15, 0] }}
-            transition={{ duration: 5.5, repeat: Infinity, ease: "easeInOut" }}
-            className="hidden md:flex absolute -left-6 bottom-10 w-20 h-20 bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl items-center justify-center shadow-[0_0_50px_rgba(16,185,129,0.2)] z-30"
-          >
-            <div className="absolute inset-0 bg-emerald-500/20 rounded-3xl blur-md"></div>
-            <LineChart className="text-emerald-400 relative z-10" size={32} />
-          </motion.div>
-
-          {/* ECRAN PRINCIPAL */}
-          <div className="relative rounded-[24px] md:rounded-[40px] border border-white/[0.08] bg-[#0A0A0A] p-2 shadow-[0_0_100px_-30px_rgba(16,185,129,0.3)] overflow-hidden group">
-            <div className="absolute inset-0 bg-gradient-to-tr from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none z-20"></div>
-            
-            <div className="aspect-[16/10] md:aspect-[16/9] bg-zinc-900 rounded-[20px] md:rounded-[34px] relative overflow-hidden">
+          <div className="relative rounded-[24px] md:rounded-[40px] border border-white/10 bg-white/5 p-2 md:p-3 shadow-[0_0_80px_-20px_rgba(16,185,129,0.15)] backdrop-blur-md">
+            <div className="aspect-[16/10] md:aspect-[16/9] bg-[#0A0A0A] rounded-[18px] md:rounded-[32px] relative overflow-hidden border border-black shadow-inner">
                <Image 
                   src="/dashboard.png" 
                   alt="Dashboard Nexus" 
                   fill
-                  className="object-cover opacity-100 transition-all duration-700 hover:scale-[1.01]"
+                  className="object-cover opacity-100" // FIX: Image éclatante (100% d'opacité)
                />
-               <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,#000000_90%)] opacity-30 pointer-events-none"></div>
+               {/* FIX: Dégradé assombrissant réduit pour plus de visibilité */}
+               <div className="absolute inset-0 bg-gradient-to-t from-[#020202]/30 to-transparent"></div>
             </div>
-          </div>
-
-          <div className="absolute left-1/2 -translate-x-1/2 bottom-10 w-[90%] h-20 bg-emerald-500/20 blur-[100px] rounded-[100%] -z-10 md:w-[60%]"></div>
-        </motion.div>
-      </section>
-
-      {/* --- TRUST BANNER --- */}
-      <section className="py-12 border-y border-white/[0.06] bg-zinc-950/50">
-        <div className="max-w-[1200px] mx-auto px-6 text-center space-y-4">
-          <p className="text-sm uppercase tracking-widest text-zinc-500 font-bold">La technologie au service de votre liberté financière</p>
-          <div className="flex flex-wrap justify-center gap-6 md:gap-12 opacity-50 grayscale transition-all hover:grayscale-0 hover:opacity-100">
-            <div className="flex items-center gap-2 text-zinc-400"><Shield size={18}/> Sécurité Bancaire</div>
-            <div className="flex items-center gap-2 text-zinc-400"><CheckCircle2 size={18}/> Données Chiffrées</div>
-            <div className="flex items-center gap-2 text-zinc-400"><Brain size={18}/> IA Intégrée</div>
           </div>
         </div>
       </section>
 
-      {/* --- FEATURES --- */}
-      <section id="features" className="py-24 md:py-32 px-6 relative overflow-hidden bg-[#020202]">
-        <div className="max-w-[1100px] mx-auto space-y-24 md:space-y-32">
-          
-          {/* Feature 1: Agrégation */}
-          <div className="grid md:grid-cols-2 gap-12 md:gap-24 items-center">
-            <div className="space-y-6 order-2 md:order-1">
-              <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20 mb-8">
-                <LineChart className="text-emerald-400" size={24} />
-              </div>
-              <h2 className="text-3xl md:text-4xl font-bold tracking-tight">Tout votre patrimoine. <br/>Au même endroit.</h2>
-              <p className="text-zinc-400 text-lg leading-relaxed">
-                Finis les logins multiples. Connectez vos banques, assurances-vie, comptes-titres et plateformes crypto. Nexus calcule votre valeur nette en temps réel.
-              </p>
-              <ul className="space-y-3 text-zinc-300 font-medium">
-                <li className="flex items-center gap-2"><CheckCircle2 size={18} className="text-emerald-500" /> Synchronisation automatique</li>
-                <li className="flex items-center gap-2"><CheckCircle2 size={18} className="text-emerald-500" /> Historique de performance</li>
-                <li className="flex items-center gap-2"><CheckCircle2 size={18} className="text-emerald-500" /> Analyse de diversification</li>
-              </ul>
-            </div>
-            
-            <div className="aspect-[4/3] rounded-[32px] border border-white/10 relative overflow-hidden order-1 md:order-2 group bg-zinc-900 shadow-[0_0_40px_rgba(16,185,129,0.1)]">
-               <Image src="/patrimoine.png" alt="Patrimoine Nexus" fill className="object-cover opacity-90 group-hover:scale-105 transition-transform duration-700"/>
-               <div className="absolute inset-0 bg-gradient-to-t from-[#020202] via-transparent to-transparent opacity-80 pointer-events-none"></div>
-            </div>
-          </div>
-
-          {/* Feature 2: Immobilier */}
-          <div className="grid md:grid-cols-2 gap-12 md:gap-24 items-center">
-            <div className="aspect-[4/3] rounded-[32px] border border-white/10 relative overflow-hidden group bg-gradient-to-br from-zinc-900 to-[#020202] shadow-[0_0_40px_rgba(59,130,246,0.1)] flex items-center justify-center">
-               <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-10"></div>
-               <Building2 className="text-blue-500/20 w-48 h-48 absolute" />
-               <Image src="/simulateur.png" alt="Simulateur Immo" fill className="object-cover opacity-90 group-hover:scale-105 transition-transform duration-700 z-10" />
-               <div className="absolute inset-0 bg-gradient-to-t from-[#020202] via-transparent to-transparent opacity-80 pointer-events-none z-20"></div>
-            </div>
-            <div className="space-y-6">
-              <div className="w-12 h-12 rounded-2xl bg-blue-500/10 flex items-center justify-center border border-blue-500/20 mb-8">
-                <Building2 className="text-blue-400" size={24} />
-              </div>
-              <h2 className="text-3xl md:text-4xl font-bold tracking-tight">L'immobilier locatif, <br/>sans les maux de tête.</h2>
-              <p className="text-zinc-400 text-lg leading-relaxed">
-                Ne vous fiez plus aux "on-dit". Simulez vos projets avec précision : Cashflow net, fiscalité LMNP vs Nue, et rentabilité réelle après impôts.
-              </p>
-               <ul className="space-y-3 text-zinc-300 font-medium">
-                <li className="flex items-center gap-2"><CheckCircle2 size={18} className="text-blue-500" /> Comparateur fiscal instantané</li>
-                <li className="flex items-center gap-2"><CheckCircle2 size={18} className="text-blue-500" /> Dossiers bancaires PDF en 1 clic</li>
-                <li className="flex items-center gap-2"><CheckCircle2 size={18} className="text-blue-500" /> Calcul du cashflow net réel</li>
-              </ul>
-            </div>
-          </div>
-
-           {/* Feature 3: IA & Optimisation */}
-          <div className="grid md:grid-cols-2 gap-12 md:gap-24 items-center">
-            <div className="space-y-6 order-2 md:order-1">
-              <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 flex items-center justify-center border border-indigo-500/20 mb-8">
-                <Brain className="text-indigo-400" size={24} />
-              </div>
-              <h2 className="text-3xl md:text-4xl font-bold tracking-tight">Anticipez l'avenir <br/>avec précision.</h2>
-              <p className="text-zinc-400 text-lg leading-relaxed">
-                Visualisez votre liberté financière. Notre moteur croise vos flux mensuels, le rendement de vos actifs et projette l'évolution de votre patrimoine sur 40 ans.
-              </p>
-              <ul className="space-y-3 text-zinc-300 font-medium">
-                <li className="flex items-center gap-2"><CheckCircle2 size={18} className="text-indigo-500" /> Projection de la rente mensuelle</li>
-                <li className="flex items-center gap-2"><CheckCircle2 size={18} className="text-indigo-500" /> Impact fiscal CTO vs PEA</li>
-                <li className="flex items-center gap-2"><CheckCircle2 size={18} className="text-indigo-500" /> Calcul d'intérêts composés</li>
-              </ul>
-            </div>
-            
-            <div className="aspect-[4/3] rounded-[32px] border border-white/10 relative overflow-hidden order-1 md:order-2 group bg-zinc-900 shadow-[0_0_40px_rgba(99,102,241,0.1)]">
-               <Image src="/projection.png" alt="Projection IA Nexus" fill className="object-cover opacity-90 group-hover:scale-105 transition-transform duration-700"/>
-               <div className="absolute inset-0 bg-gradient-to-t from-[#020202] via-transparent to-transparent opacity-80 pointer-events-none"></div>
-            </div>
-          </div>
-
+      {/* TRUST SECTION */}
+      <section className="py-10 border-y border-white/5 bg-black/50 backdrop-blur-sm z-30 relative">
+        <div className="max-w-[1200px] mx-auto px-6 flex flex-wrap justify-center gap-8 md:gap-16 opacity-60 font-medium text-sm md:text-base text-zinc-400">
+            <div className="flex items-center gap-2"><Lock size={18}/> Chiffrement AES-256</div>
+            <div className="flex items-center gap-2"><CheckCircle2 size={18}/> DSP2 Sécurisé</div>
+            <div className="flex items-center gap-2"><Brain size={18}/> IA Prédictive</div>
         </div>
       </section>
 
-      {/* --- CTA FINAL --- */}
-      <section className="py-24 px-6 relative overflow-hidden border-t border-white/[0.06]">
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[500px] bg-gradient-to-r from-emerald-600/20 to-indigo-600/20 blur-[120px] rounded-full pointer-events-none -z-10 opacity-40"></div>
-        <div className="max-w-[800px] mx-auto text-center space-y-8">
-          <h2 className="text-4xl md:text-5xl font-black tracking-tight">Arrêtez de naviguer à vue.</h2>
-          <p className="text-xl text-zinc-400 max-w-2xl mx-auto leading-relaxed">Rejoignez les investisseurs qui ont repris le contrôle de leur avenir financier avec Nexus.</p>
-          <div className="pt-4">
+      {/* BENTO GRID FEATURES */}
+      <section id="features" className="py-32 px-6 max-w-[1200px] mx-auto space-y-6 z-30 relative">
+        <div className="text-center mb-16 space-y-4">
+            <h2 className="text-4xl md:text-5xl font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-b from-white to-zinc-400">Tout ce dont vous avez besoin. <br/>Rien de superflu.</h2>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* Bento 1: Agrégation */}
+            <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="col-span-1 md:col-span-2 bg-[#0A0A0C] border border-white/10 rounded-[32px] p-8 md:p-12 relative overflow-hidden group">
+                <div className="absolute top-0 right-0 w-64 h-64 bg-[radial-gradient(circle_at_center,rgba(16,185,129,0.15),transparent_70%)] transition-all group-hover:opacity-100 opacity-50"></div>
+                <LineChart className="text-emerald-400 mb-6 relative z-10" size={32} />
+                <h3 className="text-3xl font-bold mb-4 relative z-10">Vue 360° en temps réel.</h3>
+                <p className="text-zinc-400 text-lg mb-8 max-w-md relative z-10">Connectez vos banques, courtiers et portefeuilles crypto. Nexus calcule votre valeur nette à la seconde près.</p>
+                {/* FIX: Opacité à 100% sur l'image */}
+                <div className="relative h-48 md:h-64 w-full rounded-2xl overflow-hidden border border-white/5 z-10 bg-black/40">
+                    <Image src="/patrimoine.png" alt="Patrimoine" fill className="object-cover object-top opacity-100 transition-transform duration-700 group-hover:scale-105" />
+                </div>
+            </motion.div>
+
+            {/* Bento 2: Immo */}
+            <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, margin: "-50px" }} transition={{ delay: 0.1 }} className="col-span-1 bg-[#0A0A0C] border border-white/10 rounded-[32px] p-8 md:p-12 relative overflow-hidden group">
+                <div className="absolute bottom-0 right-0 w-48 h-48 bg-[radial-gradient(circle_at_center,rgba(59,130,246,0.15),transparent_70%)] transition-all group-hover:opacity-100 opacity-50"></div>
+                <Building2 className="text-blue-400 mb-6 relative z-10" size={32} />
+                <h3 className="text-2xl font-bold mb-4 relative z-10">Immobilier <br/> chirurgical.</h3>
+                <p className="text-zinc-400 mb-8 relative z-10">Cashflow net, LMNP vs Nu, impôts cachés. Simulez sans faille.</p>
+                {/* FIX: Opacité à 100% sur l'image */}
+                <div className="relative h-40 w-full rounded-2xl overflow-hidden border border-white/5 z-10 bg-black/40">
+                    <Image src="/simulateur.png" alt="Simulateur" fill className="object-cover object-left opacity-100 transition-transform duration-700 group-hover:scale-105" />
+                </div>
+            </motion.div>
+
+            {/* Bento 3: IA */}
+            <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="col-span-1 md:col-span-3 bg-gradient-to-br from-zinc-900 to-[#0A0A0C] border border-white/10 rounded-[32px] p-8 md:p-12 relative overflow-hidden group flex flex-col md:flex-row items-center gap-12">
+                <div className="flex-1 space-y-6 relative z-10">
+                    <Brain className="text-indigo-400" size={40} />
+                    <h3 className="text-3xl md:text-4xl font-bold">Votre futur, modélisé par IA.</h3>
+                    <p className="text-zinc-400 text-lg max-w-lg">
+                        Croisez vos revenus, votre taux d'épargne et les intérêts composés. Découvrez exactement l'année et le mois où vous atteindrez l'indépendance financière.
+                    </p>
+                    <ul className="space-y-2">
+                        <li className="flex items-center gap-2 text-sm font-medium text-zinc-300"><CheckCircle2 size={16} className="text-indigo-400"/> Projection sur 40 ans</li>
+                        <li className="flex items-center gap-2 text-sm font-medium text-zinc-300"><CheckCircle2 size={16} className="text-indigo-400"/> Scénarios de crises intégrés</li>
+                    </ul>
+                </div>
+                {/* FIX: Opacité à 100% sur l'image */}
+                <div className="flex-1 w-full relative h-64 md:h-80 rounded-2xl overflow-hidden border border-white/10 shadow-2xl z-10 bg-black/40">
+                    <Image src="/projection.png" alt="IA" fill className="object-cover opacity-100 transition-transform duration-700 group-hover:scale-105" />
+                </div>
+            </motion.div>
+        </div>
+      </section>
+
+      {/* CTA FINAL */}
+      <section className="py-32 px-6 relative overflow-hidden z-30">
+        <div className="absolute inset-0 bg-[#050505] -z-20"></div>
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[400px] bg-[radial-gradient(circle_at_center,rgba(16,185,129,0.1),transparent_60%)] -z-10"></div>
+        
+        <div className="max-w-[800px] mx-auto text-center space-y-8 relative z-10">
+          <h2 className="text-5xl md:text-6xl font-black tracking-tight text-white">Prêt à dominer <br/> vos finances ?</h2>
+          <p className="text-xl text-zinc-400 max-w-2xl mx-auto font-medium">Rejoignez les investisseurs qui ont repris le contrôle avec Nexus.</p>
+          <div className="pt-8">
             <Link href="/login">
-              <Button className="h-14 px-10 text-lg bg-white hover:bg-zinc-200 text-black font-bold rounded-full transition-all hover:shadow-[0_0_30px_rgba(255,255,255,0.3)] hover:scale-[1.02]">
-                Commencer maintenant <ArrowRight className="ml-2" />
+              <Button className="h-14 px-10 text-lg bg-white hover:bg-zinc-200 text-black font-black rounded-full transition-all hover:shadow-[0_0_40px_rgba(255,255,255,0.4)] hover:scale-105">
+                Commencer gratuitement
               </Button>
             </Link>
           </div>
-          <p className="text-sm text-zinc-500 font-medium">Essai gratuit. Pas de carte bancaire requise.</p>
+          <p className="text-sm text-zinc-500 font-medium">Aucune carte bancaire requise.</p>
         </div>
       </section>
 
-      {/* --- FOOTER --- */}
-      <footer className="border-t border-white/[0.06] py-12 px-6 bg-[#010101]">
+      {/* FOOTER */}
+      <footer className="border-t border-white/[0.06] py-12 px-6 bg-[#020202] z-30 relative">
         <div className="max-w-[1200px] mx-auto flex flex-col md:flex-row justify-between items-center gap-6">
             <div className="flex items-center gap-3">
-                <div className="w-6 h-6 text-zinc-500 hover:text-emerald-500 transition-colors">
+                <div className="w-5 h-5 text-zinc-500">
                     <NexusLogo className="w-full h-full" />
                 </div>
-                <span className="font-bold tracking-widest uppercase text-zinc-300">Nexus</span>
+                <span className="font-bold tracking-widest uppercase text-zinc-300 text-sm">Nexus</span>
             </div>
             <div className="flex gap-8 text-sm text-zinc-500 font-medium">
               <Link href="#" className="hover:text-white transition-colors">Tarifs</Link>
               <Link href="#" className="hover:text-white transition-colors">Sécurité</Link>
               <Link href="#" className="hover:text-white transition-colors">Légal</Link>
             </div>
-            <p className="text-zinc-600 text-sm">© 2026 Nexus Wealth. Fait avec passion.</p>
+            <p className="text-zinc-600 text-sm font-medium">© 2026 Nexus Wealth.</p>
         </div>
       </footer>
 
