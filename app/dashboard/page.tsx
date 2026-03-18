@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { TrendingUp, Wallet, ArrowUpRight, Lock, Building, PieChart, Calculator, Activity, Target, Settings } from "lucide-react";
+import { TrendingUp, Wallet, ArrowUpRight, Lock, Building, PieChart, Calculator, Activity, Target, Settings, Sparkles } from "lucide-react";
 import AnimatedNumber from "@/components/AnimatedNumber";
 import Sidebar from "@/components/Sidebar";
 import { NexusLogo } from "@/components/NexusLogo"; 
@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { supabase } from "@/lib/supabaseClient";
 import OnboardingWizard from "@/components/OnboardingWizard"; 
 import NexusChat from "@/components/NexusChat"; 
-import { OnboardingModal } from "@/components/OnboardingModal"; // <-- AJOUT DU GUIDE D'ACCUEIL
+import { OnboardingModal } from "@/components/OnboardingModal"; 
 
 // Helper pour formater les chiffres envoyés à l'IA
 const formatEuro = (val: number) => new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(val);
@@ -160,11 +160,8 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen bg-[#050505] text-zinc-100 font-sans selection:bg-emerald-500/30 selection:text-emerald-200 relative">
       
-      {/* LE NOUVEAU GUIDE D'ACCUEIL EST ICI */}
       <OnboardingModal />
-      
       <Sidebar />
-
       {showOnboarding && <OnboardingWizard onFinish={() => { setShowOnboarding(false); fetchData(); }} />}
 
       <main className="md:ml-64 flex-1 w-auto max-w-full p-4 pt-6 pb-24 md:p-8 relative overflow-hidden">
@@ -200,37 +197,67 @@ export default function Dashboard() {
           </header>
 
           {isNewUser ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-12">
-                  <Link href="/patrimoine" className="group">
-                      <div className="h-full p-12 rounded-[32px] bg-zinc-900/40 border border-white/5 hover:border-emerald-500/30 transition-all cursor-pointer relative overflow-hidden backdrop-blur-xl">
-                          <div className="absolute top-0 right-0 p-40 bg-emerald-500/5 blur-[80px] rounded-full group-hover:bg-emerald-500/10 transition-all"></div>
-                          <div className="relative z-10 flex flex-col items-center text-center space-y-6">
-                              <div className="h-24 w-24 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-500 border border-emerald-500/20 shadow-[0_0_30px_rgba(16,185,129,0.2)]"><Wallet size={40} /></div>
-                              <div>
-                                  <h2 className="text-3xl font-black text-white uppercase tracking-wide mb-2">1. Initialisation</h2>
-                                  <p className="text-zinc-400 text-sm max-w-xs mx-auto font-light">Connectez vos actifs pour calibrer le moteur Nexus.</p>
-                              </div>
-                              <Button className="bg-emerald-500 hover:bg-emerald-400 text-black font-bold rounded-full px-10 py-6 text-lg">Ajouter des actifs <ArrowUpRight className="ml-2" size={20}/></Button>
+              // =======================================================
+              // NOUVEL ÉTAT "VIDE" - GUIDE DE DÉMARRAGE INTUITIF
+              // =======================================================
+              <div className="mt-8 md:mt-16 max-w-5xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-700">
+                  <div className="bg-zinc-900/40 border border-white/10 rounded-[32px] md:rounded-[40px] p-6 md:p-12 backdrop-blur-xl shadow-2xl relative overflow-hidden">
+                      
+                      {/* Entête du guide */}
+                      <div className="flex flex-col items-center text-center mb-10 md:mb-14 relative z-10">
+                          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] md:text-xs font-bold uppercase tracking-widest mb-6">
+                              <Sparkles size={16} /> Étape finale
                           </div>
+                          <h2 className="text-3xl md:text-5xl font-black text-white mb-4 tracking-tight">Activez votre moteur financier.</h2>
+                          <p className="text-zinc-400 text-base md:text-lg max-w-xl mx-auto font-medium leading-relaxed">
+                              Nexus a besoin de connaître votre point de départ pour calculer votre Valeur Nette et projeter votre avenir. Par quoi voulez-vous commencer ?
+                          </p>
                       </div>
-                  </Link>
-                  <Link href="/budget" className="group">
-                      <div className="h-full p-12 rounded-[32px] bg-zinc-900/40 border border-white/5 hover:border-yellow-500/30 transition-all cursor-pointer relative overflow-hidden backdrop-blur-xl">
-                          <div className="absolute top-0 right-0 p-40 bg-yellow-500/5 blur-[80px] rounded-full group-hover:bg-yellow-500/10 transition-all"></div>
-                          <div className="relative z-10 flex flex-col items-center text-center space-y-6">
-                              <div className="h-24 w-24 rounded-full bg-yellow-500/10 flex items-center justify-center text-yellow-500 border border-yellow-500/20 shadow-[0_0_30px_rgba(234,179,8,0.2)]"><PieChart size={40} /></div>
-                              <div>
-                                  <h2 className="text-3xl font-black text-white uppercase tracking-wide mb-2">2. Calibration Flux</h2>
-                                  <p className="text-zinc-400 text-sm max-w-xs mx-auto font-light">Définissez vos revenus pour calculer votre capacité réelle.</p>
+
+                      {/* Les 2 missions */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8 relative z-10">
+                          
+                          {/* Carte 1 : Patrimoine */}
+                          <Link href="/patrimoine" className="group">
+                              <div className="h-full p-8 md:p-10 rounded-[24px] bg-black/40 border border-white/10 hover:border-emerald-500/50 transition-all duration-300 cursor-pointer relative overflow-hidden flex flex-col items-center text-center shadow-lg">
+                                  <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 blur-[50px] rounded-full group-hover:bg-emerald-500/20 transition-all"></div>
+                                  <div className="h-20 w-20 mb-6 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-400 border border-emerald-500/20 group-hover:scale-110 transition-transform duration-500 shadow-[0_0_30px_rgba(16,185,129,0.1)]">
+                                      <Wallet size={36} strokeWidth={1.5} />
+                                  </div>
+                                  <h3 className="text-2xl font-black text-white mb-3">1. Mon Patrimoine</h3>
+                                  <p className="text-zinc-400 text-sm mb-8 flex-1 leading-relaxed">
+                                      Comptes courants, livrets, bourse, immobilier ou crypto. Connectez ou déclarez ce que vous possédez.
+                                  </p>
+                                  <Button className="w-full bg-emerald-500 hover:bg-emerald-400 text-black font-bold rounded-2xl h-14 text-base transition-all shadow-[0_0_20px_rgba(16,185,129,0.2)] hover:shadow-[0_0_30px_rgba(16,185,129,0.4)]">
+                                      Ajouter mes actifs <ArrowUpRight className="ml-2" size={20}/>
+                                  </Button>
                               </div>
-                              <Button className="bg-yellow-500 hover:bg-yellow-400 text-black font-bold rounded-full px-10 py-6 text-lg">Configurer Budget <ArrowUpRight className="ml-2" size={20}/></Button>
-                          </div>
+                          </Link>
+
+                          {/* Carte 2 : Budget */}
+                          <Link href="/budget" className="group">
+                              <div className="h-full p-8 md:p-10 rounded-[24px] bg-black/40 border border-white/10 hover:border-yellow-500/50 transition-all duration-300 cursor-pointer relative overflow-hidden flex flex-col items-center text-center shadow-lg">
+                                  <div className="absolute top-0 left-0 w-32 h-32 bg-yellow-500/10 blur-[50px] rounded-full group-hover:bg-yellow-500/20 transition-all"></div>
+                                  <div className="h-20 w-20 mb-6 rounded-full bg-yellow-500/10 flex items-center justify-center text-yellow-500 border border-yellow-500/20 group-hover:scale-110 transition-transform duration-500 shadow-[0_0_30px_rgba(234,179,8,0.1)]">
+                                      <PieChart size={36} strokeWidth={1.5} />
+                                  </div>
+                                  <h3 className="text-2xl font-black text-white mb-3">2. Mes Revenus</h3>
+                                  <p className="text-zinc-400 text-sm mb-8 flex-1 leading-relaxed">
+                                      Définissez votre salaire et vos revenus mensuels pour calculer instantanément votre capacité d'épargne.
+                                  </p>
+                                  <Button className="w-full bg-yellow-500 hover:bg-yellow-400 text-black font-bold rounded-2xl h-14 text-base transition-all shadow-[0_0_20px_rgba(234,179,8,0.2)] hover:shadow-[0_0_30px_rgba(234,179,8,0.4)]">
+                                      Configurer mon budget <ArrowUpRight className="ml-2" size={20}/>
+                                  </Button>
+                              </div>
+                          </Link>
+
                       </div>
-                  </Link>
+                  </div>
               </div>
+              // =======================================================
           ) : (
             <>
-              {/* CHAGEMENT ICI : La grille Bento Box pour mobile (grid-cols-2) et desktop (lg:grid-cols-2) */}
+              {/* VUE UTILISATEUR CLASSIQUE */}
               <div className="grid grid-cols-2 lg:grid-cols-2 gap-3 md:gap-8">
                 <Link href="/patrimoine" className="group h-full">
                     <div className="relative overflow-hidden rounded-[24px] md:rounded-[40px] border border-white/5 bg-zinc-900/40 backdrop-blur-md p-4 md:p-10 h-full transition-all duration-500 hover:border-emerald-500/30 hover:bg-zinc-900/60 shadow-2xl flex flex-col justify-between min-h-[150px] md:min-h-[220px]">
@@ -284,7 +311,6 @@ export default function Dashboard() {
 
               <div>
                 <h3 className="text-[10px] md:text-xs font-bold text-zinc-500 uppercase tracking-[0.2em] mb-4 md:mb-6 pl-2">Accès Rapide</h3>
-                {/* CHANGEMENT ICI : La grille accès rapide passe en 2x2 sur mobile */}
                 <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
                     {[{ href: "/projection", label: "Projection", sub: "Futur & Intérêts", icon: TrendingUp, color: "text-purple-400", bg: "bg-purple-500/10", border: "hover:border-purple-500/30" }, { href: "/simulateur", label: "Simulateur Immo", sub: "Rentabilité", icon: Calculator, color: "text-blue-400", bg: "bg-blue-500/10", border: "hover:border-blue-500/30" }, { href: "/budget", label: "Mon Budget", sub: "Flux mensuels", icon: PieChart, color: "text-yellow-400", bg: "bg-yellow-500/10", border: "hover:border-yellow-500/30" },].map((item) => (
                         <Link key={item.href} href={item.href} className={`p-4 md:p-6 rounded-[20px] md:rounded-[24px] bg-zinc-900/40 border border-white/5 ${item.border} hover:bg-zinc-900/60 transition-all flex flex-col md:flex-row items-start md:items-center gap-3 md:gap-5 group backdrop-blur-sm`}>

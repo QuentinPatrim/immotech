@@ -2,9 +2,9 @@
 
 import { useState, useEffect, useRef } from "react";
 import Sidebar from "@/components/Sidebar";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, Variants } from "framer-motion";
 import { BarChart, Bar, XAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Legend } from "recharts";
-import { Plus, Trash2, Home, Target, ShieldCheck, Loader2, ChevronLeft, ChevronRight, Save, AlertTriangle, Coffee, ArrowRight, ScanLine, Check, BookOpen, Info, X, PiggyBank, Rocket, CheckCircle2 } from "lucide-react";
+import { Plus, Trash2, Home, Target, ShieldCheck, Loader2, ChevronLeft, ChevronRight, Save, AlertTriangle, Coffee, ArrowRight, ScanLine, Check, BookOpen, Info, X, PiggyBank, Rocket, CheckCircle2, Coins, ShoppingCart, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { triggerHaptic } from "@/lib/haptics";
@@ -27,7 +27,162 @@ const fileToBase64 = (file: File): Promise<string> => {
 };
 
 // ==========================================
-// 1. POP-UP D'ACCUEIL : LE BUDGET BASE ZÉRO
+// 1. WIZARD D'INSTALLATION (NOUVEL UTILISATEUR)
+// ==========================================
+interface BudgetWizardProps {
+    onComplete: () => void;
+}
+  
+function BudgetWizard({ onComplete }: BudgetWizardProps) {
+    const [step, setStep] = useState(1);
+    const [loading, setLoading] = useState(false);
+    
+    const [income, setIncome] = useState("");
+    const [fixedExpenses, setFixedExpenses] = useState("");
+    const [variableExpenses, setVariableExpenses] = useState("");
+  
+    // Bloque le défilement du body quand le wizard est ouvert
+    useEffect(() => {
+        document.body.style.overflow = "hidden";
+        return () => { document.body.style.overflow = "auto"; };
+    }, []);
+
+    const handleNext = () => setStep(prev => prev + 1);
+    const handleBack = () => setStep(prev => prev - 1);
+  
+    const handleSave = async () => {
+      setLoading(true);
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+  
+        // Formatage des données pour ton architecture Supabase
+        const budgetData = {
+          income: Number(income) || 0,
+          details: [
+            { id: `bw-1-${Date.now()}`, name: "Charges fixes (Loyer, Factures)", amount: Number(fixedExpenses) || 0, category: "BESOIN" },
+            { id: `bw-2-${Date.now()}`, name: "Dépenses courantes (Courses, Loisirs)", amount: Number(variableExpenses) || 0, category: "ENVIE" }
+          ]
+        };
+  
+        await supabase.from('profiles').update({
+          budget_json: budgetData
+        }).eq('id', user.id);
+  
+        onComplete(); 
+  
+      } catch (error) {
+        console.error("Erreur de sauvegarde:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+  
+    const slideVariants: Variants = {
+      hidden: { opacity: 0, y: 20 },
+      visible: { opacity: 1, y: 0, transition: { duration: 0.4 } },
+      exit: { opacity: 0, y: -20, transition: { duration: 0.3 } }
+    };
+  
+    return (
+      <div className="fixed inset-0 z-[99999] bg-[#020202] text-white flex flex-col items-center justify-center p-6">
+        <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-yellow-500/10 blur-[120px] rounded-full pointer-events-none"></div>
+  
+        <div className="w-full max-w-lg relative z-10">
+          
+          {/* Barre de progression */}
+          <div className="flex gap-2 mb-12">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className={`h-1.5 flex-1 rounded-full transition-all duration-500 ${i <= step ? "bg-yellow-500" : "bg-white/10"}`} />
+            ))}
+          </div>
+  
+          <AnimatePresence mode="wait">
+            {/* ÉTAPE 1 : REVENUS */}
+            {step === 1 && (
+              <motion.div key="step1" variants={slideVariants} initial="hidden" animate="visible" exit="exit" className="space-y-8 text-center">
+                <div className="w-20 h-20 mx-auto bg-yellow-500/10 rounded-full flex items-center justify-center text-yellow-500 mb-6 shadow-[0_0_30px_rgba(234,179,8,0.2)]">
+                  <Coins size={36} />
+                </div>
+                <h2 className="text-3xl md:text-4xl font-black">Quels sont vos revenus nets mensuels ?</h2>
+                <p className="text-zinc-400">Salaires, aides, revenus locatifs nets.</p>
+                
+                <div className="relative max-w-xs mx-auto pt-6">
+                  <Input 
+                    type="number" value={income} onChange={(e) => setIncome(e.target.value)} autoFocus
+                    className="bg-white/5 border-white/10 text-center text-3xl h-20 rounded-2xl pr-12 focus:border-yellow-500/50 focus:ring-yellow-500/20 placeholder:text-zinc-700 text-white font-black"
+                    placeholder="0"
+                  />
+                  <span className="absolute right-6 top-1/2 -translate-y-1/2 text-2xl text-zinc-500 font-black mt-3">€</span>
+                </div>
+  
+                <Button onClick={handleNext} disabled={!income} className="w-full h-14 bg-yellow-500 hover:bg-yellow-400 text-black font-bold text-lg rounded-2xl mt-8 transition-all">
+                  Continuer <ArrowRight className="ml-2 w-5 h-5" />
+                </Button>
+              </motion.div>
+            )}
+  
+            {/* ÉTAPE 2 : CHARGES FIXES */}
+            {step === 2 && (
+              <motion.div key="step2" variants={slideVariants} initial="hidden" animate="visible" exit="exit" className="space-y-8 text-center">
+                <div className="w-20 h-20 mx-auto bg-blue-500/10 rounded-full flex items-center justify-center text-blue-500 mb-6 shadow-[0_0_30px_rgba(59,130,246,0.2)]">
+                  <Home size={36} />
+                </div>
+                <h2 className="text-3xl md:text-4xl font-black">Combien vous coûtent vos charges fixes ?</h2>
+                <p className="text-zinc-400">Loyer, crédits, assurances, abonnements (obligatoires).</p>
+                
+                <div className="relative max-w-xs mx-auto pt-6">
+                  <Input 
+                    type="number" value={fixedExpenses} onChange={(e) => setFixedExpenses(e.target.value)} autoFocus
+                    className="bg-white/5 border-white/10 text-center text-3xl h-20 rounded-2xl pr-12 focus:border-blue-500/50 focus:ring-blue-500/20 placeholder:text-zinc-700 text-white font-black"
+                    placeholder="0"
+                  />
+                  <span className="absolute right-6 top-1/2 -translate-y-1/2 text-2xl text-zinc-500 font-black mt-3">€</span>
+                </div>
+  
+                <div className="flex gap-4 mt-8">
+                  <Button variant="ghost" onClick={handleBack} className="h-14 px-6 text-zinc-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-2xl"><ArrowLeft /></Button>
+                  <Button onClick={handleNext} disabled={!fixedExpenses} className="flex-1 h-14 bg-white hover:bg-zinc-200 text-black font-bold text-lg rounded-2xl transition-all">
+                    Continuer <ArrowRight className="ml-2 w-5 h-5" />
+                  </Button>
+                </div>
+              </motion.div>
+            )}
+  
+            {/* ÉTAPE 3 : DÉPENSES COURANTES */}
+            {step === 3 && (
+              <motion.div key="step3" variants={slideVariants} initial="hidden" animate="visible" exit="exit" className="space-y-8 text-center">
+                <div className="w-20 h-20 mx-auto bg-emerald-500/10 rounded-full flex items-center justify-center text-emerald-500 mb-6 shadow-[0_0_30px_rgba(16,185,129,0.2)]">
+                  <ShoppingCart size={36} />
+                </div>
+                <h2 className="text-3xl md:text-4xl font-black">Et pour vivre au quotidien ?</h2>
+                <p className="text-zinc-400">Estimation mensuelle pour les courses, restaurants, et loisirs.</p>
+                
+                <div className="relative max-w-xs mx-auto pt-6">
+                  <Input 
+                    type="number" value={variableExpenses} onChange={(e) => setVariableExpenses(e.target.value)} autoFocus
+                    className="bg-white/5 border-white/10 text-center text-3xl h-20 rounded-2xl pr-12 focus:border-emerald-500/50 focus:ring-emerald-500/20 placeholder:text-zinc-700 text-white font-black"
+                    placeholder="0"
+                  />
+                  <span className="absolute right-6 top-1/2 -translate-y-1/2 text-2xl text-zinc-500 font-black mt-3">€</span>
+                </div>
+  
+                <div className="flex gap-4 mt-8">
+                  <Button variant="ghost" onClick={handleBack} className="h-14 px-6 text-zinc-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-2xl"><ArrowLeft /></Button>
+                  <Button onClick={handleSave} disabled={!variableExpenses || loading} className="flex-1 h-14 bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-lg rounded-2xl shadow-[0_0_20px_rgba(16,185,129,0.3)] transition-all">
+                    {loading ? <Loader2 className="animate-spin mx-auto" /> : "Générer mon budget"}
+                  </Button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      </div>
+    );
+}
+
+// ==========================================
+// 2. POP-UP EXPLICATIF : LE BUDGET BASE ZÉRO
 // ==========================================
 const TUTORIAL_STEPS = [
   {
@@ -96,7 +251,7 @@ function BudgetTutorialModal({ isOpen, onClose }: { isOpen: boolean, onClose: ()
 }
 
 // ==========================================
-// 2. BULLE D'AIDE OPAQUE CORRIGÉE (Z-INDEX)
+// 3. BULLE D'AIDE OPAQUE CORRIGÉE (Z-INDEX)
 // ==========================================
 const HelpTooltip = ({ text }: { text: string }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -117,7 +272,7 @@ const HelpTooltip = ({ text }: { text: string }) => {
 };
 
 // ==========================================
-// 3. PAGE BUDGET PRINCIPALE
+// 4. PAGE BUDGET PRINCIPALE
 // ==========================================
 type BudgetItem = { id: string, name: string, amount: number, category: string, target?: number, startMonth?: string };
 
@@ -145,13 +300,22 @@ export default function BudgetPage() {
     const [scannedItems, setScannedItems] = useState<BudgetItem[]>([]);
     const [showValidation, setShowValidation] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    
+    // États pour le Guide d'intégration et le Tutoriel
+    const [needsSetup, setNeedsSetup] = useState(false);
     const [isTutorialOpen, setIsTutorialOpen] = useState(false);
 
     useEffect(() => {
         loadMonthData(selectedDate);
-        const hasSeenTutorial = localStorage.getItem("nexus_budget_tuto_seen");
-        if (!hasSeenTutorial) setTimeout(() => setIsTutorialOpen(true), 800);
     }, [selectedDate]);
+
+    // Gère l'affichage du Tutoriel (se déclenche seulement si on n'a pas besoin du Setup initial)
+    useEffect(() => {
+        if (!loading && !needsSetup) {
+            const hasSeenTutorial = localStorage.getItem("nexus_budget_tuto_seen");
+            if (!hasSeenTutorial) setTimeout(() => setIsTutorialOpen(true), 800);
+        }
+    }, [loading, needsSetup]);
 
     const loadMonthData = async (date: Date) => {
         setLoading(true);
@@ -161,6 +325,14 @@ export default function BudgetPage() {
         const startOfMonth = new Date(Date.UTC(date.getFullYear(), date.getMonth(), 1)).toISOString().split('T')[0];
 
         const { data: profile } = await supabase.from('profiles').select('budget_json, assets_json').eq('id', user.id).single();
+        
+        // --- DÉTECTION NOUVEL UTILISATEUR POUR LE WIZARD ---
+        if (!profile?.budget_json || (profile.budget_json as any).income === undefined) {
+            setNeedsSetup(true);
+        } else {
+            setNeedsSetup(false);
+        }
+
         if (profile && Array.isArray(profile.assets_json)) {
             const cash = (profile.assets_json as any[]).filter(a => a.type === "Cash" || (a.type && a.type.includes("Livret"))).reduce((acc, a) => acc + (a.value || 0), 0);
             setCurrentCash(cash);
@@ -178,7 +350,6 @@ export default function BudgetPage() {
                 const b = profile.budget_json as any;
                 setIncome(Number(b.income) || 0);
                 
-                // Moteur Temporel : Ne charge que les projets qui ne sont pas terminés
                 let templateDetails = b.details || [];
                 templateDetails = templateDetails.filter((item: any) => {
                     if (item.category === 'EPARGNE' && item.target && item.startMonth) {
@@ -186,7 +357,7 @@ export default function BudgetPage() {
                         const futureDate = new Date(startOfMonth);
                         const diffMonths = (futureDate.getFullYear() - start.getFullYear()) * 12 + (futureDate.getMonth() - start.getMonth());
                         const monthsNeeded = Math.ceil(item.target / item.amount);
-                        return diffMonths < monthsNeeded; // Exclu si la durée totale est dépassée
+                        return diffMonths < monthsNeeded; 
                     }
                     return true;
                 });
@@ -231,21 +402,16 @@ export default function BudgetPage() {
     
     const totalExp = needsTotal + wantsTotal + savesTotal;
 
-    // ÉTAPE 3 : Le Reste à Vivre (Ce qu'il reste après les charges fixes et envies)
     const capaciteEpargneBrute = Math.max(0, safeIncome - needsTotal - wantsTotal);
-    
-    // ÉTAPE 5 : L'Investissement (Ce qu'il reste APRES avoir rempli les enveloppes projets)
     const investissementPurDCA = capaciteEpargneBrute - savesTotal;
 
-    const safetyTarget = (needsTotal + wantsTotal) * 6; // Objectif 6 mois
+    const safetyTarget = (needsTotal + wantsTotal) * 6; 
     const isSafe = currentCash >= safetyTarget && safetyTarget > 0;
 
-    // Calculs pour la jauge 50/30/20
     const needsPct = safeIncome > 0 ? (needsTotal / safeIncome) * 100 : 0;
     const wantsPct = safeIncome > 0 ? (wantsTotal / safeIncome) * 100 : 0;
     const savingsPct = safeIncome > 0 ? (capaciteEpargneBrute / safeIncome) * 100 : 0;
 
-    // Calcul automatique des mois restants pour un projet
     const calculateRemainingMonths = (item: BudgetItem) => {
         if (!item.target || item.amount <= 0) return 0;
         const start = item.startMonth ? new Date(item.startMonth) : new Date(Date.UTC(selectedDate.getFullYear(), selectedDate.getMonth(), 1));
@@ -261,7 +427,6 @@ export default function BudgetPage() {
         setLoading(true);
         const saveDate = new Date(Date.UTC(selectedDate.getFullYear(), selectedDate.getMonth(), 1)).toISOString().split('T')[0];
 
-        // 1. Sauvegarde le mois en cours
         await supabase.from('monthly_history').upsert({ 
             user_id: user.id, month: saveDate, income: safeIncome, expenses: needsTotal + wantsTotal, invested: investissementPurDCA, details_json: expenses 
         }, { onConflict: 'user_id, month' });
@@ -269,15 +434,12 @@ export default function BudgetPage() {
         triggerHaptic("success");
         setIsExistingMonth(true);
         
-        // 2. Gestion de la récurrence (Propagation vers le futur)
         const recurringExpenses = expenses.filter(e => e.category === 'BESOIN' || e.category === 'EPARGNE');
         
-        // Mettre à jour le template global pour les nouveaux mois non créés
         if (selectedDate >= new Date(new Date().getFullYear(), new Date().getMonth(), 1)) {
             await supabase.from('profiles').update({ budget_json: { income: safeIncome, details: recurringExpenses } }).eq('id', user.id);
         }
 
-        // Mettre à jour les mois FUTURS DÉJÀ CRÉÉS
         const nextMonthDate = new Date(Date.UTC(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 1)).toISOString().split('T')[0];
         const { data: futureHistory } = await supabase.from('monthly_history').select('*').eq('user_id', user.id).gte('month', nextMonthDate);
 
@@ -325,7 +487,6 @@ export default function BudgetPage() {
 
     const removeExpense = (id: string) => setExpenses(expenses.filter(e => e.id !== id));
 
-    // --- SCANNER IA ---
     const triggerScanner = () => fileInputRef.current?.click();
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -367,384 +528,394 @@ export default function BudgetPage() {
         }
     };
 
-    if (loading && expenses.length === 0) return <div className="min-h-screen bg-[#050505] flex items-center justify-center"><Loader2 className="animate-spin text-emerald-500"/></div>;
+    if (loading && expenses.length === 0 && !needsSetup) return <div className="min-h-screen bg-[#050505] flex items-center justify-center"><Loader2 className="animate-spin text-emerald-500"/></div>;
 
     return (
-        <div className="min-h-screen bg-[#050505] text-zinc-100 font-sans pb-24 md:pb-8 selection:bg-yellow-500/30 selection:text-yellow-200 overflow-x-hidden">
-            
-            {/* OVERLAYS IA (SCAN & VALIDATION) */}
-            <AnimatePresence>
-                {isScanning && (
-                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[200] flex items-center justify-center bg-black/90 backdrop-blur-md">
-                        <div className="flex flex-col items-center text-center space-y-6">
-                            <motion.div animate={{ y: [-10, 10, -10] }} transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }} className="w-24 h-24 rounded-3xl bg-purple-500/10 border border-purple-500/30 flex items-center justify-center text-purple-400 relative overflow-hidden shadow-[0_0_50px_rgba(168,85,247,0.4)]">
-                                <ScanLine size={40} className="relative z-10" />
-                                <motion.div animate={{ top: ["0%", "100%", "0%"] }} transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }} className="absolute left-0 w-full h-1 bg-purple-400 shadow-[0_0_15px_rgba(168,85,247,1)] z-20" />
-                            </motion.div>
-                            <div><h3 className="text-xl font-black text-white tracking-widest uppercase mb-2">Analyse IA en cours...</h3></div>
-                        </div>
-                    </motion.div>
-                )}
-                {showValidation && (
-                    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
-                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/90 backdrop-blur-md" onClick={() => setShowValidation(false)} />
-                        <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} className="relative w-full max-w-lg bg-[#0A0A0C] border border-purple-500/30 rounded-3xl flex flex-col overflow-hidden max-h-[80vh]">
-                            <div className="p-6 border-b border-white/5 flex items-center justify-between bg-purple-900/10">
-                                <div><h3 className="text-lg font-black text-white uppercase tracking-wider flex items-center gap-2"><ScanLine size={20} className="text-purple-400"/> Validation</h3></div>
-                                <button onClick={() => setShowValidation(false)} className="text-zinc-500 hover:text-white p-2"><X size={20}/></button>
-                            </div>
-                            <div className="p-6 overflow-y-auto space-y-3">
-                                {scannedItems.map((item) => (
-                                    <div key={item.id} className="flex flex-col sm:flex-row items-center justify-between p-4 bg-black/50 border border-white/5 rounded-2xl gap-4">
-                                        <div className="flex-1 min-w-0 w-full"><p className="font-bold text-white text-sm truncate">{item.name}</p><p className="text-lg font-black text-emerald-400 mt-1">{formatEuro(item.amount)}</p></div>
-                                        <Select value={item.category} onValueChange={(val) => setScannedItems(scannedItems.map(i => i.id === item.id ? { ...i, category: val } : i))}>
-                                            <SelectTrigger className="w-full sm:w-36 bg-zinc-900 border-white/10 text-xs"><SelectValue /></SelectTrigger>
-                                            <SelectContent className="bg-zinc-900 border-white/10 text-white z-[999]"><SelectItem value="BESOIN">🏠 Besoin</SelectItem><SelectItem value="ENVIE">☕ Loisir</SelectItem></SelectContent>
-                                        </Select>
-                                    </div>
-                                ))}
-                            </div>
-                            <div className="p-6 border-t border-white/5 bg-black"><Button onClick={() => { setExpenses([...expenses, ...scannedItems]); setShowValidation(false); setScannedItems([]); }} className="w-full h-14 bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-black uppercase tracking-widest rounded-xl">Importer ({scannedItems.length})</Button></div>
-                        </motion.div>
-                    </div>
-                )}
-            </AnimatePresence>
+        <>
+            {/* AFFICHAGE DU GUIDE SI NOUVEL UTILISATEUR */}
+            {needsSetup && (
+                <BudgetWizard onComplete={() => {
+                    setNeedsSetup(false);
+                    loadMonthData(selectedDate);
+                }} />
+            )}
 
-            <BudgetTutorialModal isOpen={isTutorialOpen} onClose={() => { setIsTutorialOpen(false); localStorage.setItem("nexus_budget_tuto_seen", "true"); }} />
-            <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept="image/*,application/pdf" className="hidden" />
-
-            <Sidebar />
-            <main className="md:ml-64 flex-1 w-full md:w-auto min-w-0 p-4 md:p-8 relative overflow-x-hidden">
-                <div className="fixed top-0 left-64 w-[600px] h-[600px] bg-emerald-900/5 rounded-full blur-[120px] pointer-events-none -z-10"></div>
-                <div className="fixed bottom-0 right-0 w-[500px] h-[500px] bg-blue-900/5 rounded-full blur-[120px] pointer-events-none -z-10"></div>
+            <div className="min-h-screen bg-[#050505] text-zinc-100 font-sans pb-24 md:pb-8 selection:bg-yellow-500/30 selection:text-yellow-200 overflow-x-hidden">
                 
-                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="max-w-[1800px] w-full mx-auto space-y-6 md:space-y-12 relative z-10 pb-20">
+                {/* OVERLAYS IA (SCAN & VALIDATION) */}
+                <AnimatePresence>
+                    {isScanning && (
+                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[200] flex items-center justify-center bg-black/90 backdrop-blur-md">
+                            <div className="flex flex-col items-center text-center space-y-6">
+                                <motion.div animate={{ y: [-10, 10, -10] }} transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }} className="w-24 h-24 rounded-3xl bg-purple-500/10 border border-purple-500/30 flex items-center justify-center text-purple-400 relative overflow-hidden shadow-[0_0_50px_rgba(168,85,247,0.4)]">
+                                    <ScanLine size={40} className="relative z-10" />
+                                    <motion.div animate={{ top: ["0%", "100%", "0%"] }} transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }} className="absolute left-0 w-full h-1 bg-purple-400 shadow-[0_0_15px_rgba(168,85,247,1)] z-20" />
+                                </motion.div>
+                                <div><h3 className="text-xl font-black text-white tracking-widest uppercase mb-2">Analyse IA en cours...</h3></div>
+                            </div>
+                        </motion.div>
+                    )}
+                    {showValidation && (
+                        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/90 backdrop-blur-md" onClick={() => setShowValidation(false)} />
+                            <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} className="relative w-full max-w-lg bg-[#0A0A0C] border border-purple-500/30 rounded-3xl flex flex-col overflow-hidden max-h-[80vh]">
+                                <div className="p-6 border-b border-white/5 flex items-center justify-between bg-purple-900/10">
+                                    <div><h3 className="text-lg font-black text-white uppercase tracking-wider flex items-center gap-2"><ScanLine size={20} className="text-purple-400"/> Validation</h3></div>
+                                    <button onClick={() => setShowValidation(false)} className="text-zinc-500 hover:text-white p-2"><X size={20}/></button>
+                                </div>
+                                <div className="p-6 overflow-y-auto space-y-3">
+                                    {scannedItems.map((item) => (
+                                        <div key={item.id} className="flex flex-col sm:flex-row items-center justify-between p-4 bg-black/50 border border-white/5 rounded-2xl gap-4">
+                                            <div className="flex-1 min-w-0 w-full"><p className="font-bold text-white text-sm truncate">{item.name}</p><p className="text-lg font-black text-emerald-400 mt-1">{formatEuro(item.amount)}</p></div>
+                                            <Select value={item.category} onValueChange={(val) => setScannedItems(scannedItems.map(i => i.id === item.id ? { ...i, category: val } : i))}>
+                                                <SelectTrigger className="w-full sm:w-36 bg-zinc-900 border-white/10 text-xs"><SelectValue /></SelectTrigger>
+                                                <SelectContent className="bg-zinc-900 border-white/10 text-white z-[999]"><SelectItem value="BESOIN">🏠 Besoin</SelectItem><SelectItem value="ENVIE">☕ Loisir</SelectItem></SelectContent>
+                                            </Select>
+                                        </div>
+                                    ))}
+                                </div>
+                                <div className="p-6 border-t border-white/5 bg-black"><Button onClick={() => { setExpenses([...expenses, ...scannedItems]); setShowValidation(false); setScannedItems([]); }} className="w-full h-14 bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-black uppercase tracking-widest rounded-xl">Importer ({scannedItems.length})</Button></div>
+                            </motion.div>
+                        </div>
+                    )}
+                </AnimatePresence>
+
+                <BudgetTutorialModal isOpen={isTutorialOpen} onClose={() => { setIsTutorialOpen(false); localStorage.setItem("nexus_budget_tuto_seen", "true"); }} />
+                <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept="image/*,application/pdf" className="hidden" />
+
+                <Sidebar />
+                <main className="md:ml-64 flex-1 w-full md:w-auto min-w-0 p-4 md:p-8 relative overflow-x-hidden">
+                    <div className="fixed top-0 left-64 w-[600px] h-[600px] bg-emerald-900/5 rounded-full blur-[120px] pointer-events-none -z-10"></div>
+                    <div className="fixed bottom-0 right-0 w-[500px] h-[500px] bg-blue-900/5 rounded-full blur-[120px] pointer-events-none -z-10"></div>
                     
-                    <header className="flex flex-col sm:flex-row justify-between sm:items-end gap-4 border-l-4 border-yellow-500 pl-4 md:pl-6 py-2 max-w-full">
-                        <div>
-                            <h1 className="text-3xl md:text-5xl font-black text-white tracking-tight uppercase truncate">
-                                Mon <span className="text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-orange-500">Budget</span>
-                            </h1>
-                            <p className="text-zinc-400 text-[10px] md:text-lg font-light tracking-wide truncate mt-1">La méthode Base Zéro pour s'enrichir.</p>
-                        </div>
-                        <button onClick={() => setIsTutorialOpen(true)} className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 border border-white/10 text-zinc-400 hover:text-white hover:bg-white/10 transition-all text-xs font-bold uppercase tracking-widest shrink-0">
-                            <BookOpen size={14} /> Guide
-                        </button>
-                    </header>
-
-                    {/* ========================================== */}
-                    {/* ÉTAPE 1 : LES REVENUS                      */}
-                    {/* ========================================== */}
-                    <div className="flex flex-col xl:flex-row justify-between items-center gap-4 md:gap-6 bg-zinc-900/40 backdrop-blur-xl p-4 md:p-6 rounded-[24px] md:rounded-[30px] border border-white/5 shadow-2xl w-full min-w-0 transition-all relative z-20">
-                        <div className="flex items-center justify-between w-full xl:w-auto gap-2 md:gap-6">
-                            <Button variant="outline" size="icon" onClick={() => changeMonth(-1)} className="rounded-full border-white/10 hover:bg-white/10 text-white w-10 h-10 md:w-12 md:h-12 shrink-0"><ChevronLeft size={20}/></Button>
-                            <div className="text-center min-w-[140px] md:min-w-[200px]">
-                                <h2 className="text-xl md:text-3xl font-black text-white capitalize tracking-wide truncate">{formatMonth(selectedDate)}</h2>
-                                <p className="text-[9px] md:text-xs text-zinc-500 font-bold uppercase tracking-widest mt-1 truncate">{isExistingMonth ? "Données enregistrées" : "Mode Édition"}</p>
-                            </div>
-                            <Button variant="outline" size="icon" onClick={() => changeMonth(1)} className="rounded-full border-white/10 hover:bg-white/10 text-white w-10 h-10 md:w-12 md:h-12 shrink-0"><ChevronRight size={20}/></Button>
-                        </div>
-                        <div className="flex flex-col sm:flex-row items-center gap-4 md:gap-6 w-full xl:w-auto justify-end mt-2 xl:mt-0">
-                            <div className="flex flex-row sm:flex-col items-center sm:items-end justify-between w-full sm:w-auto bg-black/30 sm:bg-transparent p-3 sm:p-0 rounded-xl sm:rounded-none">
-                                <div className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest sm:mb-1 flex items-center gap-2">
-                                    <span className="bg-emerald-500 text-black px-1.5 py-0.5 rounded-sm">ÉTAPE 1</span> Revenus du mois <HelpTooltip text="Votre salaire net et toutes autres rentrées d'argent régulières."/>
-                                </div>
-                                <div className="flex items-center gap-2 bg-black/50 px-3 md:px-4 py-1.5 md:py-2 rounded-lg md:rounded-xl border border-white/10 relative shrink-0">
-                                    <Input type="number" value={income === 0 ? "" : income} onChange={(e) => setIncome(parseFloat(e.target.value))} className="h-8 md:h-10 w-24 md:w-32 bg-transparent border-none text-right text-xl md:text-2xl font-black text-white p-0 pr-5 md:pr-6 focus-visible:ring-0" />
-                                    <span className="text-zinc-500 absolute right-2 md:right-4 top-1/2 -translate-y-1/2 pointer-events-none text-sm md:text-lg">€</span>
-                                </div>
-                            </div>
-                            <Button onClick={saveCurrentMonth} className="w-full sm:w-auto h-12 md:h-14 px-6 md:px-8 bg-gradient-to-r from-emerald-500 to-emerald-400 hover:scale-105 active:scale-95 text-black font-black uppercase tracking-widest rounded-xl md:rounded-2xl shadow-[0_0_20px_rgba(16,185,129,0.3)] text-xs md:text-sm shrink-0 transition-all"><Save size={16} className="mr-2"/> Sauvegarder</Button>
-                        </div>
-                    </div>
-
-                    {/* ========================================== */}
-                    {/* ÉTAPE 2 : LES DÉPENSES COURANTES           */}
-                    {/* ========================================== */}
-                    <div className="space-y-4">
-                        <div className="text-[10px] font-black bg-blue-500/20 text-blue-400 border border-blue-500/30 px-3 py-1.5 rounded-md inline-block uppercase tracking-widest mt-4">ÉTAPE 2 : VOS SORTIES</div>
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-8 w-full min-w-0">
-                            
-                            {/* BESOINS */}
-                            <div className="relative rounded-[24px] md:rounded-[32px] bg-zinc-900/30 border border-blue-500/10 backdrop-blur-md w-full transition-all hover:border-blue-500/30">
-                                <div className="p-4 md:p-8 relative z-10">
-                                    <div className="font-black text-blue-400 uppercase tracking-widest flex items-center gap-2 md:gap-3 mb-4 text-xs md:text-base"><Home size={18}/> Charges Fixes & Besoins <HelpTooltip text="Vos dépenses incompressibles: Loyer, Crédit, Courses, Électricité, Assurances."/></div>
-                                    <div className="flex flex-col sm:flex-row gap-2 md:gap-3 mb-4 p-2 bg-blue-500/5 rounded-xl border border-blue-500/10 relative z-20">
-                                        <Input placeholder="Ex: Loyer, Électricité..." value={newNeedName} onChange={(e) => setNewNeedName(e.target.value)} className="bg-black/20 sm:bg-transparent border-white/5 sm:border-none text-white h-10 placeholder:text-zinc-600 focus-visible:ring-0 flex-1 min-w-0" />
-                                        <div className="flex gap-2 w-full sm:w-auto">
-                                            <div className="flex-1 sm:w-28 bg-black/40 rounded-lg flex items-center px-2 border border-white/5 relative">
-                                                <Input type="number" placeholder="0" value={newNeedAmount} onChange={(e) => setNewNeedAmount(e.target.value)} className="bg-transparent border-none text-white text-right h-10 font-bold p-0 pr-5 focus-visible:ring-0 w-full" />
-                                                <span className="text-zinc-500 text-xs absolute right-2 pointer-events-none">€</span>
-                                            </div>
-                                            <Button onClick={() => {addExpense(newNeedName, newNeedAmount, "BESOIN"); setNewNeedName(""); setNewNeedAmount("");}} className="bg-blue-600 hover:bg-blue-500 text-white font-black h-10 w-10 p-0 rounded-lg shrink-0"><Plus size={20}/></Button>
-                                        </div>
-                                    </div>
-                                    <div className="space-y-2 relative z-10">
-                                        <AnimatePresence>
-                                            {needsList.map((item) => (
-                                                <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} key={item.id} className="flex justify-between items-center p-2 bg-black/30 rounded-xl border border-white/5 hover:border-blue-500/30 gap-2">
-                                                    <p className="pl-2 text-zinc-200 font-bold truncate text-xs flex-1">{item.name}</p>
-                                                    <div className="flex items-center gap-1 shrink-0">
-                                                        <div className="w-20 relative">
-                                                            <Input type="number" value={item.amount === 0 ? "" : item.amount} onChange={(e) => updateAmount(item.id, e.target.value)} className="bg-zinc-900/50 sm:bg-transparent border-white/5 sm:border-none text-right text-white font-bold h-8 p-0 pr-5 focus-visible:ring-0 text-xs rounded-lg" />
-                                                            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 text-[10px] pointer-events-none">€</span>
-                                                        </div>
-                                                        <button onClick={() => removeExpense(item.id)} className="text-zinc-600 hover:text-red-500 p-1.5 transition-colors"><Trash2 size={14}/></button>
-                                                    </div>
-                                                </motion.div>
-                                            ))}
-                                        </AnimatePresence>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* ENVIES */}
-                            <div className="relative rounded-[24px] md:rounded-[32px] bg-zinc-900/30 border border-yellow-500/10 backdrop-blur-md w-full transition-all hover:border-yellow-500/30">
-                                <div className="p-4 md:p-8 relative z-10">
-                                    <div className="font-black text-yellow-400 uppercase tracking-widest flex items-center gap-2 md:gap-3 mb-4 text-xs md:text-base"><Coffee size={18}/> Loisirs & Envies <HelpTooltip text="Vos dépenses plaisir: Restaurants, Cinéma, Vêtements, Abonnements TV."/></div>
-                                    <div className="flex flex-col sm:flex-row gap-2 md:gap-3 mb-4 p-2 bg-yellow-500/5 rounded-xl border border-yellow-500/10 relative z-20">
-                                        <Input placeholder="Ex: Restaurant..." value={newWantName} onChange={(e) => setNewWantName(e.target.value)} className="bg-black/20 sm:bg-transparent border-white/5 sm:border-none text-white h-10 placeholder:text-zinc-600 focus-visible:ring-0 flex-1 min-w-0" />
-                                        <div className="flex gap-2 w-full sm:w-auto">
-                                            <div className="flex-1 sm:w-28 bg-black/40 rounded-lg flex items-center px-2 border border-white/5 relative">
-                                                <Input type="number" placeholder="0" value={newWantAmount} onChange={(e) => setNewWantAmount(e.target.value)} className="bg-transparent border-none text-white text-right h-10 font-bold p-0 pr-5 focus-visible:ring-0 w-full" />
-                                                <span className="text-zinc-500 text-xs absolute right-2 pointer-events-none">€</span>
-                                            </div>
-                                            <Button onClick={() => {addExpense(newWantName, newWantAmount, "ENVIE"); setNewWantName(""); setNewWantAmount("");}} className="bg-yellow-600 hover:bg-yellow-500 text-white font-black h-10 w-10 p-0 rounded-lg shrink-0"><Plus size={20}/></Button>
-                                        </div>
-                                    </div>
-                                    <div className="space-y-2 relative z-10">
-                                        <AnimatePresence>
-                                            {wantsList.map((item) => (
-                                                <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} key={item.id} className="flex justify-between items-center p-2 bg-black/30 rounded-xl border border-white/5 hover:border-yellow-500/30 gap-2">
-                                                    <p className="pl-2 text-zinc-200 font-bold truncate text-xs flex-1">{item.name}</p>
-                                                    <div className="flex items-center gap-1 shrink-0">
-                                                        <div className="w-20 relative">
-                                                            <Input type="number" value={item.amount === 0 ? "" : item.amount} onChange={(e) => updateAmount(item.id, e.target.value)} className="bg-zinc-900/50 sm:bg-transparent border-white/5 sm:border-none text-right text-white font-bold h-8 p-0 pr-5 focus-visible:ring-0 text-xs rounded-lg" />
-                                                            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 text-[10px] pointer-events-none">€</span>
-                                                        </div>
-                                                        <button onClick={() => removeExpense(item.id)} className="text-zinc-600 hover:text-red-500 p-1.5 transition-colors"><Trash2 size={14}/></button>
-                                                    </div>
-                                                </motion.div>
-                                            ))}
-                                        </AnimatePresence>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* BOUTON SCANNER (RATTACHÉ AUX DÉPENSES) */}
-                        <motion.button whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.98 }} onClick={triggerScanner} className="w-full flex items-center justify-center gap-3 p-4 md:p-6 rounded-[24px] bg-gradient-to-r from-[#170F28] to-[#0A0515] border border-purple-500/30 hover:border-purple-400/60 shadow-[0_0_40px_rgba(168,85,247,0.15)] group transition-all relative overflow-hidden">
-                            <div className="absolute inset-0 bg-purple-500/5 group-hover:bg-transparent transition-colors"></div>
-                            <div className="p-3 md:p-4 bg-purple-500/20 rounded-xl md:rounded-2xl text-purple-400 group-hover:bg-purple-500/40 transition-colors shadow-inner relative z-10"><ScanLine size={28} className="md:w-8 md:h-8" /></div>
-                            <div className="text-left relative z-10">
-                                <h4 className="text-white font-black text-sm md:text-lg tracking-wider flex items-center gap-2 uppercase">Scanner un ticket de caisse via IA <span className="text-[8px] md:text-[10px] bg-gradient-to-r from-purple-500 to-indigo-500 text-white px-2 py-1 rounded shadow-lg uppercase tracking-widest font-black">GPT-4o</span></h4>
-                            </div>
-                        </motion.button>
-                    </div>
-
-
-                    {/* ========================================== */}
-                    {/* ÉTAPE 3 : LE RESTE À VIVRE (CAPACITÉ)      */}
-                    {/* ========================================== */}
-                    <div className="mt-8 space-y-4">
-                        <div className="text-[10px] font-black bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-3 py-1.5 rounded-md inline-block uppercase tracking-widest">ÉTAPE 3 : LE BILAN</div>
-                        <div className="relative rounded-[24px] md:rounded-[40px] border border-emerald-500/20 text-center lg:text-left shadow-2xl w-full min-w-0 transition-all hover:border-emerald-500/40 hover:z-50">
-                            
-                            {/* OVERFLOW HIDDEN GÉRÉ ICI SEULEMENT POUR LE FOND */}
-                            <div className="absolute inset-0 bg-gradient-to-br from-[#022c22] to-black rounded-[24px] md:rounded-[40px] overflow-hidden -z-10">
-                                <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-500/10 blur-[100px] rounded-full"></div>
-                            </div>
-                            
-                            <div className="relative z-10 p-6 md:p-10 w-full min-w-0">
-                                <div className="flex flex-col lg:flex-row justify-between items-center lg:items-start gap-6 w-full">
-                                    <div className="flex-1 w-full">
-                                        <div className="text-emerald-500 font-bold text-[10px] md:text-xs uppercase tracking-[0.2em] flex items-center justify-center lg:justify-start gap-2 mb-2 truncate">
-                                            <Target size={16}/> Capacité d'Épargne Brute <HelpTooltip text="Revenus - Besoins - Envies. C'est l'argent que vous n'avez pas encore dépensé et que vous DEVEZ allouer à l'étape suivante."/>
-                                        </div>
-                                        <div className="text-5xl sm:text-7xl lg:text-[7rem] font-black text-white tracking-tighter drop-shadow-2xl truncate max-w-full leading-none">
-                                            <AnimatedNumber value={capaciteEpargneBrute} />
-                                        </div>
-                                    </div>
-                                    <div className="bg-black/40 backdrop-blur-md p-4 md:p-6 rounded-2xl border border-white/5 shadow-inner text-center lg:text-right shrink-0">
-                                        <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest mb-1">Total Dépenses Fixes</p>
-                                        <p className="text-2xl md:text-4xl font-black text-white">{formatEuro(needsTotal + wantsTotal)}</p>
-                                    </div>
-                                </div>
-
-                                {/* ANALYSE 50/30/20 */}
-                                <div className="mt-8 md:mt-12 bg-[#0A0A0C]/80 p-5 md:p-6 rounded-[20px] md:rounded-[24px] border border-white/5 w-full">
-                                    <div className="flex justify-between items-center mb-4">
-                                        <h4 className="text-white font-black text-xs md:text-sm uppercase tracking-widest flex items-center gap-2">Analyse de l'Équilibre (50/30/20) <HelpTooltip text="La méthode idéale pour s'enrichir : 50% max pour les Besoins, 30% max pour les Envies, et 20% minimum de Capacité d'Épargne."/></h4>
-                                    </div>
-                                    
-                                    <div className="flex flex-wrap gap-4 md:gap-8 text-[10px] md:text-xs font-bold mb-3">
-                                        <div className="flex items-center gap-1.5"><div className={`w-2.5 h-2.5 rounded-full ${needsPct > 50 ? 'bg-red-500' : 'bg-blue-500'}`}></div><span className={needsPct > 50 ? "text-red-400" : "text-zinc-300"}>Besoins: {needsPct.toFixed(0)}% {needsPct > 50 && "(Trop élevé)"}</span></div>
-                                        <div className="flex items-center gap-1.5"><div className={`w-2.5 h-2.5 rounded-full ${wantsPct > 30 ? 'bg-red-500' : 'bg-yellow-500'}`}></div><span className={wantsPct > 30 ? "text-red-400" : "text-zinc-300"}>Envies: {wantsPct.toFixed(0)}% {wantsPct > 30 && "(Trop élevé)"}</span></div>
-                                        <div className="flex items-center gap-1.5"><div className={`w-2.5 h-2.5 rounded-full ${savingsPct < 20 ? 'bg-orange-500' : 'bg-emerald-500'}`}></div><span className={savingsPct < 20 ? "text-orange-400" : "text-zinc-300"}>Épargne brute: {savingsPct.toFixed(0)}% {savingsPct < 20 && "(Trop faible)"}</span></div>
-                                    </div>
-
-                                    <div className="w-full h-3 md:h-4 rounded-full overflow-hidden flex bg-zinc-900 border border-white/5 shadow-inner">
-                                        <motion.div initial={{width:0}} animate={{width: `${needsPct}%`}} transition={{duration: 1}} className={`h-full border-r border-black/50 ${needsPct > 50 ? 'bg-red-500/80' : 'bg-blue-500'}`} />
-                                        <motion.div initial={{width:0}} animate={{width: `${wantsPct}%`}} transition={{duration: 1, delay: 0.2}} className={`h-full border-r border-black/50 ${wantsPct > 30 ? 'bg-red-500/80' : 'bg-yellow-500'}`} />
-                                        <motion.div initial={{width:0}} animate={{width: `${savingsPct}%`}} transition={{duration: 1, delay: 0.4}} className={`h-full ${savingsPct < 20 ? 'bg-orange-500' : 'bg-emerald-500'}`} />
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-
-                    {/* ========================================== */}
-                    {/* ÉTAPE 4 : LES ENVELOPPES                   */}
-                    {/* ========================================== */}
-                    <div className="mt-12 space-y-4">
-                        <div className="text-[10px] font-black bg-purple-500/20 text-purple-400 border border-purple-500/30 px-3 py-1.5 rounded-md inline-block uppercase tracking-widest">ÉTAPE 4 : PRÉVOIR L'AVENIR</div>
+                    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="max-w-[1800px] w-full mx-auto space-y-6 md:space-y-12 relative z-10 pb-20">
                         
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-8 w-full min-w-0">
-                            
-                            {/* NOUVEAU MODULE : RÉPARTITION DE L'ÉPARGNE */}
-                            <div className="relative rounded-[24px] md:rounded-[32px] bg-zinc-900/40 border border-purple-500/20 backdrop-blur-md w-full transition-all hover:border-purple-500/40 shadow-[0_0_30px_rgba(168,85,247,0.05)] hover:z-50">
-                                <div className="absolute inset-0 overflow-hidden rounded-[24px] md:rounded-[32px] -z-10"><div className="absolute top-0 right-0 p-32 bg-purple-500/5 blur-[80px] rounded-full pointer-events-none"></div></div>
-                                <div className="p-4 md:p-8 relative z-10">
-                                    <div className="font-black text-purple-400 uppercase tracking-widest flex items-center justify-between gap-2 mb-4 text-xs md:text-base">
-                                        <div className="flex items-center gap-2"><PiggyBank size={18}/> Enveloppes & Projets <HelpTooltip text="Répartissez votre Épargne Brute ici. Créez des provisions (Vacances, Voiture), ou remplissez votre Matelas de sécurité. Ces charges se copient sur les mois suivants."/></div>
+                        <header className="flex flex-col sm:flex-row justify-between sm:items-end gap-4 border-l-4 border-yellow-500 pl-4 md:pl-6 py-2 max-w-full">
+                            <div>
+                                <h1 className="text-3xl md:text-5xl font-black text-white tracking-tight uppercase truncate">
+                                    Mon <span className="text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-orange-500">Budget</span>
+                                </h1>
+                                <p className="text-zinc-400 text-[10px] md:text-lg font-light tracking-wide truncate mt-1">La méthode Base Zéro pour s'enrichir.</p>
+                            </div>
+                            <button onClick={() => setIsTutorialOpen(true)} className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 border border-white/10 text-zinc-400 hover:text-white hover:bg-white/10 transition-all text-xs font-bold uppercase tracking-widest shrink-0">
+                                <BookOpen size={14} /> Guide
+                            </button>
+                        </header>
+
+                        {/* ========================================== */}
+                        {/* ÉTAPE 1 : LES REVENUS                      */}
+                        {/* ========================================== */}
+                        <div className="flex flex-col xl:flex-row justify-between items-center gap-4 md:gap-6 bg-zinc-900/40 backdrop-blur-xl p-4 md:p-6 rounded-[24px] md:rounded-[30px] border border-white/5 shadow-2xl w-full min-w-0 transition-all relative z-20">
+                            <div className="flex items-center justify-between w-full xl:w-auto gap-2 md:gap-6">
+                                <Button variant="outline" size="icon" onClick={() => changeMonth(-1)} className="rounded-full border-white/10 hover:bg-white/10 text-white w-10 h-10 md:w-12 h-12 shrink-0"><ChevronLeft size={20}/></Button>
+                                <div className="text-center min-w-[140px] md:min-w-[200px]">
+                                    <h2 className="text-xl md:text-3xl font-black text-white capitalize tracking-wide truncate">{formatMonth(selectedDate)}</h2>
+                                    <p className="text-[9px] md:text-xs text-zinc-500 font-bold uppercase tracking-widest mt-1 truncate">{isExistingMonth ? "Données enregistrées" : "Mode Édition"}</p>
+                                </div>
+                                <Button variant="outline" size="icon" onClick={() => changeMonth(1)} className="rounded-full border-white/10 hover:bg-white/10 text-white w-10 h-10 md:w-12 h-12 shrink-0"><ChevronRight size={20}/></Button>
+                            </div>
+                            <div className="flex flex-col sm:flex-row items-center gap-4 md:gap-6 w-full xl:w-auto justify-end mt-2 xl:mt-0">
+                                <div className="flex flex-row sm:flex-col items-center sm:items-end justify-between w-full sm:w-auto bg-black/30 sm:bg-transparent p-3 sm:p-0 rounded-xl sm:rounded-none">
+                                    <div className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest sm:mb-1 flex items-center gap-2">
+                                        <span className="bg-emerald-500 text-black px-1.5 py-0.5 rounded-sm">ÉTAPE 1</span> Revenus du mois <HelpTooltip text="Votre salaire net et toutes autres rentrées d'argent régulières."/>
                                     </div>
-                                    
-                                    <div className="flex flex-col xl:flex-row gap-2 mb-6 p-3 bg-purple-500/5 rounded-xl border border-purple-500/20 relative z-20">
-                                        <Input placeholder="Ex: Vacances, Matelas..." value={newSaveName} onChange={(e) => setNewSaveName(e.target.value)} className="bg-black/40 border-white/5 text-white h-11 focus-visible:ring-purple-500/50 text-sm flex-1" />
-                                        <div className="flex gap-2">
-                                            <div className="w-28 sm:w-32 bg-black/40 rounded-lg flex items-center px-2 border border-white/5 relative">
-                                                <Input type="number" placeholder="Objectif (Facultatif)" value={newSaveTarget} onChange={(e) => setNewSaveTarget(e.target.value)} className="bg-transparent border-none text-white text-right h-11 font-medium p-0 pr-5 focus-visible:ring-0 w-full text-[10px] sm:text-xs" />
-                                                <span className="text-zinc-500 text-xs absolute right-2">€</span>
+                                    <div className="flex items-center gap-2 bg-black/50 px-3 md:px-4 py-1.5 md:py-2 rounded-lg md:rounded-xl border border-white/10 relative shrink-0">
+                                        <Input type="number" value={income === 0 ? "" : income} onChange={(e) => setIncome(parseFloat(e.target.value))} className="h-8 md:h-10 w-24 md:w-32 bg-transparent border-none text-right text-xl md:text-2xl font-black text-white p-0 pr-5 md:pr-6 focus-visible:ring-0" />
+                                        <span className="text-zinc-500 absolute right-2 md:right-4 top-1/2 -translate-y-1/2 pointer-events-none text-sm md:text-lg">€</span>
+                                    </div>
+                                </div>
+                                <Button onClick={saveCurrentMonth} className="w-full sm:w-auto h-12 md:h-14 px-6 md:px-8 bg-gradient-to-r from-emerald-500 to-emerald-400 hover:scale-105 active:scale-95 text-black font-black uppercase tracking-widest rounded-xl md:rounded-2xl shadow-[0_0_20px_rgba(16,185,129,0.3)] text-xs md:text-sm shrink-0 transition-all"><Save size={16} className="mr-2"/> Sauvegarder</Button>
+                            </div>
+                        </div>
+
+                        {/* ========================================== */}
+                        {/* ÉTAPE 2 : LES DÉPENSES COURANTES           */}
+                        {/* ========================================== */}
+                        <div className="space-y-4">
+                            <div className="text-[10px] font-black bg-blue-500/20 text-blue-400 border border-blue-500/30 px-3 py-1.5 rounded-md inline-block uppercase tracking-widest mt-4">ÉTAPE 2 : VOS SORTIES</div>
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-8 w-full min-w-0">
+                                
+                                {/* BESOINS */}
+                                <div className="relative rounded-[24px] md:rounded-[32px] bg-zinc-900/30 border border-blue-500/10 backdrop-blur-md w-full transition-all hover:border-blue-500/30">
+                                    <div className="p-4 md:p-8 relative z-10">
+                                        <div className="font-black text-blue-400 uppercase tracking-widest flex items-center gap-2 md:gap-3 mb-4 text-xs md:text-base"><Home size={18}/> Charges Fixes & Besoins <HelpTooltip text="Vos dépenses incompressibles: Loyer, Crédit, Courses, Électricité, Assurances."/></div>
+                                        <div className="flex flex-col sm:flex-row gap-2 md:gap-3 mb-4 p-2 bg-blue-500/5 rounded-xl border border-blue-500/10 relative z-20">
+                                            <Input placeholder="Ex: Loyer, Électricité..." value={newNeedName} onChange={(e) => setNewNeedName(e.target.value)} className="bg-black/20 sm:bg-transparent border-white/5 sm:border-none text-white h-10 placeholder:text-zinc-600 focus-visible:ring-0 flex-1 min-w-0" />
+                                            <div className="flex gap-2 w-full sm:w-auto">
+                                                <div className="flex-1 sm:w-28 bg-black/40 rounded-lg flex items-center px-2 border border-white/5 relative">
+                                                    <Input type="number" placeholder="0" value={newNeedAmount} onChange={(e) => setNewNeedAmount(e.target.value)} className="bg-transparent border-none text-white text-right h-10 font-bold p-0 pr-5 focus-visible:ring-0 w-full" />
+                                                    <span className="text-zinc-500 text-xs absolute right-2 pointer-events-none">€</span>
+                                                </div>
+                                                <Button onClick={() => {addExpense(newNeedName, newNeedAmount, "BESOIN"); setNewNeedName(""); setNewNeedAmount("");}} className="bg-blue-600 hover:bg-blue-500 text-white font-black h-10 w-10 p-0 rounded-lg shrink-0"><Plus size={20}/></Button>
                                             </div>
-                                            <div className="w-32 sm:w-36 bg-black/60 rounded-lg flex items-center px-2 border border-purple-500/30 relative shadow-inner">
-                                                <Input type="number" placeholder="Mensualité" value={newSaveAmount} onChange={(e) => setNewSaveAmount(e.target.value)} className="bg-transparent border-none text-purple-100 text-right h-11 font-bold p-0 pr-7 focus-visible:ring-0 w-full text-sm placeholder:text-purple-900" />
-                                                <span className="text-purple-500 text-[10px] absolute right-2 font-bold">€/m</span>
-                                            </div>
-                                            <Button onClick={() => {addExpense(newSaveName, newSaveAmount, "EPARGNE", newSaveTarget); setNewSaveName(""); setNewSaveAmount(""); setNewSaveTarget("")}} className="bg-purple-600 hover:bg-purple-500 text-white font-black h-11 w-11 p-0 rounded-lg shrink-0"><Plus size={20}/></Button>
                                         </div>
-                                    </div>
-                                    
-                                    <div className="space-y-3 relative z-10">
-                                        <AnimatePresence>
-                                            {saveList.map((item) => {
-                                                const remaining = calculateRemainingMonths(item);
-                                                return (
-                                                    <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, height: 0 }} key={item.id} className="p-3 bg-black/40 rounded-xl border border-white/5 hover:border-purple-500/30">
-                                                        <div className="flex justify-between items-center gap-2">
-                                                            <div className="flex-1 min-w-0">
-                                                                <p className="text-zinc-100 font-bold truncate text-sm">{item.name}</p>
-                                                                {item.target ? (
-                                                                    <div className="flex flex-wrap items-center gap-2 mt-1.5">
-                                                                        <div className="text-zinc-400 text-[10px] bg-black/60 px-2 py-1 rounded-md border border-white/5 inline-block">Objectif : {formatEuro(item.target)}</div>
-                                                                        {remaining > 0 && <div className="text-purple-300 text-[10px] bg-purple-500/20 px-2 py-1 rounded-md border border-purple-500/30 inline-block font-bold">⏳ {remaining} mois restant{remaining > 1 ? 's' : ''}</div>}
-                                                                    </div>
-                                                                ) : null}
+                                        <div className="space-y-2 relative z-10">
+                                            <AnimatePresence>
+                                                {needsList.map((item) => (
+                                                    <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} key={item.id} className="flex justify-between items-center p-2 bg-black/30 rounded-xl border border-white/5 hover:border-blue-500/30 gap-2">
+                                                        <p className="pl-2 text-zinc-200 font-bold truncate text-xs flex-1">{item.name}</p>
+                                                        <div className="flex items-center gap-1 shrink-0">
+                                                            <div className="w-20 relative">
+                                                                <Input type="number" value={item.amount === 0 ? "" : item.amount} onChange={(e) => updateAmount(item.id, e.target.value)} className="bg-zinc-900/50 sm:bg-transparent border-white/5 sm:border-none text-right text-white font-bold h-8 p-0 pr-5 focus-visible:ring-0 text-xs rounded-lg" />
+                                                                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 text-[10px] pointer-events-none">€</span>
                                                             </div>
-                                                            <div className="flex items-center gap-2 shrink-0">
-                                                                <div className="w-24 relative bg-black/50 rounded-lg border border-white/5">
-                                                                    <Input type="number" value={item.amount === 0 ? "" : item.amount} onChange={(e) => updateAmount(item.id, e.target.value)} className="bg-transparent border-none text-right text-purple-300 font-bold h-9 p-0 pr-8 focus-visible:ring-0 text-xs" />
-                                                                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-purple-500 text-[10px] pointer-events-none">€/m</span>
-                                                                </div>
-                                                                <button onClick={() => removeExpense(item.id)} className="text-zinc-600 hover:text-red-500 p-1 transition-colors"><Trash2 size={16}/></button>
-                                                            </div>
+                                                            <button onClick={() => removeExpense(item.id)} className="text-zinc-600 hover:text-red-500 p-1.5 transition-colors"><Trash2 size={14}/></button>
                                                         </div>
                                                     </motion.div>
-                                                )
-                                            })}
-                                        </AnimatePresence>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="space-y-4 md:space-y-8">
-                                {/* WIDGET : VÉRIFICATION DU MATELAS */}
-                                <div className={`relative p-6 rounded-[24px] md:rounded-[32px] border flex flex-col justify-center w-full transition-all hover:z-50 hover:border-white/20 ${isSafe ? 'bg-emerald-950/10 border-emerald-500/10' : 'bg-orange-950/10 border-orange-500/10'}`}>
-                                    <div className="flex justify-between items-center mb-4 relative z-10">
-                                        <div className="flex items-center gap-2 font-bold text-xs md:text-sm text-white uppercase tracking-widest truncate">
-                                            <ShieldCheck size={18} className={isSafe ? "text-emerald-500" : "text-orange-500"}/> Matelas de Sécurité <HelpTooltip text="L'épargne d'urgence présente sur l'onglet Patrimoine. Elle sert UNIQUEMENT en cas de perte d'emploi. Recommandé : 6 mois de charges." />
+                                                ))}
+                                            </AnimatePresence>
                                         </div>
-                                        <span className="text-[10px] text-zinc-400 font-medium bg-black/40 px-3 py-1 rounded-lg border border-white/5">Cible: {Math.round(safetyTarget)}€</span>
                                     </div>
-                                    <div className="text-3xl font-black text-white mb-4 relative z-10"><AnimatedNumber value={currentCash}/> <span className="text-lg text-zinc-600">€</span></div>
-                                    <div className="h-2 md:h-3 bg-zinc-900 rounded-full overflow-hidden border border-white/5 w-full relative z-10 shadow-inner">
-                                        <motion.div initial={{width:0}} animate={{width: `${Math.min(100, (currentCash/(safetyTarget || 1))*100)}%`}} transition={{duration: 1}} className={`h-full shadow-[0_0_10px_rgba(255,255,255,0.2)] ${isSafe ? 'bg-emerald-500':'bg-orange-500'}`} />
-                                    </div>
-                                    {!isSafe && <div className="mt-4 text-[10px] text-orange-400 flex items-center gap-2 font-bold bg-orange-500/5 p-3 rounded-xl border border-orange-500/10 relative z-10"><AlertTriangle size={16} className="shrink-0"/> Jauge incomplète. Ajoutez une enveloppe "Matelas" pour la combler.</div>}
                                 </div>
 
-                                {/* GRAPHIQUE HISTORIQUE */}
-                                <div className="p-4 md:p-6 rounded-[24px] md:rounded-[32px] bg-zinc-900/40 border border-white/5 h-[200px] md:h-[250px] w-full transition-colors relative z-10">
-                                    <ResponsiveContainer width="100%" height="100%">
-                                        <BarChart data={historyData} barGap={2} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
-                                            <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
-                                            <XAxis dataKey="name" stroke="#52525b" fontSize={10} tickLine={false} axisLine={false} />
-                                            <RechartsTooltip cursor={{fill: '#ffffff05'}} contentStyle={{ backgroundColor: 'rgba(26,26,30,1)', backdropFilter: 'blur(10px)', borderColor: 'rgba(255,255,255,0.1)', borderRadius: '12px', fontSize:'12px', color: '#fff', boxShadow: '0 20px 40px rgba(0,0,0,0.8)' }} itemStyle={{ color: '#fff' }} formatter={(val: any) => formatEuro(val)}/>
-                                            <Legend iconType="circle" wrapperStyle={{ fontSize: '9px', textTransform: 'uppercase', fontWeight: 'bold' }} />
-                                            <Bar dataKey="Revenus" fill="#e4e4e7" radius={[4, 4, 0, 0]} barSize={8} />
-                                            <Bar dataKey="Besoins" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={8} />
-                                            <Bar dataKey="Epargne" fill="#a855f7" radius={[4, 4, 0, 0]} barSize={8} />
-                                        </BarChart>
-                                    </ResponsiveContainer>
+                                {/* ENVIES */}
+                                <div className="relative rounded-[24px] md:rounded-[32px] bg-zinc-900/30 border border-yellow-500/10 backdrop-blur-md w-full transition-all hover:border-yellow-500/30">
+                                    <div className="p-4 md:p-8 relative z-10">
+                                        <div className="font-black text-yellow-400 uppercase tracking-widest flex items-center gap-2 md:gap-3 mb-4 text-xs md:text-base"><Coffee size={18}/> Loisirs & Envies <HelpTooltip text="Vos dépenses plaisir: Restaurants, Cinéma, Vêtements, Abonnements TV."/></div>
+                                        <div className="flex flex-col sm:flex-row gap-2 md:gap-3 mb-4 p-2 bg-yellow-500/5 rounded-xl border border-yellow-500/10 relative z-20">
+                                            <Input placeholder="Ex: Restaurant..." value={newWantName} onChange={(e) => setNewWantName(e.target.value)} className="bg-black/20 sm:bg-transparent border-white/5 sm:border-none text-white h-10 placeholder:text-zinc-600 focus-visible:ring-0 flex-1 min-w-0" />
+                                            <div className="flex gap-2 w-full sm:w-auto">
+                                                <div className="flex-1 sm:w-28 bg-black/40 rounded-lg flex items-center px-2 border border-white/5 relative">
+                                                    <Input type="number" placeholder="0" value={newWantAmount} onChange={(e) => setNewWantAmount(e.target.value)} className="bg-transparent border-none text-white text-right h-10 font-bold p-0 pr-5 focus-visible:ring-0 w-full" />
+                                                    <span className="text-zinc-500 text-xs absolute right-2 pointer-events-none">€</span>
+                                                </div>
+                                                <Button onClick={() => {addExpense(newWantName, newWantAmount, "ENVIE"); setNewWantName(""); setNewWantAmount("");}} className="bg-yellow-600 hover:bg-yellow-500 text-white font-black h-10 w-10 p-0 rounded-lg shrink-0"><Plus size={20}/></Button>
+                                            </div>
+                                        </div>
+                                        <div className="space-y-2 relative z-10">
+                                            <AnimatePresence>
+                                                {wantsList.map((item) => (
+                                                    <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} key={item.id} className="flex justify-between items-center p-2 bg-black/30 rounded-xl border border-white/5 hover:border-yellow-500/30 gap-2">
+                                                        <p className="pl-2 text-zinc-200 font-bold truncate text-xs flex-1">{item.name}</p>
+                                                        <div className="flex items-center gap-1 shrink-0">
+                                                            <div className="w-20 relative">
+                                                                <Input type="number" value={item.amount === 0 ? "" : item.amount} onChange={(e) => updateAmount(item.id, e.target.value)} className="bg-zinc-900/50 sm:bg-transparent border-white/5 sm:border-none text-right text-white font-bold h-8 p-0 pr-5 focus-visible:ring-0 text-xs rounded-lg" />
+                                                                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 text-[10px] pointer-events-none">€</span>
+                                                            </div>
+                                                            <button onClick={() => removeExpense(item.id)} className="text-zinc-600 hover:text-red-500 p-1.5 transition-colors"><Trash2 size={14}/></button>
+                                                        </div>
+                                                    </motion.div>
+                                                ))}
+                                            </AnimatePresence>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
+
+                            {/* BOUTON SCANNER (RATTACHÉ AUX DÉPENSES) */}
+                            <motion.button whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.98 }} onClick={triggerScanner} className="w-full flex items-center justify-center gap-3 p-4 md:p-6 rounded-[24px] bg-gradient-to-r from-[#170F28] to-[#0A0515] border border-purple-500/30 hover:border-purple-400/60 shadow-[0_0_40px_rgba(168,85,247,0.15)] group transition-all relative overflow-hidden">
+                                <div className="absolute inset-0 bg-purple-500/5 group-hover:bg-transparent transition-colors"></div>
+                                <div className="p-3 md:p-4 bg-purple-500/20 rounded-xl md:rounded-2xl text-purple-400 group-hover:bg-purple-500/40 transition-colors shadow-inner relative z-10"><ScanLine size={28} className="md:w-8 md:h-8" /></div>
+                                <div className="text-left relative z-10">
+                                    <h4 className="text-white font-black text-sm md:text-lg tracking-wider flex items-center gap-2 uppercase">Scanner un ticket de caisse via IA <span className="text-[8px] md:text-[10px] bg-gradient-to-r from-purple-500 to-indigo-500 text-white px-2 py-1 rounded shadow-lg uppercase tracking-widest font-black">GPT-4o</span></h4>
+                                </div>
+                            </motion.button>
                         </div>
-                    </div>
 
 
-                    {/* ========================================== */}
-                    {/* ÉTAPE 5 : L'INVESTISSEMENT (LE RESTE FINAL) */}
-                    {/* ========================================== */}
-                    <div className="mt-12 space-y-4">
-                        <div className="text-[10px] font-black bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-3 py-1.5 rounded-md inline-block uppercase tracking-widest">ÉTAPE 5 : LA MACHINE À RICHESSE</div>
-                        
-                        <div className={`relative rounded-[32px] md:rounded-[40px] border transition-all shadow-2xl hover:z-50 w-full ${investissementPurDCA > 0 ? 'border-emerald-500/30 hover:border-emerald-500/60' : 'border-white/5'}`}>
-                            
-                            {/* OVERFLOW HIDDEN SEULEMENT POUR LE FOND (Z-INDEX FIX) */}
-                            <div className={`absolute inset-0 rounded-[32px] md:rounded-[40px] overflow-hidden -z-10 ${investissementPurDCA > 0 ? 'bg-gradient-to-br from-[#022c22] to-black' : 'bg-zinc-900/80'}`}>
-                                {investissementPurDCA > 0 && <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 mix-blend-overlay"></div>}
-                                {investissementPurDCA > 0 && <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-emerald-500/20 blur-[150px] rounded-full pointer-events-none"></div>}
-                            </div>
-
-                            <div className="relative z-10 p-8 md:p-12 flex flex-col items-center justify-center text-center max-w-2xl mx-auto space-y-6">
-                                <div className="flex justify-center">
-                                    <div className={`p-4 rounded-3xl ${investissementPurDCA > 0 ? 'bg-emerald-500/20 text-emerald-400 shadow-[0_0_40px_rgba(16,185,129,0.3)]' : 'bg-zinc-800 text-zinc-500'}`}>
-                                        <Rocket size={40} />
-                                    </div>
+                        {/* ========================================== */}
+                        {/* ÉTAPE 3 : LE RESTE À VIVRE (CAPACITÉ)      */}
+                        {/* ========================================== */}
+                        <div className="mt-8 space-y-4">
+                            <div className="text-[10px] font-black bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-3 py-1.5 rounded-md inline-block uppercase tracking-widest">ÉTAPE 3 : LE BILAN</div>
+                            <div className="relative rounded-[24px] md:rounded-[40px] border border-emerald-500/20 text-center lg:text-left shadow-2xl w-full min-w-0 transition-all hover:border-emerald-500/40 hover:z-50">
+                                
+                                {/* OVERFLOW HIDDEN GÉRÉ ICI SEULEMENT POUR LE FOND */}
+                                <div className="absolute inset-0 bg-gradient-to-br from-[#022c22] to-black rounded-[24px] md:rounded-[40px] overflow-hidden -z-10">
+                                    <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-500/10 blur-[100px] rounded-full"></div>
                                 </div>
                                 
-                                <div>
-                                    <h3 className="text-lg md:text-2xl font-black text-white uppercase tracking-widest flex items-center justify-center gap-2">
-                                        Investissement Pur (DCA) <HelpTooltip text="Votre Capacité d'Épargne MOINS vos Enveloppes Projets. C'est l'argent 'libre' qu'il vous reste à la fin. Vous devez absolument l'investir (Bourse, Crypto, Immo) pour générer des intérêts composés."/>
-                                    </h3>
-                                    <p className="text-zinc-400 text-xs md:text-sm mt-2 font-medium">Transférez ce montant vers vos courtiers et observez-le travailler pour vous.</p>
-                                </div>
-
-                                <div className={`text-6xl md:text-8xl font-black tracking-tighter drop-shadow-2xl ${investissementPurDCA > 0 ? 'text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-teal-400' : 'text-zinc-600'}`}>
-                                    {formatEuro(investissementPurDCA)}
-                                </div>
-
-                                {investissementPurDCA > 0 ? (
-                                    <Link href={`/projection?dca=${investissementPurDCA}`} className="inline-block mt-8">
-                                        <Button className="h-14 md:h-16 px-8 md:px-10 bg-white hover:bg-zinc-200 text-black font-black uppercase tracking-widest rounded-2xl shadow-[0_0_40px_rgba(255,255,255,0.2)] hover:scale-105 active:scale-95 transition-all text-sm md:text-base flex items-center gap-3">
-                                            Projeter ce montant <ArrowRight size={20} />
-                                        </Button>
-                                    </Link>
-                                ) : investissementPurDCA < 0 ? (
-                                    <div className="inline-flex items-center gap-2 bg-red-500/10 border border-red-500/20 text-red-400 px-6 py-4 rounded-2xl font-bold mt-6 text-sm">
-                                        <AlertTriangle size={18} /> Vous allouez plus d'argent que vous n'en avez ! Réduisez vos Projets.
+                                <div className="relative z-10 p-6 md:p-10 w-full min-w-0">
+                                    <div className="flex flex-col lg:flex-row justify-between items-center lg:items-start gap-6 w-full">
+                                        <div className="flex-1 w-full">
+                                            <div className="text-emerald-500 font-bold text-[10px] md:text-xs uppercase tracking-[0.2em] flex items-center justify-center lg:justify-start gap-2 mb-2 truncate">
+                                                <Target size={16}/> Capacité d'Épargne Brute <HelpTooltip text="Revenus - Besoins - Envies. C'est l'argent que vous n'avez pas encore dépensé et que vous DEVEZ allouer à l'étape suivante."/>
+                                            </div>
+                                            <div className="text-5xl sm:text-7xl lg:text-[7rem] font-black text-white tracking-tighter drop-shadow-2xl truncate max-w-full leading-none">
+                                                <AnimatedNumber value={capaciteEpargneBrute} />
+                                            </div>
+                                        </div>
+                                        <div className="bg-black/40 backdrop-blur-md p-4 md:p-6 rounded-2xl border border-white/5 shadow-inner text-center lg:text-right shrink-0">
+                                            <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest mb-1">Total Dépenses Fixes</p>
+                                            <p className="text-2xl md:text-4xl font-black text-white">{formatEuro(needsTotal + wantsTotal)}</p>
+                                        </div>
                                     </div>
-                                ) : (
-                                    <div className="inline-flex items-center gap-2 bg-white/5 border border-white/10 text-zinc-400 px-6 py-4 rounded-2xl font-bold mt-6 text-sm">
-                                        <Info size={18} /> Tout votre argent est alloué aux projets. Il ne reste rien à investir.
+
+                                    {/* ANALYSE 50/30/20 */}
+                                    <div className="mt-8 md:mt-12 bg-[#0A0A0C]/80 p-5 md:p-6 rounded-[20px] md:rounded-[24px] border border-white/5 w-full">
+                                        <div className="flex justify-between items-center mb-4">
+                                            <h4 className="text-white font-black text-xs md:text-sm uppercase tracking-widest flex items-center gap-2">Analyse de l'Équilibre (50/30/20) <HelpTooltip text="La méthode idéale pour s'enrichir : 50% max pour les Besoins, 30% max pour les Envies, et 20% minimum de Capacité d'Épargne."/></h4>
+                                        </div>
+                                        
+                                        <div className="flex flex-wrap gap-4 md:gap-8 text-[10px] md:text-xs font-bold mb-3">
+                                            <div className="flex items-center gap-1.5"><div className={`w-2.5 h-2.5 rounded-full ${needsPct > 50 ? 'bg-red-500' : 'bg-blue-500'}`}></div><span className={needsPct > 50 ? "text-red-400" : "text-zinc-300"}>Besoins: {needsPct.toFixed(0)}% {needsPct > 50 && "(Trop élevé)"}</span></div>
+                                            <div className="flex items-center gap-1.5"><div className={`w-2.5 h-2.5 rounded-full ${wantsPct > 30 ? 'bg-red-500' : 'bg-yellow-500'}`}></div><span className={wantsPct > 30 ? "text-red-400" : "text-zinc-300"}>Envies: {wantsPct.toFixed(0)}% {wantsPct > 30 && "(Trop élevé)"}</span></div>
+                                            <div className="flex items-center gap-1.5"><div className={`w-2.5 h-2.5 rounded-full ${savingsPct < 20 ? 'bg-orange-500' : 'bg-emerald-500'}`}></div><span className={savingsPct < 20 ? "text-orange-400" : "text-zinc-300"}>Épargne brute: {savingsPct.toFixed(0)}% {savingsPct < 20 && "(Trop faible)"}</span></div>
+                                        </div>
+
+                                        <div className="w-full h-3 md:h-4 rounded-full overflow-hidden flex bg-zinc-900 border border-white/5 shadow-inner">
+                                            <motion.div initial={{width:0}} animate={{width: `${needsPct}%`}} transition={{duration: 1}} className={`h-full border-r border-black/50 ${needsPct > 50 ? 'bg-red-500/80' : 'bg-blue-500'}`} />
+                                            <motion.div initial={{width:0}} animate={{width: `${wantsPct}%`}} transition={{duration: 1, delay: 0.2}} className={`h-full border-r border-black/50 ${wantsPct > 30 ? 'bg-red-500/80' : 'bg-yellow-500'}`} />
+                                            <motion.div initial={{width:0}} animate={{width: `${savingsPct}%`}} transition={{duration: 1, delay: 0.4}} className={`h-full ${savingsPct < 20 ? 'bg-orange-500' : 'bg-emerald-500'}`} />
+                                        </div>
                                     </div>
-                                )}
+                                </div>
                             </div>
                         </div>
-                    </div>
 
-                </motion.div>
-            </main>
-        </div>
+
+                        {/* ========================================== */}
+                        {/* ÉTAPE 4 : LES ENVELOPPES                   */}
+                        {/* ========================================== */}
+                        <div className="mt-12 space-y-4">
+                            <div className="text-[10px] font-black bg-purple-500/20 text-purple-400 border border-purple-500/30 px-3 py-1.5 rounded-md inline-block uppercase tracking-widest">ÉTAPE 4 : PRÉVOIR L'AVENIR</div>
+                            
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-8 w-full min-w-0">
+                                
+                                {/* NOUVEAU MODULE : RÉPARTITION DE L'ÉPARGNE */}
+                                <div className="relative rounded-[24px] md:rounded-[32px] bg-zinc-900/40 border border-purple-500/20 backdrop-blur-md w-full transition-all hover:border-purple-500/40 shadow-[0_0_30px_rgba(168,85,247,0.05)] hover:z-50">
+                                    <div className="absolute inset-0 overflow-hidden rounded-[24px] md:rounded-[32px] -z-10"><div className="absolute top-0 right-0 p-32 bg-purple-500/5 blur-[80px] rounded-full pointer-events-none"></div></div>
+                                    <div className="p-4 md:p-8 relative z-10">
+                                        <div className="font-black text-purple-400 uppercase tracking-widest flex items-center justify-between gap-2 mb-4 text-xs md:text-base">
+                                            <div className="flex items-center gap-2"><PiggyBank size={18}/> Enveloppes & Projets <HelpTooltip text="Répartissez votre Épargne Brute ici. Créez des provisions (Vacances, Voiture), ou remplissez votre Matelas de sécurité. Ces charges se copient sur les mois suivants."/></div>
+                                        </div>
+                                        
+                                        <div className="flex flex-col xl:flex-row gap-2 mb-6 p-3 bg-purple-500/5 rounded-xl border border-purple-500/20 relative z-20">
+                                            <Input placeholder="Ex: Vacances, Matelas..." value={newSaveName} onChange={(e) => setNewSaveName(e.target.value)} className="bg-black/40 border-white/5 text-white h-11 focus-visible:ring-purple-500/50 text-sm flex-1" />
+                                            <div className="flex gap-2">
+                                                <div className="w-28 sm:w-32 bg-black/40 rounded-lg flex items-center px-2 border border-white/5 relative">
+                                                    <Input type="number" placeholder="Objectif (Facultatif)" value={newSaveTarget} onChange={(e) => setNewSaveTarget(e.target.value)} className="bg-transparent border-none text-white text-right h-11 font-medium p-0 pr-5 focus-visible:ring-0 w-full text-[10px] sm:text-xs" />
+                                                    <span className="text-zinc-500 text-xs absolute right-2">€</span>
+                                                </div>
+                                                <div className="w-32 sm:w-36 bg-black/60 rounded-lg flex items-center px-2 border border-purple-500/30 relative shadow-inner">
+                                                    <Input type="number" placeholder="Mensualité" value={newSaveAmount} onChange={(e) => setNewSaveAmount(e.target.value)} className="bg-transparent border-none text-purple-100 text-right h-11 font-bold p-0 pr-7 focus-visible:ring-0 w-full text-sm placeholder:text-purple-900" />
+                                                    <span className="text-purple-500 text-[10px] absolute right-2 font-bold">€/m</span>
+                                                </div>
+                                                <Button onClick={() => {addExpense(newSaveName, newSaveAmount, "EPARGNE", newSaveTarget); setNewSaveName(""); setNewSaveAmount(""); setNewSaveTarget("")}} className="bg-purple-600 hover:bg-purple-500 text-white font-black h-11 w-11 p-0 rounded-lg shrink-0"><Plus size={20}/></Button>
+                                            </div>
+                                        </div>
+                                        
+                                        <div className="space-y-3 relative z-10">
+                                            <AnimatePresence>
+                                                {saveList.map((item) => {
+                                                    const remaining = calculateRemainingMonths(item);
+                                                    return (
+                                                        <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, height: 0 }} key={item.id} className="p-3 bg-black/40 rounded-xl border border-white/5 hover:border-purple-500/30">
+                                                            <div className="flex justify-between items-center gap-2">
+                                                                <div className="flex-1 min-w-0">
+                                                                    <p className="text-zinc-100 font-bold truncate text-sm">{item.name}</p>
+                                                                    {item.target ? (
+                                                                        <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                                                                            <div className="text-zinc-400 text-[10px] bg-black/60 px-2 py-1 rounded-md border border-white/5 inline-block">Objectif : {formatEuro(item.target)}</div>
+                                                                            {remaining > 0 && <div className="text-purple-300 text-[10px] bg-purple-500/20 px-2 py-1 rounded-md border border-purple-500/30 inline-block font-bold">⏳ {remaining} mois restant{remaining > 1 ? 's' : ''}</div>}
+                                                                        </div>
+                                                                    ) : null}
+                                                                </div>
+                                                                <div className="flex items-center gap-2 shrink-0">
+                                                                    <div className="w-24 relative bg-black/50 rounded-lg border border-white/5">
+                                                                        <Input type="number" value={item.amount === 0 ? "" : item.amount} onChange={(e) => updateAmount(item.id, e.target.value)} className="bg-transparent border-none text-right text-purple-300 font-bold h-9 p-0 pr-8 focus-visible:ring-0 text-xs" />
+                                                                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-purple-500 text-[10px] pointer-events-none">€/m</span>
+                                                                    </div>
+                                                                    <button onClick={() => removeExpense(item.id)} className="text-zinc-600 hover:text-red-500 p-1 transition-colors"><Trash2 size={16}/></button>
+                                                                </div>
+                                                            </div>
+                                                        </motion.div>
+                                                    )
+                                                })}
+                                            </AnimatePresence>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-4 md:space-y-8">
+                                    {/* WIDGET : VÉRIFICATION DU MATELAS */}
+                                    <div className={`relative p-6 rounded-[24px] md:rounded-[32px] border flex flex-col justify-center w-full transition-all hover:z-50 hover:border-white/20 ${isSafe ? 'bg-emerald-950/10 border-emerald-500/10' : 'bg-orange-950/10 border-orange-500/10'}`}>
+                                        <div className="flex justify-between items-center mb-4 relative z-10">
+                                            <div className="flex items-center gap-2 font-bold text-xs md:text-sm text-white uppercase tracking-widest truncate">
+                                                <ShieldCheck size={18} className={isSafe ? "text-emerald-500" : "text-orange-500"}/> Matelas de Sécurité <HelpTooltip text="L'épargne d'urgence présente sur l'onglet Patrimoine. Elle sert UNIQUEMENT en cas de perte d'emploi. Recommandé : 6 mois de charges." />
+                                            </div>
+                                            <span className="text-[10px] text-zinc-400 font-medium bg-black/40 px-3 py-1 rounded-lg border border-white/5">Cible: {Math.round(safetyTarget)}€</span>
+                                        </div>
+                                        <div className="text-3xl font-black text-white mb-4 relative z-10"><AnimatedNumber value={currentCash}/> <span className="text-lg text-zinc-600">€</span></div>
+                                        <div className="h-2 md:h-3 bg-zinc-900 rounded-full overflow-hidden border border-white/5 w-full relative z-10 shadow-inner">
+                                            <motion.div initial={{width:0}} animate={{width: `${Math.min(100, (currentCash/(safetyTarget || 1))*100)}%`}} transition={{duration: 1}} className={`h-full shadow-[0_0_10px_rgba(255,255,255,0.2)] ${isSafe ? 'bg-emerald-500':'bg-orange-500'}`} />
+                                        </div>
+                                        {!isSafe && <div className="mt-4 text-[10px] text-orange-400 flex items-center gap-2 font-bold bg-orange-500/5 p-3 rounded-xl border border-orange-500/10 relative z-10"><AlertTriangle size={16} className="shrink-0"/> Jauge incomplète. Ajoutez une enveloppe "Matelas" pour la combler.</div>}
+                                    </div>
+
+                                    {/* GRAPHIQUE HISTORIQUE */}
+                                    <div className="p-4 md:p-6 rounded-[24px] md:rounded-[32px] bg-zinc-900/40 border border-white/5 h-[200px] md:h-[250px] w-full transition-colors relative z-10">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <BarChart data={historyData} barGap={2} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
+                                                <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
+                                                <XAxis dataKey="name" stroke="#52525b" fontSize={10} tickLine={false} axisLine={false} />
+                                                <RechartsTooltip cursor={{fill: '#ffffff05'}} contentStyle={{ backgroundColor: 'rgba(26,26,30,1)', backdropFilter: 'blur(10px)', borderColor: 'rgba(255,255,255,0.1)', borderRadius: '12px', fontSize:'12px', color: '#fff', boxShadow: '0 20px 40px rgba(0,0,0,0.8)' }} itemStyle={{ color: '#fff' }} formatter={(val: any) => formatEuro(val)}/>
+                                                <Legend iconType="circle" wrapperStyle={{ fontSize: '9px', textTransform: 'uppercase', fontWeight: 'bold' }} />
+                                                <Bar dataKey="Revenus" fill="#e4e4e7" radius={[4, 4, 0, 0]} barSize={8} />
+                                                <Bar dataKey="Besoins" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={8} />
+                                                <Bar dataKey="Epargne" fill="#a855f7" radius={[4, 4, 0, 0]} barSize={8} />
+                                            </BarChart>
+                                        </ResponsiveContainer>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+
+                        {/* ========================================== */}
+                        {/* ÉTAPE 5 : L'INVESTISSEMENT (LE RESTE FINAL) */}
+                        {/* ========================================== */}
+                        <div className="mt-12 space-y-4">
+                            <div className="text-[10px] font-black bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-3 py-1.5 rounded-md inline-block uppercase tracking-widest">ÉTAPE 5 : LA MACHINE À RICHESSE</div>
+                            
+                            <div className={`relative rounded-[32px] md:rounded-[40px] border transition-all shadow-2xl hover:z-50 w-full ${investissementPurDCA > 0 ? 'border-emerald-500/30 hover:border-emerald-500/60' : 'border-white/5'}`}>
+                                
+                                {/* OVERFLOW HIDDEN SEULEMENT POUR LE FOND (Z-INDEX FIX) */}
+                                <div className={`absolute inset-0 rounded-[32px] md:rounded-[40px] overflow-hidden -z-10 ${investissementPurDCA > 0 ? 'bg-gradient-to-br from-[#022c22] to-black' : 'bg-zinc-900/80'}`}>
+                                    {investissementPurDCA > 0 && <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 mix-blend-overlay"></div>}
+                                    {investissementPurDCA > 0 && <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-emerald-500/20 blur-[150px] rounded-full pointer-events-none"></div>}
+                                </div>
+
+                                <div className="relative z-10 p-8 md:p-12 flex flex-col items-center justify-center text-center max-w-2xl mx-auto space-y-6">
+                                    <div className="flex justify-center">
+                                        <div className={`p-4 rounded-3xl ${investissementPurDCA > 0 ? 'bg-emerald-500/20 text-emerald-400 shadow-[0_0_40px_rgba(16,185,129,0.3)]' : 'bg-zinc-800 text-zinc-500'}`}>
+                                            <Rocket size={40} />
+                                        </div>
+                                    </div>
+                                    
+                                    <div>
+                                        <h3 className="text-lg md:text-2xl font-black text-white uppercase tracking-widest flex items-center justify-center gap-2">
+                                            Investissement Pur (DCA) <HelpTooltip text="Votre Capacité d'Épargne MOINS vos Enveloppes Projets. C'est l'argent 'libre' qu'il vous reste à la fin. Vous devez absolument l'investir (Bourse, Crypto, Immo) pour générer des intérêts composés."/>
+                                        </h3>
+                                        <p className="text-zinc-400 text-xs md:text-sm mt-2 font-medium">Transférez ce montant vers vos courtiers et observez-le travailler pour vous.</p>
+                                    </div>
+
+                                    <div className={`text-6xl md:text-8xl font-black tracking-tighter drop-shadow-2xl ${investissementPurDCA > 0 ? 'text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-teal-400' : 'text-zinc-600'}`}>
+                                        {formatEuro(investissementPurDCA)}
+                                    </div>
+
+                                    {investissementPurDCA > 0 ? (
+                                        <Link href={`/projection?dca=${investissementPurDCA}`} className="inline-block mt-8">
+                                            <Button className="h-14 md:h-16 px-8 md:px-10 bg-white hover:bg-zinc-200 text-black font-black uppercase tracking-widest rounded-2xl shadow-[0_0_40px_rgba(255,255,255,0.2)] hover:scale-105 active:scale-95 transition-all text-sm md:text-base flex items-center gap-3">
+                                                Projeter ce montant <ArrowRight size={20} />
+                                            </Button>
+                                        </Link>
+                                    ) : investissementPurDCA < 0 ? (
+                                        <div className="inline-flex items-center gap-2 bg-red-500/10 border border-red-500/20 text-red-400 px-6 py-4 rounded-2xl font-bold mt-6 text-sm">
+                                            <AlertTriangle size={18} /> Vous allouez plus d'argent que vous n'en avez ! Réduisez vos Projets.
+                                        </div>
+                                    ) : (
+                                        <div className="inline-flex items-center gap-2 bg-white/5 border border-white/10 text-zinc-400 px-6 py-4 rounded-2xl font-bold mt-6 text-sm">
+                                            <Info size={18} /> Tout votre argent est alloué aux projets. Il ne reste rien à investir.
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
+                    </motion.div>
+                </main>
+            </div>
+        </>
     );
 }

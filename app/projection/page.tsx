@@ -144,7 +144,7 @@ export default function ProjectionPage() {
       if (profile) {
           setIsPro(profile.is_pro === true);
 
-          // A. FIX LOGIQUE : On ne prend QUE l'argent déjà investi en Bourse/Crypto
+          // A. ON NE PREND QUE L'ARGENT INVESTI (Bourse/Crypto)
           const assets = profile.assets_json || [];
           const currentlyInvested = assets
               .filter((a: any) => a.type === 'Bourse' || a.type === 'Crypto')
@@ -159,21 +159,17 @@ export default function ProjectionPage() {
           }
           setMonthlyExpenses(expenses);
 
-          // C. LIAISON BUDGET -> PROJECTION (LE DCA)
-          // On regarde s'il y a un "?dca=XXX" dans l'URL (qui vient du bouton de la page budget)
+          // C. LIAISON BUDGET -> PROJECTION (LE DCA) FIXÉE : On force Math.max(0, valeur) pour éviter le négatif
           const searchParams = new URLSearchParams(window.location.search);
           const dcaFromUrl = searchParams.get('dca');
           
           if (dcaFromUrl) {
-              // Si on vient du bouton de la page Budget, on utilise exactement ce chiffre
-              setMonthlyContribution(Number(parseFloat(dcaFromUrl).toFixed(0)));
+              setMonthlyContribution(Math.max(0, Number(parseFloat(dcaFromUrl).toFixed(0))));
           } else {
-              // Sinon, on cherche l'investissement du mois en cours dans l'historique
               const { data: history } = await supabase.from('monthly_history').select('invested').eq('user_id', session.user.id).order('month', { ascending: false }).limit(1).maybeSingle();
-              if (history && history.invested) {
-                  setMonthlyContribution(Number(history.invested.toFixed(0)));
+              if (history && typeof history.invested === 'number') {
+                  setMonthlyContribution(Math.max(0, Number(history.invested.toFixed(0))));
               } else {
-                  // Fallback : Epargne théorique (Revenus - Charges)
                   const income = Number(budget.income) || 0;
                   setMonthlyContribution(Math.max(0, Number((income - expenses).toFixed(0))));
               }
@@ -317,7 +313,7 @@ export default function ProjectionPage() {
                               <h3 className="text-[10px] md:text-sm font-bold text-white uppercase tracking-widest">Marché</h3>
                           </div>
                           <div className="flex items-center gap-2 bg-black/30 px-2 py-1 md:px-3 rounded-full border border-white/5 shrink-0">
-                              <span className="text-[9px] md:text-[10px] text-zinc-400 font-bold uppercase flex items-center">Dividendes <HelpTooltip text="Activez si vous achetez des actions qui versent une rente annuelle en cash plutôt que de réinvestir automatiquement."/></span>
+                              <div className="text-[9px] md:text-[10px] text-zinc-400 font-bold uppercase flex items-center">Dividendes <HelpTooltip text="Activez si vous achetez des actions qui versent une rente annuelle en cash plutôt que de réinvestir automatiquement."/></div>
                               <Switch checked={isDividendStrategy} onCheckedChange={setIsDividendStrategy} className="scale-75 md:scale-100 origin-right"/>
                           </div>
                       </div>
@@ -345,30 +341,36 @@ export default function ProjectionPage() {
                   {/* KPI CARDS */}
                   <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6 w-full min-w-0">
                       
-                      {/* 1. FIRE */}
+                      {/* 1. FIRE (MODIFIÉ POUR PLUS DE CLARTÉ) */}
                       <div className={`p-3 md:p-6 rounded-[20px] md:rounded-[26px] border relative overflow-hidden flex flex-col justify-between h-28 md:h-40 transition-all group w-full min-w-0 hover:z-50 ${fireYear ? 'bg-emerald-950/20 border-emerald-500/30' : 'bg-zinc-900/40 border-white/5'}`}>
                           <div className="flex justify-between items-start relative z-10">
-                              <p className={`text-[8px] md:text-[10px] font-bold uppercase tracking-widest truncate pr-1 flex items-center ${fireYear ? "text-emerald-400" : "text-zinc-500"}`}>
-                                  Liberté <HelpTooltip text="Nombre d'années avant que vos gains passifs couvrent l'intégralité de vos charges fixes et loisirs du mois."/>
-                              </p>
+                              <div className={`text-[8px] md:text-[10px] font-bold uppercase tracking-widest truncate pr-1 flex items-center ${fireYear ? "text-emerald-400" : "text-zinc-500"}`}>
+                                  Liberté <HelpTooltip text={`L'indépendance financière est atteinte quand vos rendements couvrent vos dépenses (${formatEuro(monthlyExpenses)}/mois). Ce calcul utilise la règle des 4% : il faut accumuler 25 fois vos dépenses annuelles.`}/>
+                              </div>
                               <Target size={14} className={`shrink-0 md:w-[18px] md:h-[18px] ${fireYear ? "text-emerald-400" : "text-zinc-600"}`}/>
                           </div>
                           <div className="relative z-10 w-full min-w-0">
                               {fireYear ? (
                                   <>
-                                      <div className="text-xl sm:text-2xl md:text-4xl font-black text-white mb-1 truncate">Dans {fireYear} ans</div>
-                                      <div className="h-1 w-full bg-emerald-900/50 rounded-full mt-1 md:mt-2 overflow-hidden"><div className="h-full bg-emerald-500 w-full animate-pulse"></div></div>
+                                      <div className="text-xl sm:text-2xl md:text-4xl font-black text-white mb-0.5 truncate">Dans {fireYear} ans</div>
+                                      <div className="text-[9px] md:text-[10px] text-emerald-400/80 font-medium truncate mb-2">Capital cible : {formatEuro(fireTarget)}</div>
+                                      <div className="h-1 w-full bg-emerald-900/50 rounded-full overflow-hidden"><div className="h-full bg-emerald-500 w-full animate-pulse"></div></div>
                                   </>
-                              ) : ( <div className="text-sm sm:text-xl md:text-3xl font-bold text-zinc-500 truncate">Non atteinte</div> )}
+                              ) : ( 
+                                  <>
+                                      <div className="text-sm sm:text-xl md:text-3xl font-bold text-zinc-500 truncate mb-1">Non atteinte</div> 
+                                      <div className="text-[9px] md:text-[10px] text-zinc-600 font-medium truncate">Capital cible : {formatEuro(fireTarget)}</div>
+                                  </>
+                              )}
                           </div>
                       </div>
 
                       {/* 2. NET WORTH */}
                       <div className="p-3 md:p-6 rounded-[20px] md:rounded-[26px] bg-zinc-900/40 backdrop-blur-md border border-white/5 flex flex-col justify-between h-28 md:h-40 group hover:border-white/10 transition-all w-full min-w-0 hover:z-50">
                           <div className="flex justify-between items-start">
-                              <p className="text-[8px] md:text-[10px] text-zinc-500 font-bold uppercase tracking-widest truncate pr-1 flex items-center">
+                              <div className="text-[8px] md:text-[10px] text-zinc-500 font-bold uppercase tracking-widest truncate pr-1 flex items-center">
                                   Patrimoine Final <HelpTooltip text="La valeur totale de votre portefeuille à l'année d'horizon fixée, net d'impôts PEA."/>
-                              </p>
+                              </div>
                               <Sparkles size={14} className="text-yellow-500 shrink-0 md:w-[18px] md:h-[18px]"/>
                           </div>
                           <div className="w-full min-w-0">
@@ -382,9 +384,9 @@ export default function ProjectionPage() {
                       {/* 3. PASSIVE INCOME */}
                       <div className="p-3 md:p-6 rounded-[20px] md:rounded-[26px] bg-zinc-900/40 backdrop-blur-md border border-white/5 flex flex-col justify-between h-28 md:h-40 group relative overflow-hidden w-full min-w-0 hover:z-50">
                           <div className="flex justify-between items-start">
-                              <p className="text-[8px] md:text-[10px] text-zinc-500 font-bold uppercase tracking-widest truncate pr-1 flex items-center">
+                              <div className="text-[8px] md:text-[10px] text-zinc-500 font-bold uppercase tracking-widest truncate pr-1 flex items-center">
                                   Rente Mensuelle <HelpTooltip text="L'argent que vous pourriez retirer chaque mois pour vivre, sans jamais épuiser votre capital initial (Règle des 4%)."/>
-                              </p>
+                              </div>
                               <Coins size={14} className="text-blue-500 shrink-0 md:w-[18px] md:h-[18px]"/>
                           </div>
                           
@@ -408,9 +410,9 @@ export default function ProjectionPage() {
                       <div className="p-3 md:p-6 rounded-[20px] md:rounded-[26px] bg-red-950/10 backdrop-blur-md border border-red-500/20 flex flex-col justify-between h-28 md:h-40 relative overflow-hidden w-full min-w-0 hover:z-50">
                           <div className="absolute -right-2 -top-2 md:-right-4 md:-top-4 w-16 h-16 md:w-24 md:h-24 bg-red-500/20 blur-[20px] md:blur-[40px] rounded-full -z-10"></div>
                           <div className="flex justify-between items-start relative z-10">
-                              <p className="text-[8px] md:text-[10px] text-red-400 font-bold uppercase tracking-widest truncate pr-1 flex items-center">
+                              <div className="text-[8px] md:text-[10px] text-red-400 font-bold uppercase tracking-widest truncate pr-1 flex items-center">
                                   Manque (CTO) <HelpTooltip text="La somme d'argent exacte que l'État vous prendrait en plus si vous investissiez sur un compte normal (CTO 30%) au lieu du PEA (17.2%)."/>
-                              </p>
+                              </div>
                               <AlertTriangle size={14} className="text-red-500 shrink-0 md:w-[18px] md:h-[18px]"/>
                           </div>
                           

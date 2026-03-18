@@ -2,37 +2,20 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence, Variants } from "framer-motion";
-import { ArrowRight, Sparkles, Building2, TrendingUp, PiggyBank, ShieldCheck, CheckCircle2, Lock, Loader2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { ArrowRight, Sparkles, Building2, TrendingUp, PiggyBank, ShieldCheck, CheckCircle2, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { supabase } from "@/lib/supabaseClient";
 import { NexusLogo } from "@/components/NexusLogo";
 
-interface OnboardingProps {
-  onFinish: () => void;
-}
-
-export default function OnboardingWizard({ onFinish }: OnboardingProps) {
+export default function MagicOnboarding() {
+  const router = useRouter();
   const [step, setStep] = useState(1);
   const [name, setName] = useState("");
   const [goal, setGoal] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [loading, setLoading] = useState(false);
 
-  // =========================================================
-  // LA MAGIE ANTI-LAG & IMMERSION TOTALE (Body Scroll Lock)
-  // =========================================================
-  useEffect(() => {
-    // 1. Quand le Wizard s'ouvre, on bloque le scroll du dashboard derrière
-    document.body.style.overflow = "hidden";
-
-    // 2. Fonction de nettoyage : quand le Wizard se ferme, on rétablit le scroll
-    return () => {
-      document.body.style.overflow = "auto";
-    };
-  }, []); // [] signifie "exécuter uniquement au montage et démontage"
-
-  // Fausse étape d'analyse (Étape 3) pour l'effet "Waouh"
+  // Fausse étape d'analyse pour l'effet "Waouh"
   useEffect(() => {
     if (step === 3) {
       setIsAnalyzing(true);
@@ -46,36 +29,7 @@ export default function OnboardingWizard({ onFinish }: OnboardingProps) {
 
   const nextStep = () => setStep((prev) => prev + 1);
 
-  // Fonction de validation finale qui met à jour Supabase et ferme le Wizard
-  const handleFinish = async () => {
-    setLoading(true);
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        // 1. On met à jour les métadonnées de l'utilisateur
-        await supabase.auth.updateUser({
-          data: { 
-              full_name: name,
-              main_goal: goal, // On enregistre son objectif
-              onboarding_complete: true // Le flag pour ne plus jamais afficher ce wizard
-          }
-        });
-        
-        // 2. On s'assure qu'une ligne existe dans la table profiles
-        await supabase.from('profiles').upsert({
-          id: user.id,
-          updated_at: new Date(),
-        });
-      }
-    } catch (error) {
-      console.error("Erreur lors de l'onboarding:", error);
-    } finally {
-      setLoading(false);
-      onFinish(); // On ferme le Wizard (ce qui va déclencher le useEffect cleanup pour rétablir le scroll)
-    }
-  };
-
-  // Animation fluide iOS-style
+  // FIX TypeScript : On déclare explicitement que ceci est du type "Variants"
   const slideVariants: Variants = {
     hidden: { opacity: 0, x: 50, filter: "blur(10px)" },
     visible: { opacity: 1, x: 0, filter: "blur(0px)", transition: { duration: 0.5, ease: "easeOut" } },
@@ -83,14 +37,13 @@ export default function OnboardingWizard({ onFinish }: OnboardingProps) {
   };
 
   return (
-    // FIX IMMERSION : fixed inset-0 z-[99999] bg-[#020202] (noir opaque)
-    // overflow-hidden ici assure que le contenu du wizard lui-même ne scrolle pas
-    <div className="fixed inset-0 z-[99999] bg-[#020202] text-white flex flex-col items-center justify-center p-6 overflow-hidden font-sans">
+    <div className="min-h-screen bg-[#020202] text-white flex flex-col items-center justify-center p-6 relative overflow-hidden font-sans">
       
-      {/* Background Elements Premium (Optimisés Radial pour perf mobile) */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-[radial-gradient(circle_at_center,rgba(16,185,129,0.08),transparent_70%)] pointer-events-none"></div>
+      {/* Background Elements */}
+      <div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] bg-emerald-500/10 blur-[120px] rounded-full pointer-events-none"></div>
+      <div className="absolute bottom-1/4 right-1/4 w-[500px] h-[500px] bg-indigo-500/10 blur-[120px] rounded-full pointer-events-none"></div>
 
-      {/* Header (Logo + Barre de progression) */}
+      {/* Header (Logo + Progession) */}
       <div className="absolute top-8 left-0 right-0 flex justify-between items-center px-8 max-w-[1000px] mx-auto w-full z-50">
         <div className="flex items-center gap-2 text-emerald-500">
           <NexusLogo className="w-6 h-6" />
@@ -105,7 +58,7 @@ export default function OnboardingWizard({ onFinish }: OnboardingProps) {
         )}
       </div>
 
-      {/* Contenu principal */}
+      {/* Main Content Area */}
       <div className="w-full max-w-[600px] relative z-10">
         <AnimatePresence mode="wait">
           
@@ -115,7 +68,7 @@ export default function OnboardingWizard({ onFinish }: OnboardingProps) {
               <div className="inline-flex items-center justify-center p-4 rounded-full bg-white/5 border border-white/10 mb-4">
                 <Sparkles className="text-emerald-400 w-8 h-8" />
               </div>
-              <h1 className="text-4xl md:text-5xl font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-b from-white to-white/80">Faisons connaissance.</h1>
+              <h1 className="text-4xl md:text-5xl font-black tracking-tight">Faisons connaissance.</h1>
               <p className="text-zinc-400 text-lg">Comment souhaitez-vous que nous vous appelions ?</p>
               
               <div className="pt-8 space-y-6">
@@ -123,14 +76,14 @@ export default function OnboardingWizard({ onFinish }: OnboardingProps) {
                   value={name} 
                   onChange={(e) => setName(e.target.value)} 
                   placeholder="Votre prénom" 
-                  className="bg-white/5 border-white/10 text-center text-2xl h-16 rounded-2xl focus:border-emerald-500/50 focus:ring-emerald-500/20 text-white placeholder:text-zinc-600"
+                  className="bg-white/5 border-white/10 text-center text-2xl h-16 rounded-2xl focus:border-emerald-500/50 focus:ring-emerald-500/20"
                   autoFocus
-                  onKeyDown={(e) => e.key === 'Enter' && name.trim() && nextStep()}
+                  onKeyDown={(e) => e.key === 'Enter' && name && nextStep()}
                 />
                 <Button 
                   onClick={nextStep} 
                   disabled={!name.trim()} 
-                  className="w-full h-14 bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-lg rounded-2xl transition-all shadow-[0_0_20px_rgba(16,185,129,0.2)]"
+                  className="w-full h-14 bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-lg rounded-2xl transition-all"
                 >
                   Continuer <ArrowRight className="ml-2 w-5 h-5" />
                 </Button>
@@ -142,8 +95,8 @@ export default function OnboardingWizard({ onFinish }: OnboardingProps) {
           {step === 2 && (
             <motion.div key="step2" variants={slideVariants} initial="hidden" animate="visible" exit="exit" className="space-y-8">
               <div className="text-center space-y-4">
-                <h1 className="text-3xl md:text-4xl font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-b from-white to-white/80">Quel est votre objectif principal, {name} ?</h1>
-                <p className="text-zinc-400">Nous personnaliserons votre expérience en fonction.</p>
+                <h1 className="text-3xl md:text-4xl font-black tracking-tight">Quel est votre objectif principal, {name} ?</h1>
+                <p className="text-zinc-400">Nous personnaliserons votre tableau de bord en fonction.</p>
               </div>
 
               <div className="grid gap-4 pt-4">
@@ -172,7 +125,7 @@ export default function OnboardingWizard({ onFinish }: OnboardingProps) {
 
               <div className="pt-4 flex justify-between items-center">
                 <Button variant="ghost" onClick={() => setStep(1)} className="text-zinc-500 hover:text-white">Retour</Button>
-                <Button onClick={nextStep} disabled={!goal} className="h-12 px-8 bg-white hover:bg-zinc-200 text-black font-bold rounded-xl shadow-[0_0_15px_rgba(255,255,255,0.1)]">
+                <Button onClick={nextStep} disabled={!goal} className="h-12 px-8 bg-white hover:bg-zinc-200 text-black font-bold rounded-xl">
                   Suivant
                 </Button>
               </div>
@@ -190,7 +143,7 @@ export default function OnboardingWizard({ onFinish }: OnboardingProps) {
               </div>
               
               <div className="space-y-3">
-                <h2 className="text-2xl font-bold animate-pulse text-transparent bg-clip-text bg-gradient-to-b from-white to-white/80">Configuration de votre espace...</h2>
+                <h2 className="text-2xl font-bold animate-pulse">Configuration de votre espace...</h2>
                 <p className="text-zinc-500 text-sm">
                   {goal === 'immo' ? "Activation du simulateur LMNP/Nu..." : 
                    goal === 'retraite' ? "Mise en place de l'algorithme d'intérêts composés..." : 
@@ -200,7 +153,7 @@ export default function OnboardingWizard({ onFinish }: OnboardingProps) {
             </motion.div>
           )}
 
-          {/* ETAPE 4 : SUCCÈS & FERMETURE DU WIZARD */}
+          {/* ETAPE 4 : SUCCÈS */}
           {step === 4 && (
             <motion.div key="step4" variants={slideVariants} initial="hidden" animate="visible" className="text-center space-y-8 py-10">
               <motion.div 
@@ -211,21 +164,17 @@ export default function OnboardingWizard({ onFinish }: OnboardingProps) {
               </motion.div>
               
               <div className="space-y-4">
-                <h1 className="text-4xl md:text-5xl font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-b from-white to-white/80">Tout est prêt, {name}.</h1>
+                <h1 className="text-4xl md:text-5xl font-black tracking-tight">Tout est prêt, {name}.</h1>
                 <p className="text-zinc-400 text-lg">Votre tableau de bord sécurisé vous attend.</p>
               </div>
 
               <div className="pt-8">
-                {/* Au clic, on appelle Supabase, puis onFinish() pour fermer le Wizard et dévoiler le Dashboard */}
-                <Button 
-                  onClick={handleFinish} 
-                  disabled={loading}
-                  className="h-16 px-12 bg-white hover:bg-zinc-200 text-black font-black text-lg rounded-2xl w-full shadow-[0_0_30px_rgba(255,255,255,0.3)] hover:scale-[1.02] transition-all"
-                >
-                  {loading ? <Loader2 className="animate-spin" /> : "Accéder à mon espace"}
+                {/* Ici on redirige vers le vrai dashboard de ton app */}
+                <Button onClick={() => router.push('/dashboard')} className="h-16 px-12 bg-white hover:bg-zinc-200 text-black font-black text-lg rounded-2xl w-full shadow-[0_0_30px_rgba(255,255,255,0.2)] hover:scale-[1.02] transition-all">
+                  Accéder à mon espace
                 </Button>
               </div>
-              <p className="text-zinc-600 text-xs uppercase tracking-widest font-bold pt-4 flex items-center justify-center gap-2 relative z-10">
+              <p className="text-zinc-600 text-xs uppercase tracking-widest font-bold pt-4 flex items-center justify-center gap-2">
                 <Lock size={12} /> Données chiffrées de bout en bout
               </p>
             </motion.div>
