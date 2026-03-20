@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { NexusLogo } from "@/components/NexusLogo";
 
 // ─── Helpers ───────────────────────────────────────────────
 const fmt = (v: number) => new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(v);
@@ -122,7 +123,7 @@ export default function RapportFiscalPDF({ refProp, price, works, notaryFees, re
   );
 
   const headerBar: React.CSSProperties = {
-    display: "flex", justifyContent: "space-between", alignItems: "flex-start",
+    display: "flex", justifyContent: "space-between", alignItems: "center",
     borderBottom: "2px solid #e2e8f0", paddingBottom: 10, marginBottom: 18,
   };
   const footerStyle: React.CSSProperties = {
@@ -131,6 +132,21 @@ export default function RapportFiscalPDF({ refProp, price, works, notaryFees, re
     borderTop: "1px solid #e2e8f0", paddingTop: 6,
     fontSize: 8, color: "#94a3b8",
   };
+
+  const PageHeader = ({ title, page }: { title: string; page: string }) => (
+    <div style={headerBar}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ width: 28, height: 28, flexShrink: 0 }}>
+          <NexusLogo className="w-full h-full" />
+        </div>
+        <div>
+          <p style={{ fontSize: 8, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.15em", margin: 0 }}>Nexus Invest · Rapport Fiscal 2026</p>
+          <p style={{ fontSize: 13, fontWeight: 900, color: "#1e293b", margin: 0, marginTop: 2 }}>{title}</p>
+        </div>
+      </div>
+      <p style={{ fontSize: 9, color: "#94a3b8", margin: 0 }}>{dateStr} · Page {page}</p>
+    </div>
+  );
 
   return (
     <div className="absolute top-0 left-0 w-0 h-0 opacity-0 pointer-events-none -z-50 print:static print:w-auto print:h-auto print:opacity-100 print:z-auto" style={{ overflow: "hidden" }}>
@@ -147,9 +163,14 @@ export default function RapportFiscalPDF({ refProp, price, works, notaryFees, re
           <div style={{ background: "linear-gradient(90deg, #6d28d9, #4f46e5)", height: 6 }} />
           <div style={{ padding: "14mm 16mm", flex: 1, display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
             <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <div>
-                <p style={{ fontSize: 20, fontWeight: 900, color: "white", margin: 0, letterSpacing: "-0.02em" }}>NEXUS <span style={{ color: "#818cf8" }}>INVEST</span></p>
-                <p style={{ fontSize: 9, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.2em", margin: 0, marginTop: 4 }}>Analyse Fiscale Immobilière 2026</p>
+              <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                <div style={{ width: 44, height: 44, flexShrink: 0 }}>
+                  <NexusLogo className="w-full h-full" />
+                </div>
+                <div>
+                  <p style={{ fontSize: 20, fontWeight: 900, color: "white", margin: 0, letterSpacing: "-0.02em" }}>NEXUS <span style={{ color: "#818cf8" }}>INVEST</span></p>
+                  <p style={{ fontSize: 9, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.2em", margin: 0, marginTop: 4 }}>Analyse Fiscale Immobilière 2026</p>
+                </div>
               </div>
               <div style={{ textAlign: "right" }}>
                 <p style={{ fontSize: 10, color: "#64748b", margin: 0 }}>Établi le</p>
@@ -196,10 +217,7 @@ export default function RapportFiscalPDF({ refProp, price, works, notaryFees, re
           <>
             <PageBreak />
             <div style={pageStyle}>
-              <div style={headerBar}>
-                <div><p style={{ fontSize: 8, color: "#94a3b8", margin: 0, textTransform: "uppercase", letterSpacing: "0.12em" }}>Nexus Invest · Rapport Fiscal 2026</p><p style={{ fontSize: 13, fontWeight: 900, color: "#1e293b", margin: 0, marginTop: 2 }}>Données du Bien & Paramètres</p></div>
-                <p style={{ fontSize: 9, color: "#94a3b8", margin: 0 }}>{dateStr} · Page 2</p>
-              </div>
+              <PageHeader title="Données du Bien & Paramètres" page="2" />
 
               <Section title="Le Bien Immobilier" color="#6d28d9" />
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 16 }}>
@@ -268,14 +286,11 @@ export default function RapportFiscalPDF({ refProp, price, works, notaryFees, re
           <>
             <PageBreak />
             <div style={pageStyle}>
-              <div style={headerBar}>
-                <div><p style={{ fontSize: 8, color: "#94a3b8", margin: 0, textTransform: "uppercase", letterSpacing: "0.12em" }}>Nexus Invest · Rapport Fiscal 2026</p><p style={{ fontSize: 13, fontWeight: 900, color: "#1e293b", margin: 0, marginTop: 2 }}>Comparatif des Régimes Fiscaux</p></div>
-                <p style={{ fontSize: 9, color: "#94a3b8", margin: 0 }}>{dateStr} · Page 3</p>
-              </div>
+              <PageHeader title="Comparatif des Régimes Fiscaux" page="3" />
 
               {/* Avertissement incompatibilité — message clé */}
               <div style={{ background: "#fff7ed", borderRadius: 12, padding: "14px 18px", border: "1px solid #fed7aa", marginBottom: 20, display: "flex", gap: 12, alignItems: "flex-start" }}>
-                <span style={{ fontSize: 20 }}>⚠️</span>
+                <div style={{ width: 4, borderRadius: 4, background: "#f97316", alignSelf: "stretch", flexShrink: 0 }} />
                 <div>
                   <p style={{ fontSize: 11, fontWeight: 700, color: "#c2410c", margin: 0, marginBottom: 6 }}>Choix structurel préalable obligatoire</p>
                   <p style={{ fontSize: 11, color: "#92400e", margin: 0, lineHeight: 1.7 }}>
@@ -377,7 +392,7 @@ export default function RapportFiscalPDF({ refProp, price, works, notaryFees, re
                           flatTax: sciIsTotal > 0 ? 0 : 0, // dividendes flat tax 30% si distribués
                           total: sciIsTotal,
                           cf: (annualRent - annualCharges - monthlyPayment * 12 - sciIsTotal) / 12,
-                          revente: "⚠️ IS + Flat tax 30%",
+                          revente: "IS + Flat tax 30%",
                         },
                         {
                           structure: "SCI à l'IR (location nue)",
@@ -395,7 +410,7 @@ export default function RapportFiscalPDF({ refProp, price, works, notaryFees, re
                           flatTax: reelTotal,
                           total: reelTotal,
                           cf: (annualRent - annualCharges - monthlyPayment * 12 - reelTotal) / 12,
-                          revente: "⚠️ Amortissements réintégrés PV",
+                          revente: "Amortissements réintégrés PV",
                         },
                       ].map((row, i) => (
                         <tr key={i} style={{ background: i % 2 === 0 ? "white" : "#f8fafc" }}>
@@ -415,13 +430,13 @@ export default function RapportFiscalPDF({ refProp, price, works, notaryFees, re
                 </div>
 
                 <p style={{ fontSize: 9, color: "#94a3b8", margin: 0, marginTop: 8, lineHeight: 1.6 }}>
-                  ℹ️ <strong>SCI à l'IS :</strong> l'impôt IS (15-25%) est attractif en phase de détention si vous ne distribuez pas les dividendes. Mais à la revente, la plus-value est calculée après réintégration des amortissements et soumise à IS + Flat Tax 30% sur les dividendes — ce qui peut rendre la sortie très coûteuse. À réserver aux patrimoines importants avec horizon de détention très long.
+                  <strong style={{ color: "#6d28d9" }}>Note SCI à l'IS :</strong> l'impôt IS (15-25%) est attractif en phase de détention si vous ne distribuez pas les dividendes. Mais à la revente, la plus-value est calculée après réintégration des amortissements et soumise à IS + Flat Tax 30% sur les dividendes — ce qui peut rendre la sortie très coûteuse. À réserver aux patrimoines importants avec horizon de détention très long.
                 </p>
               </div>
 
               {/* Synthèse recommandation */}
               <div style={{ background: "#eff6ff", borderRadius: 12, padding: "14px 18px", border: "1px solid #bfdbfe" }}>
-                <p style={{ fontSize: 11, fontWeight: 700, color: "#1d4ed8", marginBottom: 6 }}>📌 Recommandation pour ce projet</p>
+                <p style={{ fontSize: 11, fontWeight: 700, color: "#1d4ed8", marginBottom: 6 }}>Recommandation pour ce projet</p>
                 <p style={{ fontSize: 11, color: "#1e40af", margin: 0, lineHeight: 1.7 }}>
                   En nom propre, le <strong>LMNP Réel</strong> est optimal : {isDeficit ? `résultat déficitaire de ${fmt(Math.abs(Math.round(reelResultat)))} → 0€ d'impôt sur vos loyers` : `base imposable réduite à ${fmt(Math.round(reelBase))}, soit ${fmt(Math.round(reelTotal))}/an`}.
                   {" "}Économie estimée vs Micro-BIC : <strong>{fmt(Math.round(microTotal - reelTotal))}/an</strong> soit <strong>{fmt(Math.round((microTotal - reelTotal) * 20))} sur 20 ans</strong>.
@@ -437,16 +452,15 @@ export default function RapportFiscalPDF({ refProp, price, works, notaryFees, re
         {/* ══ PAGE 4 : PLUS-VALUE & TRANSMISSION ══════════════ */}
         <PageBreak />
         <div style={pageStyle}>
-          <div style={headerBar}>
-            <div><p style={{ fontSize: 8, color: "#94a3b8", margin: 0, textTransform: "uppercase", letterSpacing: "0.12em" }}>Nexus Invest · Rapport Fiscal 2026</p><p style={{ fontSize: 13, fontWeight: 900, color: "#1e293b", margin: 0, marginTop: 2 }}>Plus-Value & Transmission</p></div>
-            <p style={{ fontSize: 9, color: "#94a3b8", margin: 0 }}>{dateStr} · Page {isLoc ? 4 : 2}</p>
-          </div>
+          <PageHeader title="Plus-Value & Transmission" page={isLoc ? "4" : "2"} />
 
           {isRP ? (
             <>
               <div style={{ background: "linear-gradient(135deg, #f59e0b, #d97706)", borderRadius: 14, padding: "20px 24px", color: "white", marginBottom: 20 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                  <span style={{ fontSize: 28 }}>🏆</span>
+                <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                  <div style={{ width: 44, height: 44, borderRadius: 10, background: "rgba(255,255,255,0.2)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                    <span style={{ fontSize: 10, fontWeight: 900, color: "white", textTransform: "uppercase", letterSpacing: "0.05em" }}>RP</span>
+                  </div>
                   <div>
                     <p style={{ fontSize: 9, color: "rgba(255,255,255,0.7)", textTransform: "uppercase", letterSpacing: "0.15em", margin: 0 }}>Avantage fiscal exceptionnel</p>
                     <p style={{ fontSize: 18, fontWeight: 900, margin: 0, marginTop: 4 }}>Exonération totale de plus-value</p>
@@ -495,31 +509,33 @@ export default function RapportFiscalPDF({ refProp, price, works, notaryFees, re
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             {[
               {
-                icon: "🎁", color: "#8b5cf6", bg: "#faf5ff", border: "#ddd6fe",
+                num: "01", color: "#8b5cf6", bg: "#faf5ff", border: "#ddd6fe",
                 title: "Donation progressive (abattement rechargeable)",
                 text: "Chaque parent peut donner 100 000€ par enfant tous les 15 ans en franchise de droits. Pour transmettre un bien de " + fmt(price) + ", une SCI permet de fragmenter la donation en parts sociales successives.",
               },
               {
-                icon: "🏛️", color: "#0ea5e9", bg: "#f0f9ff", border: "#bae6fd",
+                num: "02", color: "#0ea5e9", bg: "#f0f9ff", border: "#bae6fd",
                 title: "SCI à l'IR + démembrement",
                 text: "En donnant la nue-propriété des parts de SCI à vos enfants tout en conservant l'usufruit, la valorisation fiscale de la nue-propriété est réduite (50-70% selon votre âge). Au décès, la pleine propriété se reconstitue sans droits.",
               },
               {
-                icon: "📋", color: "#10b981", bg: "#f0fdf4", border: "#a7f3d0",
+                num: "03", color: "#10b981", bg: "#f0fdf4", border: "#a7f3d0",
                 title: isRP ? "Abattement RP en succession (+20%)" : "Assurance-vie complémentaire",
                 text: isRP
                   ? "La résidence principale bénéficie d'un abattement de 20% supplémentaire pour le calcul des droits de succession, à condition que le conjoint survivant ou les enfants y habitent au moment du décès."
                   : "L'assurance-vie permet de transmettre jusqu'à 152 500€ par bénéficiaire hors succession (versements avant 70 ans). C'est le complément idéal pour financer les droits de succession des héritiers.",
               },
               {
-                icon: "⚖️", color: "#f59e0b", bg: "#fffbeb", border: "#fde68a",
+                num: "04", color: "#f59e0b", bg: "#fffbeb", border: "#fde68a",
                 title: "Abattements en ligne directe (2026)",
                 text: "Barème succession enfant : 100 000€ abattement, puis 5% jusqu'à 8 072€, 10% jusqu'à 12 109€, 15% jusqu'à 15 932€, 20% jusqu'à 552 324€, puis 30%-45%. Planifiez la transmission de votre vivant.",
               },
             ].map((item, i) => (
               <div key={i} style={{ background: item.bg, borderRadius: 10, padding: "14px 16px", border: `1px solid ${item.border}` }}>
                 <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 8 }}>
-                  <span style={{ fontSize: 18 }}>{item.icon}</span>
+                  <div style={{ width: 22, height: 22, borderRadius: 6, background: item.color, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                    <span style={{ fontSize: 9, fontWeight: 900, color: "white" }}>{item.num}</span>
+                  </div>
                   <p style={{ fontSize: 11, fontWeight: 700, color: item.color, margin: 0, lineHeight: 1.3 }}>{item.title}</p>
                 </div>
                 <p style={{ fontSize: 10, color: "#374151", margin: 0, lineHeight: 1.7 }}>{item.text}</p>
@@ -533,10 +549,7 @@ export default function RapportFiscalPDF({ refProp, price, works, notaryFees, re
         {/* ══ PAGE FINALE : RECOMMANDATIONS ═══════════════════ */}
         <PageBreak />
         <div style={pageStyle}>
-          <div style={headerBar}>
-            <div><p style={{ fontSize: 8, color: "#94a3b8", margin: 0, textTransform: "uppercase", letterSpacing: "0.12em" }}>Nexus Invest · Rapport Fiscal 2026</p><p style={{ fontSize: 13, fontWeight: 900, color: "#1e293b", margin: 0, marginTop: 2 }}>Recommandations & Synthèse</p></div>
-            <p style={{ fontSize: 9, color: "#94a3b8", margin: 0 }}>{dateStr} · Page finale</p>
-          </div>
+          <PageHeader title="Recommandations & Synthèse" page="finale" />
 
           {/* Recommandation principale */}
           <div style={{ background: "linear-gradient(135deg, #4f46e5, #1d4ed8)", borderRadius: 14, padding: "20px 24px", color: "white", marginBottom: 12 }}>
@@ -563,7 +576,7 @@ export default function RapportFiscalPDF({ refProp, price, works, notaryFees, re
           {/* Mention conditionnelle SCI IS */}
           {isLoc && (
             <div style={{ background: "#faf5ff", borderRadius: 12, padding: "12px 18px", border: "1px solid #ddd6fe", marginBottom: 20 }}>
-              <p style={{ fontSize: 10, fontWeight: 700, color: "#6d28d9", marginBottom: 6 }}>🏛️ Option société (Voie B) — à envisager si votre situation évolue</p>
+              <p style={{ fontSize: 10, fontWeight: 700, color: "#6d28d9", marginBottom: 6 }}>Option société (Voie B) — à envisager si votre situation évolue</p>
               <p style={{ fontSize: 10, color: "#374151", margin: 0, lineHeight: 1.7 }}>
                 La <strong>SCI à l'IS</strong> ou la <strong>SARL de famille</strong> peuvent devenir pertinentes si : votre <strong>TMI dépasse 41%</strong>, vous possédez <strong>plusieurs biens</strong>, ou vous n'avez pas besoin de distribuer les loyers immédiatement.
                 Ces structures nécessitent un <strong>choix préalable à l'achat</strong> et sont incompatibles avec le statut LMNP. Un changement de structure après acquisition implique une revente fictive du bien.
@@ -575,22 +588,22 @@ export default function RapportFiscalPDF({ refProp, price, works, notaryFees, re
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 20 }}>
             {[
               isLoc && {
-                step: "01", icon: "📝", color: "#4f46e5",
+                step: "01", color: "#4f46e5",
                 title: "Opter pour le régime réel LMNP",
                 text: "Optez pour le régime réel simplifié BIC avant le 1er février de l'année suivant votre première location. Faites appel à un expert-comptable spécialisé LMNP (600-900€/an, déductible).",
               },
               isLoc && rentalStrategy !== "NUE" && {
-                step: "02", icon: "🔑", color: "#0ea5e9",
+                step: "02", color: "#0ea5e9",
                 title: "Classer votre bien (si saisonnier)",
                 text: "En location saisonnière, le classement meublé de tourisme (300-500€ via Atout France) permet de rester à 50% d'abattement micro-BIC au lieu de 30% suite à la loi Le Meur.",
               },
               {
-                step: isLoc ? "03" : "01", icon: "🎁", color: "#8b5cf6",
+                step: isLoc ? "03" : "01", color: "#8b5cf6",
                 title: "Anticiper la transmission (donations)",
                 text: `L'abattement de 100 000€ par enfant se recharge tous les 15 ans. Pour un bien de ${fmt(price)}, planifier des donations progressives peut économiser plusieurs dizaines de milliers d'euros de droits de succession.`,
               },
               {
-                step: isLoc ? "04" : "02", icon: "📊", color: "#10b981",
+                step: isLoc ? "04" : "02", color: "#10b981",
                 title: "Consulter un CGP ou expert-comptable",
                 text: "Ce rapport est à visée pédagogique. Pour toute décision engageante, consultez un Conseiller en Gestion de Patrimoine ou un expert-comptable spécialisé immobilier.",
               },
@@ -600,7 +613,7 @@ export default function RapportFiscalPDF({ refProp, price, works, notaryFees, re
                   <span style={{ fontSize: 9, fontWeight: 900, color: "white" }}>{item.step}</span>
                 </div>
                 <div>
-                  <p style={{ fontSize: 11, fontWeight: 700, color: "#1e293b", margin: 0, marginBottom: 4 }}>{item.icon} {item.title}</p>
+                  <p style={{ fontSize: 11, fontWeight: 700, color: "#1e293b", margin: 0, marginBottom: 4 }}>{item.title}</p>
                   <p style={{ fontSize: 10, color: "#64748b", margin: 0, lineHeight: 1.6 }}>{item.text}</p>
                 </div>
               </div>
@@ -609,7 +622,7 @@ export default function RapportFiscalPDF({ refProp, price, works, notaryFees, re
 
           {/* Disclaimer */}
           <div style={{ background: "#f8fafc", borderRadius: 12, padding: "14px 18px", border: "1px solid #e2e8f0" }}>
-            <p style={{ fontSize: 10, fontWeight: 700, color: "#374151", marginBottom: 6 }}>⚠️ Avertissement légal</p>
+            <p style={{ fontSize: 10, fontWeight: 700, color: "#374151", marginBottom: 6 }}>Avertissement légal</p>
             <p style={{ fontSize: 9, color: "#94a3b8", margin: 0, lineHeight: 1.8 }}>
               Ce rapport est généré par Nexus Invest à titre informatif et pédagogique uniquement. Il ne constitue pas un conseil fiscal ou juridique engageant. Les calculs sont basés sur les données saisies et la législation en vigueur en {new Date().getFullYear()}. Les règles fiscales évoluent régulièrement. Consultez un expert-comptable agréé ou un conseiller en gestion de patrimoine (CGP) avant toute décision d'investissement ou de choix de régime fiscal. Les projections présentées ne garantissent pas de performance future.
             </p>

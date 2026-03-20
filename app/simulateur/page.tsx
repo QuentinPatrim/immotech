@@ -266,14 +266,14 @@ const DossierBancaire = ({ data, refProp }: any) => {
 
 // --- COMPOSANTS UI ---
 const PremiumSlider = ({ label, value, min, max, step, unit, onChange }: any) => (
-    <div className="group relative bg-black/40 rounded-2xl p-3 md:p-4 border border-white/5 hover:border-indigo-500/30 transition-all duration-300 w-full max-w-full">
-        <div className="flex justify-between items-end mb-3">
-            <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider group-hover:text-indigo-400 transition-colors">{label}</label>
-            <div className="font-mono text-lg md:text-xl font-black text-white group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r group-hover:from-indigo-400 group-hover:to-cyan-400 transition-all">
-                {value} <span className="text-xs md:text-sm text-zinc-600 font-medium">{unit}</span>
+    <div className="group relative bg-black/40 rounded-2xl p-3 border border-white/5 hover:border-indigo-500/30 transition-all duration-300 w-full">
+        <div className="flex justify-between items-center mb-3 gap-2">
+            <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider group-hover:text-indigo-400 transition-colors truncate">{label}</label>
+            <div className="font-mono text-base font-black text-white shrink-0 tabular-nums">
+                {value}<span className="text-xs text-zinc-600 font-medium ml-0.5">{unit}</span>
             </div>
         </div>
-        <Slider value={[value]} min={min} max={max} step={step} onValueChange={(v) => onChange(v[0])} className="py-2 cursor-grab active:cursor-grabbing w-full" />
+        <Slider value={[value]} min={min} max={max} step={step} onValueChange={(v) => onChange(v[0])} className="py-1.5 cursor-grab active:cursor-grabbing w-full" />
     </div>
 );
 
@@ -291,12 +291,12 @@ export default function SimulateurPage() {
   const [isPro, setIsPro] = useState(false);
   const [isTutorialOpen, setIsTutorialOpen] = useState(false);
 
-  const componentRef = useRef<HTMLDivElement | null>(null);
+  const componentRef = useRef<HTMLDivElement>(null!);
   const [printData, setPrintData] = useState<any>(null); 
   const [isReadyToPrint, setIsReadyToPrint] = useState(false);
 
   // Rapport fiscal PDF
-  const fiscalRef = useRef<HTMLDivElement | null>(null);
+  const fiscalRef = useRef<HTMLDivElement>(null!);
   const [isFiscalPrintReady, setIsFiscalPrintReady] = useState(false);
 
   const handlePrint = useReactToPrint({
@@ -503,16 +503,16 @@ export default function SimulateurPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#020202] text-zinc-100 font-sans pb-24 md:pb-8 selection:bg-indigo-500/30 selection:text-indigo-200">
+    <div className="min-h-screen bg-[#020202] text-zinc-100 font-sans pb-24 md:pb-8 selection:bg-indigo-500/30 selection:text-indigo-200 overflow-x-hidden">
       
       <SimulateurTutorialModal isOpen={isTutorialOpen} onClose={() => { setIsTutorialOpen(false); localStorage.setItem("nexus_simulateur_tuto_seen", "true"); }} />
       
       <Sidebar />
-      <main className="md:ml-64 min-h-screen p-3 sm:p-4 md:p-8 relative">
+      <main className="md:ml-64 min-h-screen p-3 sm:p-4 md:p-8 relative max-w-full overflow-x-hidden">
         
-        <DossierBancairePro refProp={componentRef as React.RefObject<HTMLDivElement>} data={printData} />
+        <DossierBancairePro refProp={componentRef} data={printData} />
         <RapportFiscalPDF
-          refProp={fiscalRef as React.RefObject<HTMLDivElement>}
+          refProp={fiscalRef}
           price={Number(price)} works={Number(works)} notaryFees={notaryFees}
           rent={Number(rent)} charges={Number(charges)} tax={Number(tax)}
           monthlyPayment={monthlyPayment} yearOneInterest={yearOneInterest}
@@ -541,34 +541,36 @@ export default function SimulateurPage() {
               </button>
             </div>
 
-            {/* Tabs — scroll horizontal sur mobile */}
-            <div className="flex items-center gap-2 -mx-4 md:mx-0 px-4 md:px-0 overflow-x-auto scrollbar-hide pb-0.5">
-              <div className="bg-zinc-900/60 backdrop-blur-xl p-1 rounded-2xl border border-white/5 flex gap-1 min-w-max shadow-2xl">
-                {[
-                  { id: "CAPACITE",    label: "Capacité",   icon: Wallet },
-                  { id: "RENTABILITE", label: "Renta",      icon: Calculator },
-                  { id: "FISCALITE",   label: "Fiscalité",  icon: Scale,      premium: true },
-                  { id: "PROJETS",     label: "Projets",    icon: FolderOpen, premium: true },
-                ].map((tab) => (
-                  <button
-                    key={tab.id}
-                    onClick={() => setMode(tab.id as any)}
-                    className={`flex items-center gap-1.5 px-3 sm:px-5 py-2.5 rounded-xl text-[10px] sm:text-xs font-bold uppercase tracking-widest transition-all duration-300 whitespace-nowrap ${
-                      mode === tab.id
-                        ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/25"
-                        : "text-zinc-500 hover:text-white hover:bg-white/5"
-                    }`}
-                  >
-                    <tab.icon size={14} className="shrink-0" />
-                    <span>{tab.label}</span>
-                    {(tab as any).premium && <Crown size={11} className="text-yellow-400 shrink-0" />}
-                  </button>
-                ))}
+            {/* Tabs — scroll horizontal sur mobile, tout dans le même conteneur scrollable */}
+            <div className="overflow-x-auto scrollbar-hide -mx-3 md:mx-0 px-3 md:px-0 pb-0.5">
+              <div className="flex items-center gap-2 min-w-max">
+                <div className="bg-zinc-900/60 backdrop-blur-xl p-1 rounded-2xl border border-white/5 flex gap-1 shadow-2xl">
+                  {[
+                    { id: "CAPACITE",    label: "Capacité",   icon: Wallet },
+                    { id: "RENTABILITE", label: "Renta",      icon: Calculator },
+                    { id: "FISCALITE",   label: "Fiscalité",  icon: Scale,      premium: true },
+                    { id: "PROJETS",     label: "Projets",    icon: FolderOpen, premium: true },
+                  ].map((tab) => (
+                    <button
+                      key={tab.id}
+                      onClick={() => setMode(tab.id as any)}
+                      className={`flex items-center gap-1.5 px-3 sm:px-5 py-2.5 rounded-xl text-[10px] sm:text-xs font-bold uppercase tracking-widest transition-all duration-300 whitespace-nowrap ${
+                        mode === tab.id
+                          ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/25"
+                          : "text-zinc-500 hover:text-white hover:bg-white/5"
+                      }`}
+                    >
+                      <tab.icon size={14} className="shrink-0" />
+                      <span>{tab.label}</span>
+                      {(tab as any).premium && <Crown size={11} className="text-yellow-400 shrink-0" />}
+                    </button>
+                  ))}
+                </div>
+                {/* Guide — toujours dans le flux scrollable */}
+                <button onClick={() => setIsTutorialOpen(true)} className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-white/5 border border-white/10 text-zinc-400 text-[10px] font-bold uppercase tracking-widest shrink-0 whitespace-nowrap hover:text-white hover:bg-white/10 transition-all">
+                  <BookOpen size={13} /> Guide
+                </button>
               </div>
-              {/* Guide mobile — dans la ligne des tabs */}
-              <button onClick={() => setIsTutorialOpen(true)} className="sm:hidden flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-white/5 border border-white/10 text-zinc-400 text-[10px] font-bold uppercase tracking-widest shrink-0 whitespace-nowrap">
-                <BookOpen size={13} /> Guide
-              </button>
             </div>
           </div>
 

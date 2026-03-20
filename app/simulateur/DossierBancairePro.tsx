@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { CheckCircle, XCircle, AlertTriangle, TrendingUp, Home, Landmark, PiggyBank, BarChart3, Shield, FileText, Scale } from "lucide-react";
+import { NexusLogo } from "@/components/NexusLogo";
 
 // ─── Helpers ───────────────────────────────────────────────
 const fmt = (v: number) => new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(v);
@@ -210,10 +211,12 @@ export default function DossierBancairePro({ data, refProp }: Props) {
   };
   const smallGray = { fontSize: 9, color: "#94a3b8", fontWeight: 500 };
 
-  const PageHeader = ({ page, title, icon }: { page: string; title: string; icon?: string }) => (
+  const PageHeader = ({ page, title }: { page: string; title: string }) => (
     <div style={headerBarStyle}>
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        {icon && <span style={{ fontSize: 18 }}>{icon}</span>}
+        <div style={{ width: 28, height: 28, flexShrink: 0 }}>
+          <NexusLogo className="w-full h-full" />
+        </div>
         <div>
           <p style={{ fontSize: 8, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.15em", margin: 0 }}>Nexus Invest — Dossier de Financement</p>
           <p style={{ fontSize: 13, fontWeight: 900, color: "#1e293b", margin: 0, marginTop: 2 }}>{title}</p>
@@ -254,9 +257,14 @@ export default function DossierBancairePro({ data, refProp }: Props) {
           <div style={{ padding: "14mm 16mm", flex: 1, display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
             {/* Logo + date */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-              <div>
-                <p style={{ fontSize: 22, fontWeight: 900, color: "white", letterSpacing: "-0.03em", margin: 0 }}>NEXUS <span style={{ color: "#818cf8" }}>INVEST</span></p>
-                <p style={{ fontSize: 9, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.2em", margin: 0, marginTop: 4 }}>Dossier de Financement Bancaire</p>
+              <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                <div style={{ width: 48, height: 48, flexShrink: 0 }}>
+                  <NexusLogo className="w-full h-full" />
+                </div>
+                <div>
+                  <p style={{ fontSize: 22, fontWeight: 900, color: "white", letterSpacing: "-0.03em", margin: 0 }}>NEXUS <span style={{ color: "#818cf8" }}>INVEST</span></p>
+                  <p style={{ fontSize: 9, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.2em", margin: 0, marginTop: 4 }}>Dossier de Financement Bancaire</p>
+                </div>
               </div>
               <div style={{ textAlign: "right" }}>
                 <p style={{ fontSize: 10, color: "#94a3b8", margin: 0 }}>Document établi le</p>
@@ -299,7 +307,7 @@ export default function DossierBancairePro({ data, refProp }: Props) {
         {/* ══ PAGE 2 : PROFIL EMPRUNTEUR ══════════════════════ */}
         <PageBreak />
         <div style={pageStyle}>
-          <PageHeader page="2/8" title="Profil de l'Emprunteur" icon="👤" />
+          <PageHeader page="2/8" title="Profil de l'Emprunteur" />
 
           <SectionTitle color="#4f46e5">Situation Financière Personnelle</SectionTitle>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
@@ -363,7 +371,7 @@ export default function DossierBancairePro({ data, refProp }: Props) {
         {/* ══ PAGE 3 : PLAN DE FINANCEMENT ════════════════════ */}
         <PageBreak />
         <div style={pageStyle}>
-          <PageHeader page="3/8" title="Plan de Financement" icon="🏠" />
+          <PageHeader page="3/8" title="Plan de Financement" />
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
             <div>
@@ -439,7 +447,7 @@ export default function DossierBancairePro({ data, refProp }: Props) {
           <>
             <PageBreak />
             <div style={pageStyle}>
-              <PageHeader page="4/8" title="Analyse de Rentabilité Locative" icon="📈" />
+              <PageHeader page="4/8" title="Analyse de Rentabilité Locative" />
 
               <SectionTitle color="#10b981">Flux Financiers Locatifs</SectionTitle>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
@@ -506,7 +514,7 @@ export default function DossierBancairePro({ data, refProp }: Props) {
           <>
             <PageBreak />
             <div style={pageStyle}>
-              <PageHeader page="5/8" title="Stratégie Fiscale" icon="⚖️" />
+              <PageHeader page="5/8" title="Stratégie Fiscale" />
 
               {/* Bannière régime optimal — même source que le tableau */}
               <SectionTitle color="#6d28d9">Régime Fiscal Recommandé</SectionTitle>
@@ -635,7 +643,7 @@ export default function DossierBancairePro({ data, refProp }: Props) {
         {/* ══ PAGE 6 : TABLEAU D'AMORTISSEMENT ════════════════ */}
         <PageBreak />
         <div style={pageStyle}>
-          <PageHeader page={`${isLoc ? 6 : 4}/8`} title="Tableau d'Amortissement du Prêt" icon="📊" />
+          <PageHeader page={`${isLoc ? 6 : 4}/8`} title="Tableau d'Amortissement du Prêt" />
 
           <SectionTitle color="#0ea5e9">Amortissement Annuel sur {d.duration} ans</SectionTitle>
           <div style={{ background: "#f8fafc", borderRadius: 12, border: "1px solid #e2e8f0", overflow: "hidden", marginBottom: 16 }}>
@@ -684,7 +692,7 @@ export default function DossierBancairePro({ data, refProp }: Props) {
         {/* ══ PAGE 7 : PROJECTIONS PATRIMONIALES ══════════════ */}
         <PageBreak />
         <div style={pageStyle}>
-          <PageHeader page={`${isLoc ? 7 : 5}/8`} title="Projections Patrimoniales" icon="🏛️" />
+          <PageHeader page={`${isLoc ? 7 : 5}/8`} title="Projections Patrimoniales" />
 
           <div style={{ background: "#fffbeb", borderRadius: 10, padding: "12px 16px", border: "1px solid #fde68a", marginBottom: 16 }}>
             <p style={{ fontSize: 10, color: "#92400e", margin: 0 }}>
@@ -751,7 +759,7 @@ export default function DossierBancairePro({ data, refProp }: Props) {
         {/* ══ PAGE 8 : RISQUES & CONCLUSION ═══════════════════ */}
         <PageBreak />
         <div style={pageStyle}>
-          <PageHeader page={`${isLoc ? 8 : 6}/8`} title="Analyse des Risques & Conclusion" icon="🛡️" />
+          <PageHeader page={`${isLoc ? 8 : 6}/8`} title="Analyse des Risques & Conclusion" />
 
           <SectionTitle color="#dc2626">Analyse des Risques</SectionTitle>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
