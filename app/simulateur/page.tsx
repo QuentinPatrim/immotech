@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import ReactDOM from "react-dom";
 import Sidebar from "@/components/Sidebar";
 import { motion, AnimatePresence } from "framer-motion";
 import { Calculator, Home, Building, Wallet, Landmark, CheckCircle, PieChart as PieIcon, Scale, BedDouble, Armchair, Briefcase, Save, HelpCircle, FileText, Trash2, FolderOpen, MousePointerClick, TrendingUp, AlertTriangle, Crown, BarChart3, Check, Printer, Shield, PiggyBank, BookOpen, X, Info, ArrowRight } from "lucide-react";
@@ -13,6 +14,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { useReactToPrint } from "react-to-print"; 
 import { NexusLogo } from "@/components/NexusLogo"; 
 import PremiumGuard from "@/components/PremiumGuard";
+import FiscaliteEngine from "./Fiscaliteengine";
 
 const formatEuro = (val: number) => new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(val);
 
@@ -86,24 +88,75 @@ function SimulateurTutorialModal({ isOpen, onClose }: { isOpen: boolean, onClose
 }
 
 // ==========================================
-// 2. BULLE D'AIDE OPAQUE (BUG Z-INDEX CORRIGÉ)
+// 2. TOOLTIP — CORRIGÉ Z-INDEX + MOBILE
 // ==========================================
 const HelpTooltip = ({ title, text }: { title?: string, text: string }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [pos, setPos] = useState({ top: 0, left: 0 });
+  const btnRef = useRef<HTMLButtonElement>(null);
+
+  const open = () => {
+    if (btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect();
+      setPos({
+        top: r.top + window.scrollY - 8,   // au-dessus du bouton
+        left: r.left + r.width / 2 + window.scrollX,
+      });
+    }
+    setIsOpen(true);
+  };
+
+  // Ferme au clic extérieur (mobile)
+  useEffect(() => {
+    if (!isOpen) return;
+    const close = (e: MouseEvent | TouchEvent) => {
+      if (btnRef.current && !btnRef.current.contains(e.target as Node)) setIsOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    document.addEventListener("touchstart", close);
+    return () => { document.removeEventListener("mousedown", close); document.removeEventListener("touchstart", close); };
+  }, [isOpen]);
+
   return (
-    <div className="relative inline-flex items-center ml-2 cursor-pointer z-50" onMouseEnter={() => setIsOpen(true)} onMouseLeave={() => setIsOpen(false)} onClick={() => setIsOpen(!isOpen)}>
-      <div className={`p-1.5 rounded-full transition-colors ${isOpen ? "bg-white/20 text-white" : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-300"}`}><Info size={14} /></div>
+    <>
+      <button
+        ref={btnRef}
+        type="button"
+        className={`relative inline-flex items-center justify-center ml-2 cursor-pointer p-1.5 rounded-full transition-colors flex-shrink-0 ${isOpen ? "bg-white/20 text-white" : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-300"}`}
+        onMouseEnter={open}
+        onMouseLeave={() => setIsOpen(false)}
+        onClick={(e) => { e.stopPropagation(); isOpen ? setIsOpen(false) : open(); }}
+        aria-label="Aide"
+      >
+        <Info size={14} />
+      </button>
       <AnimatePresence>
-        {isOpen && (
-          <motion.div initial={{ opacity: 0, y: 10, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 10, scale: 0.95 }} transition={{ duration: 0.15 }} className="absolute bottom-[130%] left-1/2 -translate-x-1/2 w-64 md:w-72 p-4 bg-[#1A1A1E] text-white text-xs rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.9)] border border-zinc-600 text-center leading-relaxed font-sans normal-case tracking-normal z-[99999]">
+        {isOpen && typeof window !== "undefined" && ReactDOM.createPortal(
+          <motion.div
+            initial={{ opacity: 0, y: 6, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 6, scale: 0.95 }}
+            transition={{ duration: 0.15 }}
+            style={{
+              position: "fixed",
+              top: `${pos.top}px`,
+              left: `${pos.left}px`,
+              transform: "translate(-50%, -100%)",
+              zIndex: 99999,
+              pointerEvents: "none",
+            }}
+            className="w-64 sm:w-72 p-4 bg-[#1A1A1E] text-white text-xs rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.95)] border border-zinc-600 text-center leading-relaxed font-sans normal-case tracking-normal"
+          >
             {title && <span className="block text-[10px] font-black text-indigo-400 uppercase tracking-wider mb-2">{title}</span>}
             {text}
-            <div className="absolute top-full left-1/2 -translate-x-1/2 border-[6px] border-transparent border-t-[#1A1A1E]"></div>
-            <div className="absolute top-full left-1/2 -translate-x-1/2 border-[7px] border-transparent border-t-zinc-600 -z-10 mt-[1px]"></div>
-          </motion.div>
+            {/* Flèche bas */}
+            <div className="absolute top-full left-1/2 -translate-x-1/2 border-[6px] border-transparent border-t-[#1A1A1E]" />
+            <div className="absolute top-full left-1/2 -translate-x-1/2 border-[7px] border-transparent border-t-zinc-600 -z-10 mt-[1px]" />
+          </motion.div>,
+          document.body
         )}
       </AnimatePresence>
-    </div>
+    </>
   );
 };
 
@@ -478,30 +531,50 @@ export default function SimulateurPage() {
         
         <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} className="max-w-[1800px] w-full mx-auto space-y-6 md:space-y-10 relative z-10">
           
-          <div className="flex flex-col xl:flex-row justify-between items-start xl:items-end gap-6 md:gap-8 pl-4 md:pl-2 border-l-4 border-indigo-600 py-2 max-w-full">
-            <div>
-                <h1 className="text-3xl md:text-5xl font-black text-white tracking-tight uppercase">Mon <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-400">Simulateur</span></h1>
-                <p className="text-zinc-400 text-[10px] md:text-lg font-light tracking-wide truncate mt-1">Créez votre empire immobilier, étape par étape.</p>
+          {/* ── HEADER ─────────────────────────────────────── */}
+          <div className="flex flex-col gap-4 pl-3 md:pl-2 border-l-4 border-indigo-600 py-2 max-w-full">
+            {/* Titre */}
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h1 className="text-2xl sm:text-3xl md:text-5xl font-black text-white tracking-tight uppercase leading-none">
+                  Mon <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-400">Simulateur</span>
+                </h1>
+                <p className="text-zinc-400 text-[10px] sm:text-sm font-light tracking-wide mt-1">Créez votre empire immobilier, étape par étape.</p>
+              </div>
+              {/* Guide — visible desktop seulement ici */}
+              <button onClick={() => setIsTutorialOpen(true)} className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-full bg-white/5 border border-white/10 text-zinc-400 hover:text-white hover:bg-white/10 transition-all text-xs font-bold uppercase tracking-widest shrink-0">
+                <BookOpen size={14} /> <span className="hidden md:inline">Guide</span>
+              </button>
             </div>
-            
-            <div className="flex items-center gap-4">
-                <div className="bg-zinc-900/60 backdrop-blur-xl p-1.5 rounded-2xl border border-white/5 grid grid-cols-2 xl:flex gap-1 w-full xl:w-auto max-w-full shadow-2xl">
-                    {[
-                        { id: "CAPACITE", label: "Capacité", icon: Wallet }, 
-                        { id: "RENTABILITE", label: "Renta", icon: Calculator }, 
-                        { id: "FISCALITE", label: "Fiscalité", icon: Scale, premium: true }, 
-                        { id: "PROJETS", label: "Projets", icon: FolderOpen, premium: true }
-                    ].map((tab) => (
-                        <button key={tab.id} onClick={() => setMode(tab.id as any)} className={`flex items-center justify-center gap-1.5 md:gap-2 px-2 md:px-5 py-2.5 md:py-3 rounded-xl text-[9px] sm:text-[10px] md:text-xs font-bold uppercase tracking-widest transition-all duration-300 ${mode === tab.id ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/25 xl:scale-105" : "text-zinc-500 hover:text-white hover:bg-white/5"}`}>
-                            <tab.icon size={14} className="md:w-4 md:h-4 shrink-0"/> 
-                            <span className="truncate">{tab.label}</span> 
-                            {tab.premium && <Crown size={12} className="text-yellow-400 shrink-0"/>}
-                        </button>
-                    ))}
-                </div>
-                <button onClick={() => setIsTutorialOpen(true)} className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 border border-white/10 text-zinc-400 hover:text-white hover:bg-white/10 transition-all text-xs font-bold uppercase tracking-widest shrink-0">
-                    <BookOpen size={14} /> Guide
-                </button>
+
+            {/* Tabs — scroll horizontal sur mobile */}
+            <div className="flex items-center gap-2 -mx-4 md:mx-0 px-4 md:px-0 overflow-x-auto scrollbar-hide pb-0.5">
+              <div className="bg-zinc-900/60 backdrop-blur-xl p-1 rounded-2xl border border-white/5 flex gap-1 min-w-max shadow-2xl">
+                {[
+                  { id: "CAPACITE",    label: "Capacité",   icon: Wallet },
+                  { id: "RENTABILITE", label: "Renta",      icon: Calculator },
+                  { id: "FISCALITE",   label: "Fiscalité",  icon: Scale,      premium: true },
+                  { id: "PROJETS",     label: "Projets",    icon: FolderOpen, premium: true },
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setMode(tab.id as any)}
+                    className={`flex items-center gap-1.5 px-3 sm:px-5 py-2.5 rounded-xl text-[10px] sm:text-xs font-bold uppercase tracking-widest transition-all duration-300 whitespace-nowrap ${
+                      mode === tab.id
+                        ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/25"
+                        : "text-zinc-500 hover:text-white hover:bg-white/5"
+                    }`}
+                  >
+                    <tab.icon size={14} className="shrink-0" />
+                    <span>{tab.label}</span>
+                    {(tab as any).premium && <Crown size={11} className="text-yellow-400 shrink-0" />}
+                  </button>
+                ))}
+              </div>
+              {/* Guide mobile — dans la ligne des tabs */}
+              <button onClick={() => setIsTutorialOpen(true)} className="sm:hidden flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-white/5 border border-white/10 text-zinc-400 text-[10px] font-bold uppercase tracking-widest shrink-0 whitespace-nowrap">
+                <BookOpen size={13} /> Guide
+              </button>
             </div>
           </div>
 
@@ -526,14 +599,14 @@ export default function SimulateurPage() {
                         </div>
                     </PremiumCard>
                 </div>
-                <div className="lg:col-span-8 p-8 md:p-16 rounded-[32px] md:rounded-[48px] bg-gradient-to-br from-zinc-900 via-black to-blue-950/20 border border-white/10 flex flex-col items-center justify-center text-center relative overflow-hidden shadow-2xl w-full min-w-0">
-                    <p className="text-zinc-500 text-[10px] md:text-xs font-black uppercase tracking-[0.4em] mb-4 md:mb-8 break-words flex items-center justify-center">
+                <div className="lg:col-span-8 p-6 sm:p-8 md:p-12 lg:p-16 rounded-[24px] md:rounded-[48px] bg-gradient-to-br from-zinc-900 via-black to-blue-950/20 border border-white/10 flex flex-col items-center justify-center text-center relative overflow-hidden shadow-2xl w-full min-w-0">
+                    <div className="text-zinc-500 text-[9px] sm:text-[10px] md:text-xs font-black uppercase tracking-[0.3em] sm:tracking-[0.4em] mb-4 md:mb-8 flex items-center justify-center flex-wrap gap-1">
                         ENVELOPPE GLOBALE D'ACHAT <HelpTooltip text="La somme totale que vous pouvez dépenser (Apport + Prêt bancaire). Votre taux d'endettement maximal est fixé à 35% par la loi."/>
-                    </p>
-                    <div className="text-4xl sm:text-5xl md:text-7xl lg:text-[9rem] font-black text-white tracking-tighter"><AnimatedNumber value={totalEnvelope} /></div>
-                    <div className="mt-6 md:mt-10 flex flex-col md:flex-row gap-3 md:gap-6 justify-center text-xs md:text-sm font-bold text-zinc-500 bg-white/5 px-6 py-3 md:px-8 md:py-4 rounded-3xl md:rounded-full border border-white/5 backdrop-blur-md max-w-full">
+                    </div>
+                    <div className="text-[3rem] sm:text-5xl md:text-7xl lg:text-[9rem] font-black text-white tracking-tighter leading-none"><AnimatedNumber value={totalEnvelope} /></div>
+                    <div className="mt-6 md:mt-10 flex flex-col sm:flex-row gap-3 sm:gap-6 justify-center text-xs sm:text-sm font-bold text-zinc-500 bg-white/5 px-4 sm:px-8 py-3 sm:py-4 rounded-2xl sm:rounded-full border border-white/5 backdrop-blur-md w-full sm:w-auto max-w-full">
                             <span className="flex items-center justify-center gap-2"><Landmark size={14} className="text-blue-500 shrink-0"/> Prêt Banque: {formatEuro(maxLoan)}</span>
-                            <span className="text-zinc-700 hidden md:inline mx-2">|</span>
+                            <span className="text-zinc-700 hidden sm:inline">|</span>
                             <span className="flex items-center justify-center gap-2"><PiggyBank size={14} className="text-emerald-500 shrink-0"/> Apport: {formatEuro(Number(apportCapacity))}</span>
                     </div>
                 </div>
@@ -596,23 +669,23 @@ export default function SimulateurPage() {
                 </div>
                 <div className="xl:col-span-8 space-y-4 md:space-y-6 w-full min-w-0">
                     {projectType === "LOC" ? (
-                        <PremiumCard className={`p-6 md:p-10 text-center flex flex-col items-center justify-center min-h-[200px] md:min-h-[300px] border transition-all duration-500 ${cashflowNetImpots < 0 ? 'border-rose-500/40' : 'border-emerald-500/20'}`}>
-                            <div className="flex items-center gap-2 mb-4 md:mb-6 justify-center z-10">
+                        <PremiumCard className={`p-5 sm:p-6 md:p-10 text-center flex flex-col items-center justify-center min-h-[180px] sm:min-h-[220px] md:min-h-[300px] border transition-all duration-500 ${cashflowNetImpots < 0 ? 'border-rose-500/40' : 'border-emerald-500/20'}`}>
+                            <div className="flex items-center gap-2 mb-3 md:mb-6 justify-center z-10">
                                 <span className={`text-[10px] md:text-xs font-black uppercase tracking-[0.2em] md:tracking-[0.3em] ${cashflowNetImpots > 0 ? 'text-emerald-500' : 'text-rose-500'}`}>CASHFLOW NET / MOIS</span>
                                 <HelpTooltip title="Cashflow Net" text="Loyers - (Crédit + Charges + Taxe Foncière + Impôts). C'est le vrai chiffre qui compte à la fin du mois."/>
                             </div>
-                            <div className={`text-6xl md:text-8xl font-black tracking-tighter mb-6 md:mb-8 z-10 ${cashflowNetImpots > 0 ? 'text-emerald-400' : 'text-rose-500'}`}>{cashflowNetImpots > 0 ? '+':''}<AnimatedNumber value={Math.round(cashflowNetImpots)}/></div>
-                            <div className="flex flex-col sm:flex-row justify-center gap-2 md:gap-12 text-xs md:text-sm font-bold w-full max-w-lg bg-black/30 p-3 md:p-4 rounded-2xl border border-white/5 z-10">
-                                <div className="text-zinc-400 flex flex-row sm:flex-col justify-between sm:justify-start items-center">Avant Impôt <span className="text-white text-sm md:text-lg ml-2 sm:ml-0">{cashflowBrut > 0 ? "+":""}{Math.round(cashflowBrut)}€</span></div>
+                            <div className={`text-5xl sm:text-6xl md:text-8xl font-black tracking-tighter mb-4 md:mb-8 z-10 ${cashflowNetImpots > 0 ? 'text-emerald-400' : 'text-rose-500'}`}>{cashflowNetImpots > 0 ? '+':''}<AnimatedNumber value={Math.round(cashflowNetImpots)}/></div>
+                            <div className="flex flex-col sm:flex-row justify-center gap-2 sm:gap-12 text-xs font-bold w-full max-w-lg bg-black/30 p-3 md:p-4 rounded-2xl border border-white/5 z-10">
+                                <div className="text-zinc-400 flex flex-row sm:flex-col justify-between sm:justify-start items-center">Avant Impôt <span className="text-white text-sm sm:text-lg ml-2 sm:ml-0">{cashflowBrut > 0 ? "+":""}{Math.round(cashflowBrut)}€</span></div>
                                 <div className="hidden sm:block w-[1px] bg-white/10"></div>
-                                <div className="text-zinc-400 flex flex-row sm:flex-col justify-between sm:justify-start items-center">Fiscalité Moy. <span className="text-amber-500 text-sm md:text-lg ml-2 sm:ml-0">-{Math.round(Math.min(fiscalData.micro.total, fiscalData.reel.total)/12)}€</span></div>
+                                <div className="text-zinc-400 flex flex-row sm:flex-col justify-between sm:justify-start items-center">Fiscalité Moy. <span className="text-amber-500 text-sm sm:text-lg ml-2 sm:ml-0">-{Math.round(Math.min(fiscalData.micro.total, fiscalData.reel.total)/12)}€</span></div>
                             </div>
                         </PremiumCard>
                     ) : (
-                        <PremiumCard className="p-6 md:p-10 text-center flex flex-col items-center justify-center min-h-[200px] md:min-h-[300px] border-amber-500/20">
-                            <div className="text-[10px] md:text-xs font-black text-amber-500 uppercase tracking-[0.2em] md:tracking-[0.4em] mb-4">COÛT MENSUEL TOTAL</div>
-                            <div className="text-5xl md:text-7xl font-black text-white tracking-tighter mb-4">-<AnimatedNumber value={Math.round(monthlyPayment + Number(charges) + (Number(tax)/12))}/></div>
-                            <div className="flex flex-wrap justify-center gap-2 md:gap-4 text-[10px] md:text-xs font-bold text-zinc-500 bg-white/5 px-4 md:px-6 py-2 rounded-full border border-white/10">
+                        <PremiumCard className="p-5 sm:p-6 md:p-10 text-center flex flex-col items-center justify-center min-h-[180px] sm:min-h-[220px] md:min-h-[300px] border-amber-500/20">
+                            <div className="text-[10px] md:text-xs font-black text-amber-500 uppercase tracking-[0.2em] md:tracking-[0.4em] mb-3 md:mb-4">COÛT MENSUEL TOTAL</div>
+                            <div className="text-4xl sm:text-5xl md:text-7xl font-black text-white tracking-tighter mb-4">-<AnimatedNumber value={Math.round(monthlyPayment + Number(charges) + (Number(tax)/12))}/></div>
+                            <div className="flex flex-wrap justify-center gap-2 text-[10px] sm:text-xs font-bold text-zinc-500 bg-white/5 px-4 py-2 rounded-full border border-white/10">
                                 <span>Crédit: {Math.round(monthlyPayment)}€</span><span>Charges: {Math.round(Number(charges))}€</span><span>Taxe: {Math.round(Number(tax)/12)}€</span>
                             </div>
                         </PremiumCard>
@@ -620,30 +693,30 @@ export default function SimulateurPage() {
                     <div className="grid grid-cols-2 gap-3 md:gap-6 w-full min-w-0">
                         <PremiumCard color="indigo" className="p-4 md:p-6 flex flex-col items-center justify-center relative">
                             <div className="absolute top-2 right-2"><HelpTooltip title="Coût Projet" text="Prix + Travaux + Notaire. Ne prend pas en compte le coût du crédit sur 20 ans."/></div>
-                            <p className="text-[9px] md:text-[10px] text-zinc-500 font-bold uppercase mb-2 text-center truncate">Coût Projet</p>
-                            <div className="text-3xl md:text-5xl font-black text-white">{Math.round(totalCost/1000)}<span className="text-indigo-500 text-lg md:text-2xl">k€</span></div>
+                            <p className="text-[9px] md:text-[10px] text-zinc-500 font-bold uppercase mb-1 sm:mb-2 text-center">Coût Projet</p>
+                            <div className="text-2xl sm:text-3xl md:text-5xl font-black text-white">{Math.round(totalCost/1000)}<span className="text-indigo-500 text-base sm:text-lg md:text-2xl">k€</span></div>
                         </PremiumCard>
                         {projectType === "LOC" ? (
                             <PremiumCard color="emerald" className="p-4 md:p-6 flex flex-col items-center justify-center relative">
                                 <div className="absolute top-2 right-2"><HelpTooltip title="Rendement Brut" text="(Loyer annuel / Coût d'achat total) * 100."/></div>
-                                <p className="text-[9px] md:text-[10px] text-zinc-500 font-bold uppercase mb-2 text-center truncate">Rendement Brut</p>
-                                <div className="text-3xl md:text-5xl font-black text-white">{yieldNet.toFixed(2)}<span className="text-emerald-500 text-lg md:text-2xl">%</span></div>
+                                <p className="text-[9px] md:text-[10px] text-zinc-500 font-bold uppercase mb-1 sm:mb-2 text-center">Rendement Brut</p>
+                                <div className="text-2xl sm:text-3xl md:text-5xl font-black text-white">{yieldNet.toFixed(2)}<span className="text-emerald-500 text-base sm:text-lg md:text-2xl">%</span></div>
                             </PremiumCard>
                         ) : (
                             <PremiumCard color="rose" className="p-4 md:p-6 flex flex-col items-center justify-center relative">
                                 <div className="absolute top-2 right-2"><HelpTooltip title="Coût du crédit" text="L'argent total que la banque va gagner grâce aux intérêts que vous allez lui payer."/></div>
-                                <p className="text-[9px] md:text-[10px] text-zinc-500 font-bold uppercase mb-2 text-center truncate">Coût Crédit</p>
-                                <div className="text-2xl md:text-5xl font-black text-white">{formatEuro(Math.round(totalCreditCost))}</div>
+                                <p className="text-[9px] md:text-[10px] text-zinc-500 font-bold uppercase mb-1 sm:mb-2 text-center">Coût Crédit</p>
+                                <div className="text-xl sm:text-2xl md:text-5xl font-black text-white">{formatEuro(Math.round(totalCreditCost))}</div>
                             </PremiumCard>
                         )}
                     </div>
-                    {/* CHART AMORTISSEMENT */}
-                    <PremiumCard className="p-4 md:p-8 border-white/5 relative hidden sm:block overflow-hidden">
-                        <div className="flex items-center justify-between mb-6 relative z-10">
-                            <h4 className="text-sm font-black text-white uppercase tracking-widest flex items-center gap-3"><BarChart3 size={18} className="text-blue-500"/> Amortissement <HelpTooltip text="La courbe bleue montre comment votre capital restant dû diminue chaque mois. La rouge montre l'accumulation de vos intérêts payés."/></h4>
-                            <div className="text-[10px] md:text-xs text-zinc-500 font-mono">Projection sur {duration} ans</div>
+                    {/* CHART AMORTISSEMENT — visible partout, plus compact sur mobile */}
+                    <PremiumCard className="p-4 md:p-8 border-white/5 relative overflow-hidden">
+                        <div className="flex items-center justify-between mb-4 md:mb-6 relative z-10">
+                            <h4 className="text-xs sm:text-sm font-black text-white uppercase tracking-widest flex items-center gap-2 sm:gap-3"><BarChart3 size={16} className="text-blue-500 shrink-0"/> <span className="hidden sm:inline">Amortissement</span><span className="sm:hidden">Crédit</span> <HelpTooltip text="La courbe bleue montre comment votre capital restant dû diminue. La rouge montre l'accumulation de vos intérêts payés."/></h4>
+                            <div className="text-[10px] text-zinc-500 font-mono shrink-0">{duration} ans</div>
                         </div>
-                        <div className="h-[200px] md:h-[250px] w-full min-w-0 relative z-10">
+                        <div className="h-[160px] sm:h-[200px] md:h-[250px] w-full min-w-0 relative z-10">
                             <ResponsiveContainer width="100%" height="100%">
                                 <AreaChart data={amortizationSchedule} margin={{ top: 10, right: 0, left: 0, bottom: 0 }}>
                                     <defs>
@@ -651,8 +724,8 @@ export default function SimulateurPage() {
                                         <linearGradient id="colorInterest" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#ef4444" stopOpacity={0.3}/><stop offset="100%" stopColor="#ef4444" stopOpacity={0}/></linearGradient>
                                     </defs>
                                     <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
-                                    <XAxis dataKey="year" stroke="#52525b" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(val, index) => index % 5 === 0 ? val : ''} />
-                                    <Tooltip contentStyle={{ backgroundColor: '#09090b', border: '1px solid #27272a', borderRadius: '12px', fontSize:'12px' }} itemStyle={{ color: '#fff' }} formatter={(val: any) => formatEuro(val)}/>
+                                    <XAxis dataKey="year" stroke="#52525b" fontSize={9} tickLine={false} axisLine={false} tickFormatter={(val, index) => index % 5 === 0 ? val : ''} />
+                                    <Tooltip contentStyle={{ backgroundColor: '#09090b', border: '1px solid #27272a', borderRadius: '12px', fontSize:'11px' }} itemStyle={{ color: '#fff' }} formatter={(val: any) => formatEuro(val)}/>
                                     <Area type="monotone" dataKey="capital" stackId="1" stroke="#3b82f6" fill="url(#colorCapital)" name="Capital Restant" strokeWidth={2}/>
                                     <Area type="monotone" dataKey="interests" stackId="2" stroke="#ef4444" fill="url(#colorInterest)" name="Intérêts Cumulés" strokeWidth={2}/>
                                 </AreaChart>
@@ -660,125 +733,32 @@ export default function SimulateurPage() {
                         </div>
                     </PremiumCard>
                     
-                    <div className="flex flex-col sm:flex-row gap-3 md:gap-4 mt-4 w-full min-w-0">
+                    <div className="flex flex-col sm:flex-row gap-3 mt-4 w-full min-w-0">
                         <Input placeholder="Nom du projet" value={projectName} onChange={(e) => setProjectName(e.target.value)} className="bg-zinc-900 border-white/10 h-12 md:h-14 rounded-2xl text-white focus:border-indigo-500 w-full min-w-0"/>
-                        <Button onClick={saveSimulation} className="h-12 md:h-14 px-6 md:px-8 bg-white text-black hover:bg-zinc-200 font-bold rounded-2xl gap-2 shadow-lg w-full sm:w-auto shrink-0"><Save size={20}/> Sauvegarder</Button>
+                        <Button onClick={saveSimulation} className="h-12 md:h-14 px-6 md:px-8 bg-white text-black hover:bg-zinc-200 font-bold rounded-2xl gap-2 shadow-lg w-full sm:w-auto shrink-0"><Save size={18}/> Sauvegarder</Button>
                     </div>
                 </div>
             </motion.div>
           )}
 
           {mode === "FISCALITE" && (
-            <PremiumGuard isPro={isPro} title="Fiscalité Expert" description="Optimisez vos impôts avec nos matrices de comparaison LMNP, location nue et courte durée.">
-                <motion.div key="fiscal" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="grid grid-cols-1 gap-6 md:gap-8 w-full min-w-0">
-                    {projectType === "LOC" ? (
-                        <PremiumCard className="p-4 md:p-10 bg-gradient-to-br from-[#0B0B0F] to-black border-indigo-500/20 min-w-0 overflow-hidden">
-                            <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-6 md:mb-8 gap-4 w-full relative z-10">
-                                <div className="flex items-center gap-3 md:gap-4 shrink-0">
-                                    <div className="h-10 w-10 md:h-12 md:w-12 rounded-xl md:rounded-2xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center border border-indigo-500/30"><Scale size={20} className="md:w-6 md:h-6"/></div>
-                                    <h2 className="text-xl md:text-2xl font-black text-white uppercase truncate">Matrice Fiscale</h2>
-                                </div>
-                                <div className="flex items-center gap-2 md:gap-3 bg-zinc-900/80 p-1.5 md:p-2 rounded-xl border border-white/5 w-full md:w-auto overflow-x-auto scrollbar-hide max-w-full">
-                                    <span className="text-[9px] md:text-[10px] font-bold text-zinc-500 uppercase ml-1 md:ml-2 whitespace-nowrap">Votre TMI</span>
-                                    <div className="flex gap-1 shrink-0">
-                                        {[0, 11, 30, 41, 45].map((t) => (
-                                            <button key={t} onClick={() => setUserTMI(t)} className={`h-7 w-8 md:h-8 md:w-10 rounded-lg text-[10px] md:text-xs font-bold transition-all ${userTMI === t ? "bg-indigo-600 text-white" : "bg-zinc-800 text-zinc-500 hover:bg-zinc-700"}`}>{t}%</button>
-                                        ))}
-                                    </div>
-                                </div>
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6 w-full min-w-0 relative z-10">
-                                <div className="hidden md:block space-y-4 pt-16 text-right text-sm text-zinc-400 font-medium relative z-20">
-                                    <div className="h-10 flex items-center justify-end gap-2">Recettes Locatives <HelpTooltip title="Recettes" text="Loyer annuel total perçu."/></div>
-                                    <div className="h-10 flex items-center justify-end gap-2">Charges Déductibles <HelpTooltip title="Charges" text="Charges de copropriété, Taxe Foncière, assurance PNO..."/></div>
-                                    <div className="h-10 flex items-center justify-end gap-2 text-blue-400">Intérêts d'Emprunt <HelpTooltip title="Intérêts" text="Sont 100% déductibles vos impôts lors d'une déclaration au régime réel !"/></div>
-                                    <div className="h-10 flex items-center justify-end gap-2 text-indigo-400">Amortissement (LMNP) <HelpTooltip title="Amortissement" text="La vraie magie de l'immobilier : une perte de valeur du bien 'fictive' sur le papier, que l'on soustrait à vos revenus locatifs pour ramener l'impôt à 0."/></div>
-                                    <div className="h-1 p-0 m-0"></div>
-                                    <div className="h-10 flex items-center justify-end text-white font-bold">Base Imposable</div>
-                                    <div className="h-10 flex items-center justify-end text-amber-500">Impôt Final (TMI + PS)</div>
-                                </div>
-                                {/* Colonne MICRO - TEXTES RACCOURCIS */}
-                                <div className={`rounded-xl md:rounded-2xl p-4 md:p-6 border transition-all min-w-0 w-full ${fiscalData.micro.total < fiscalData.reel.total ? "bg-emerald-900/10 border-emerald-500/50" : "bg-black/20 border-white/5"}`}>
-                                    <h4 className="text-center text-sm md:text-base font-bold text-white uppercase mb-4 md:mb-6">Régime Micro</h4>
-                                    <div className="space-y-3 md:space-y-4 text-center font-mono text-xs md:text-sm">
-                                        <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-1.5 md:py-0 border-b border-white/5 md:border-none"><span className="md:hidden text-[10px] text-zinc-500">Recettes</span><span className="text-white text-[10px] md:text-sm truncate">{formatEuro(Number(rent)*12)}</span></div>
-                                        <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-1.5 md:py-0 border-b border-white/5 md:border-none"><span className="md:hidden text-[10px] text-zinc-500">Charges</span><span className="text-zinc-600 italic text-[10px] md:text-sm truncate">Forfait</span></div>
-                                        <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-1.5 md:py-0 border-b border-white/5 md:border-none"><span className="md:hidden text-[10px] text-zinc-500">Intérêts</span><span className="text-zinc-600 italic text-[10px] md:text-sm truncate">N/A</span></div>
-                                        <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-1.5 md:py-0 border-b border-white/5 md:border-none"><span className="md:hidden text-[10px] text-zinc-500">Amort.</span><span className="text-zinc-600 italic text-[10px] md:text-sm truncate">N/A</span></div>
-                                        <div className="hidden md:block h-1 bg-white/5 my-2"></div>
-                                        <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-1.5 md:py-0 border-b border-white/5 md:border-none"><span className="md:hidden text-[10px] text-white font-bold">Base Imp.</span><span className="text-white font-bold text-sm md:text-lg truncate">{formatEuro(fiscalData.micro.base)}</span></div>
-                                        <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-1.5 md:py-0"><span className="md:hidden text-xs text-amber-500 font-bold">Impôt</span><span className="text-amber-500 font-bold text-xs md:text-base truncate">{formatEuro(fiscalData.micro.total)}</span></div>
-                                    </div>
-                                </div>
-                                {/* Colonne REEL - TEXTES RACCOURCIS */}
-                                <div className={`rounded-xl md:rounded-2xl p-4 md:p-6 border transition-all min-w-0 w-full ${fiscalData.reel.total <= fiscalData.micro.total ? "bg-emerald-900/10 border-emerald-500/50" : "bg-black/20 border-white/5"}`}>
-                                    <h4 className="text-center text-sm md:text-base font-bold text-white uppercase mb-4 md:mb-6">Régime Réel</h4>
-                                    <div className="space-y-3 md:space-y-4 text-center font-mono text-xs md:text-sm">
-                                        <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-1.5 md:py-0 border-b border-white/5 md:border-none"><span className="md:hidden text-[10px] text-zinc-500">Recettes</span><span className="text-white text-[10px] md:text-sm truncate">{formatEuro(Number(rent)*12)}</span></div>
-                                        <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-1.5 md:py-0 border-b border-white/5 md:border-none"><span className="md:hidden text-[10px] text-zinc-500">Charges</span><span className="text-zinc-300 text-[10px] md:text-sm truncate">-{formatEuro(fiscalData.reel.charges)}</span></div>
-                                        <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-1.5 md:py-0 border-b border-white/5 md:border-none"><span className="md:hidden text-[10px] text-blue-400">Intérêts</span><span className="text-blue-400 font-bold text-[10px] md:text-sm truncate">-{formatEuro(Math.round(yearOneInterest))}</span></div>
-                                        <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-1.5 md:py-0 border-b border-white/5 md:border-none"><span className="md:hidden text-[10px] text-indigo-400">Amort.</span><span className="text-indigo-400 font-bold text-[10px] md:text-sm truncate">-{formatEuro(Math.round(fiscalData.reel.amortissement))}</span></div>
-                                        <div className="hidden md:block h-1 bg-white/5 my-2"></div>
-                                        <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-1.5 md:py-0 border-b border-white/5 md:border-none"><span className="md:hidden text-[10px] text-white font-bold">Base Imp.</span><span className="text-white font-bold text-sm md:text-lg truncate">{fiscalData.reel.base === 0 ? "0 €" : formatEuro(fiscalData.reel.base)}</span></div>
-                                        <div className="flex justify-between md:justify-center items-center h-auto md:h-10 py-1.5 md:py-0"><span className="md:hidden text-xs text-amber-500 font-bold">Impôt</span><span className="text-amber-500 font-bold text-xs md:text-base truncate">{formatEuro(fiscalData.reel.total)}</span></div>
-                                    </div>
-                                </div>
-                            </div>
-                        </PremiumCard>
-                    ) : (
-                        // --- MODE PLUS-VALUE (RP / RS) ---
-                        <PremiumCard color="emerald" className="p-6 md:p-10 bg-gradient-to-br from-[#0B0B0F] to-black border-emerald-500/20 overflow-hidden">
-                            <div className="flex items-center gap-3 md:gap-4 mb-6 md:mb-8 relative z-10">
-                                <div className="h-10 w-10 md:h-12 md:w-12 rounded-xl md:rounded-2xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center border border-emerald-500/30 shrink-0"><TrendingUp size={20} className="md:w-6 md:h-6"/></div>
-                                <div>
-                                    <h2 className="text-xl md:text-2xl font-black text-white uppercase tracking-tight truncate">Plus-Value</h2>
-                                    <p className="text-[10px] md:text-sm text-zinc-400 truncate">Simulation à la revente (Régime 2026)</p>
-                                </div>
-                            </div>
-
-                            {projectType === "RP" ? (
-                                <div className="p-6 md:p-10 rounded-[24px] md:rounded-3xl bg-gradient-to-br from-amber-900/20 via-zinc-900 to-black border border-amber-500/30 text-center relative overflow-hidden shadow-[0_0_50px_-10px_rgba(245,158,11,0.2)]">
-                                    <div className="absolute top-0 right-0 p-32 bg-amber-500/10 blur-[80px] rounded-full pointer-events-none"></div>
-                                    <div className="inline-flex p-3 md:p-4 rounded-full bg-amber-500/20 text-amber-400 mb-4 md:mb-6 shadow-[0_0_30px_rgba(245,158,11,0.3)] relative z-10">
-                                        <Crown size={32} className="md:w-10 md:h-10" />
-                                    </div>
-                                    <h3 className="text-xl md:text-3xl font-black text-white uppercase mb-4 tracking-wide relative z-10">Le Graal Fiscal : <br className="md:hidden"/><span className="text-amber-400">Exonération</span></h3>
-                                    <p className="text-xs md:text-sm text-zinc-300 max-w-2xl mx-auto leading-relaxed mb-6 md:mb-8 relative z-10">
-                                        La plus-value sur Résidence Principale est <strong className="text-white">100% exonérée</strong> d'impôt et de prélèvements.
-                                    </p>
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6 max-w-2xl mx-auto text-left w-full min-w-0 relative z-10">
-                                        <div className="bg-black/50 p-4 md:p-6 rounded-2xl border border-white/5 w-full min-w-0">
-                                            <div className="flex items-center gap-2 mb-2 md:mb-4"><p className="text-[10px] text-zinc-500 font-bold uppercase">Prix Revente Estimé</p></div>
-                                            <Input type="number" value={resalePrice} onChange={e => handleInput(setResalePrice, e.target.value)} className="bg-transparent border-white/10 h-10 md:h-14 text-white font-black text-2xl md:text-3xl px-0 focus-visible:ring-0 focus:border-amber-500 w-full min-w-0"/>
-                                        </div>
-                                        <div className="bg-black/50 p-4 md:p-6 rounded-2xl border border-amber-500/20 relative overflow-hidden w-full min-w-0">
-                                            <div className="absolute right-0 top-0 h-full w-1 md:w-2 bg-amber-500"></div>
-                                            <p className="text-[10px] text-amber-500 font-bold uppercase mb-2">Net Vendeur (Gain Brut)</p>
-                                            <p className="text-2xl md:text-4xl font-black text-white truncate">{formatEuro(Math.max(0, (Number(resalePrice)||0) - Number(price)))}</p>
-                                            <p className="text-[10px] md:text-xs text-zinc-500 mt-2 font-bold flex items-center gap-1"><CheckCircle size={12} className="text-emerald-500"/> 0€ d'impôt</p>
-                                        </div>
-                                    </div>
-                                </div>
-                            ) : (
-                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8 mb-4 md:mb-8 w-full min-w-0 relative z-10">
-                                    <div className="p-6 md:p-8 bg-zinc-900/50 rounded-[24px] md:rounded-3xl border border-white/5 space-y-4 md:space-y-6 w-full min-w-0">
-                                        <h4 className="text-[10px] md:text-xs font-bold text-zinc-500 uppercase tracking-widest mb-2 md:mb-4">Paramètres de sortie</h4>
-                                        <div><label className="text-[10px] font-bold text-zinc-500 uppercase">Prix Revente Estimé</label><Input type="number" value={resalePrice} onChange={e => handleInput(setResalePrice, e.target.value)} className="bg-black/40 border-white/10 h-12 md:h-14 text-white font-bold text-lg md:text-xl w-full min-w-0"/></div>
-                                        <PremiumSlider label="Années détention" value={holdingYears} min={1} max={35} step={1} unit="ans" onChange={setHoldingYears}/>
-                                    </div>
-                                    <div className="p-6 md:p-8 bg-zinc-900/50 rounded-[24px] md:rounded-3xl border border-white/5 flex flex-col justify-center w-full min-w-0">
-                                        <div className="flex justify-between items-center mb-4 pb-4 border-b border-white/5">
-                                            <span className="text-[10px] md:text-xs font-bold text-zinc-400 uppercase flex items-center gap-2">Base Acquisition <HelpTooltip text="Prix achat + Notaire + Forfait travaux"/></span>
-                                            <span className="text-base md:text-lg font-bold text-white truncate max-w-[50%]">{formatEuro(capitalGainData.acquisitionPrice)}</span>
-                                        </div>
-                                        <div className="flex justify-between items-center mb-2"><span className="text-xs md:text-sm text-zinc-400">Plus-Value Brute</span><span className="text-lg md:text-xl font-bold text-white truncate max-w-[50%]">{formatEuro(capitalGainData.grossGain)}</span></div>
-                                        <div className="flex justify-between items-center mb-6 md:mb-8"><span className="text-xs md:text-sm text-zinc-400 flex items-center gap-2">Impôt (IR + PS)</span><span className={`text-lg md:text-xl font-bold truncate max-w-[50%] ${capitalGainData.totalTax > 0 ? "text-red-500" : "text-emerald-500"}`}>-{formatEuro(capitalGainData.totalTax)}</span></div>
-                                        <div className="pt-4 md:pt-6 border-t border-white/10"><span className="text-[10px] md:text-xs font-black uppercase tracking-[0.2em] text-emerald-500 block mb-1 md:mb-2">NET VENDEUR</span><span className="text-3xl sm:text-4xl md:text-5xl font-black text-white tracking-tighter truncate max-w-full block">{formatEuro(capitalGainData.netGain)}</span></div>
-                                    </div>
-                                </div>
-                            )}
-                        </PremiumCard>
-                    )}
+            <PremiumGuard isPro={isPro} title="Fiscalité Expert" description="Comparez tous les régimes fiscaux, choisissez votre structure juridique et recevez des conseils personnalisés à jour 2026.">
+                <motion.div key="fiscal" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="w-full min-w-0">
+                    <FiscaliteEngine
+                        price={Number(price)}
+                        works={Number(works)}
+                        notaryFees={notaryFees}
+                        rent={Number(rent)}
+                        charges={Number(charges)}
+                        tax={Number(tax)}
+                        monthlyPayment={monthlyPayment}
+                        duration={duration}
+                        yearOneInterest={yearOneInterest}
+                        totalCost={totalCost}
+                        projectType={projectType}
+                        formatEuro={formatEuro}
+                        HelpTooltip={HelpTooltip}
+                    />
                 </motion.div>
             </PremiumGuard>
           )}
