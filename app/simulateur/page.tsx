@@ -266,21 +266,20 @@ const DossierBancaire = ({ data, refProp }: any) => {
 
 // --- COMPOSANTS UI ---
 const PremiumSlider = ({ label, value, min, max, step, unit, onChange }: any) => (
-    <div className="group relative bg-black/40 rounded-2xl p-3 border border-white/5 hover:border-indigo-500/30 transition-all duration-300 w-full">
-        <div className="flex justify-between items-center mb-3 gap-2">
-            <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider group-hover:text-indigo-400 transition-colors truncate">{label}</label>
-            <div className="font-mono text-base font-black text-white shrink-0 tabular-nums">
-                {value}<span className="text-xs text-zinc-600 font-medium ml-0.5">{unit}</span>
+    <div className="group relative bg-black/40 rounded-2xl p-3 md:p-4 border border-white/5 hover:border-indigo-500/30 transition-all duration-300 w-full overflow-hidden max-w-full">
+        <div className="flex justify-between items-end mb-3">
+            <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider group-hover:text-indigo-400 transition-colors">{label}</label>
+            <div className="font-mono text-lg md:text-xl font-black text-white shrink-0">
+                {value}<span className="text-xs md:text-sm text-zinc-600 font-medium ml-0.5">{unit}</span>
             </div>
         </div>
-        <Slider value={[value]} min={min} max={max} step={step} onValueChange={(v) => onChange(v[0])} className="py-1.5 cursor-grab active:cursor-grabbing w-full" />
+        <Slider value={[value]} min={min} max={max} step={step} onValueChange={(v) => onChange(v[0])} className="py-2 cursor-grab active:cursor-grabbing w-full" />
     </div>
 );
 
-// Overflow visible pour que les bulles HelpTooltip s'affichent par dessus
 const PremiumCard = ({ children, className = "", color = "indigo" }: { children: React.ReactNode, className?: string, color?: string }) => {
     const borderColor = color === "emerald" ? "hover:border-emerald-500/30" : color === "rose" ? "hover:border-rose-500/30" : color === "amber" ? "hover:border-amber-500/30" : color === "blue" ? "hover:border-blue-500/30" : "hover:border-indigo-500/30";
-    return <div className={`relative w-full rounded-[24px] md:rounded-[32px] bg-zinc-900/40 backdrop-blur-md border border-white/5 transition-all duration-500 ${borderColor} hover:bg-zinc-900/60 group hover:z-50 ${className}`}>{children}</div>;
+    return <div className={`relative w-full overflow-hidden rounded-[24px] md:rounded-[32px] bg-zinc-900/40 backdrop-blur-md border border-white/5 transition-all duration-500 ${borderColor} hover:bg-zinc-900/60 group hover:z-50 ${className}`}>{children}</div>;
 };
 
 export default function SimulateurPage() {
@@ -291,12 +290,12 @@ export default function SimulateurPage() {
   const [isPro, setIsPro] = useState(false);
   const [isTutorialOpen, setIsTutorialOpen] = useState(false);
 
-  const componentRef = useRef<HTMLDivElement>(null!);
+  const componentRef = useRef(null);
   const [printData, setPrintData] = useState<any>(null); 
   const [isReadyToPrint, setIsReadyToPrint] = useState(false);
 
   // Rapport fiscal PDF
-  const fiscalRef = useRef<HTMLDivElement>(null!);
+  const fiscalRef = useRef(null);
   const [isFiscalPrintReady, setIsFiscalPrintReady] = useState(false);
 
   const handlePrint = useReactToPrint({
@@ -508,7 +507,7 @@ export default function SimulateurPage() {
       <SimulateurTutorialModal isOpen={isTutorialOpen} onClose={() => { setIsTutorialOpen(false); localStorage.setItem("nexus_simulateur_tuto_seen", "true"); }} />
       
       <Sidebar />
-      <main className="md:ml-64 min-h-screen p-3 sm:p-4 md:p-8 relative max-w-full overflow-x-hidden">
+      <main className="md:ml-64 flex-1 w-full md:w-auto min-w-0 p-3 sm:p-4 md:p-8 relative overflow-x-hidden">
         
         <DossierBancairePro refProp={componentRef} data={printData} />
         <RapportFiscalPDF
@@ -520,10 +519,11 @@ export default function SimulateurPage() {
           duration={duration} rate={rate} revenue={Number(revenue)}
         />
 
-        <div className="absolute top-0 left-0 w-[400px] h-[400px] bg-indigo-900/10 rounded-full blur-[150px] pointer-events-none -z-10"></div>
-        <div className="absolute bottom-0 right-0 w-[400px] h-[400px] bg-cyan-900/10 rounded-full blur-[150px] pointer-events-none -z-10"></div>
+        {/* Décorations — cachées sur mobile pour éviter overflow */}
+        <div className="hidden md:block absolute top-0 left-0 w-[400px] h-[400px] bg-indigo-900/10 rounded-full blur-[150px] pointer-events-none -z-10"></div>
+        <div className="hidden md:block absolute bottom-0 right-0 w-[400px] h-[400px] bg-cyan-900/10 rounded-full blur-[150px] pointer-events-none -z-10"></div>
         
-        <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} className="space-y-4 md:space-y-8 relative z-10">
+        <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} className="max-w-[1800px] w-full mx-auto space-y-4 md:space-y-8 relative z-10">
           
           {/* ── HEADER ─────────────────────────────────────── */}
           <div className="flex flex-col gap-4 pl-3 md:pl-2 border-l-4 border-indigo-600 py-2 max-w-full">
@@ -541,180 +541,191 @@ export default function SimulateurPage() {
               </button>
             </div>
 
-            {/* Tabs — scroll horizontal sur mobile, tout dans le même conteneur scrollable */}
-            <div className="overflow-x-auto scrollbar-hide -mx-3 md:mx-0 px-3 md:px-0 pb-0.5">
-              <div className="flex items-center gap-2 min-w-max">
-                <div className="bg-zinc-900/60 backdrop-blur-xl p-1 rounded-2xl border border-white/5 flex gap-1 shadow-2xl">
-                  {[
-                    { id: "CAPACITE",    label: "Capacité",   icon: Wallet },
-                    { id: "RENTABILITE", label: "Renta",      icon: Calculator },
-                    { id: "FISCALITE",   label: "Fiscalité",  icon: Scale,      premium: true },
-                    { id: "PROJETS",     label: "Projets",    icon: FolderOpen, premium: true },
-                  ].map((tab) => (
-                    <button
-                      key={tab.id}
-                      onClick={() => setMode(tab.id as any)}
-                      className={`flex items-center gap-1.5 px-3 sm:px-5 py-2.5 rounded-xl text-[10px] sm:text-xs font-bold uppercase tracking-widest transition-all duration-300 whitespace-nowrap ${
-                        mode === tab.id
-                          ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/25"
-                          : "text-zinc-500 hover:text-white hover:bg-white/5"
-                      }`}
-                    >
-                      <tab.icon size={14} className="shrink-0" />
-                      <span>{tab.label}</span>
-                      {(tab as any).premium && <Crown size={11} className="text-yellow-400 shrink-0" />}
-                    </button>
-                  ))}
-                </div>
-                {/* Guide — toujours dans le flux scrollable */}
-                <button onClick={() => setIsTutorialOpen(true)} className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-white/5 border border-white/10 text-zinc-400 text-[10px] font-bold uppercase tracking-widest shrink-0 whitespace-nowrap hover:text-white hover:bg-white/10 transition-all">
-                  <BookOpen size={13} /> Guide
+            {/* Tabs */}
+            <div className="bg-zinc-900/60 backdrop-blur-xl p-1.5 rounded-2xl border border-white/5 grid grid-cols-2 xl:flex gap-1 w-full xl:w-auto max-w-full shadow-2xl">
+              {[
+                { id: "CAPACITE",    label: "Capacité",   icon: Wallet },
+                { id: "RENTABILITE", label: "Renta",      icon: Calculator },
+                { id: "FISCALITE",   label: "Fiscalité",  icon: Scale,      premium: true },
+                { id: "PROJETS",     label: "Projets",    icon: FolderOpen, premium: true },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setMode(tab.id as any)}
+                  className={`flex items-center justify-center gap-1.5 md:gap-2 px-2 md:px-5 py-2.5 md:py-3 rounded-xl text-[9px] sm:text-[10px] md:text-xs font-bold uppercase tracking-widest transition-all duration-300 ${
+                    mode === tab.id
+                      ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/25"
+                      : "text-zinc-500 hover:text-white hover:bg-white/5"
+                  }`}
+                >
+                  <tab.icon size={14} className="shrink-0" />
+                  <span className="truncate">{tab.label}</span>
+                  {(tab as any).premium && <Crown size={11} className="text-yellow-400 shrink-0" />}
                 </button>
-              </div>
+              ))}
             </div>
           </div>
 
           <AnimatePresence mode="wait">
           
           {mode === "CAPACITE" && (
-            <motion.div key="capa" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="grid grid-cols-1 lg:grid-cols-12 gap-4 w-full">
-               <div className="lg:col-span-4 flex flex-col gap-4 w-full">
-                    <PremiumCard className="p-4 md:p-8">
-                        <h3 className="text-xs font-black text-indigo-400 uppercase mb-4 md:mb-8 flex items-center gap-3 tracking-widest"><Wallet size={18}/> Revenus</h3>
-                        <div className="space-y-4 w-full">
-                            <div className="space-y-2"><label className="text-[10px] font-bold text-zinc-500 uppercase">Salaire Net / Mois</label><Input type="number" value={revenue} onChange={e => handleInput(setRevenue, e.target.value)} className="bg-black/40 border-white/10 h-12 text-white font-bold text-lg focus:border-indigo-500 w-full"/></div>
-                            <div className="space-y-2"><label className="text-[10px] font-bold text-zinc-500 uppercase">Crédits en cours</label><Input type="number" value={credits} onChange={e => handleInput(setCredits, e.target.value)} className="bg-black/40 border-white/10 h-12 text-white font-bold text-lg focus:border-indigo-500 w-full"/></div>
-                            <div className="space-y-2 pt-4 border-t border-white/5"><label className="text-[10px] font-bold text-emerald-500 uppercase">Apport Perso</label><Input type="number" value={apportCapacity} onChange={e => handleInput(setApportCapacity, e.target.value)} className="bg-emerald-900/10 border-emerald-500/20 h-12 text-emerald-400 font-bold text-lg focus:border-emerald-500 w-full"/></div>
+            <motion.div key="capa" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="grid grid-cols-1 lg:grid-cols-12 gap-4 w-full min-w-0">
+               <div className="lg:col-span-4 flex flex-col gap-4 w-full min-w-0">
+                    <PremiumCard className="p-3 md:p-6">
+                        <h3 className="text-[10px] font-black text-indigo-400 uppercase mb-4 flex items-center gap-2 tracking-widest"><Wallet size={16}/> Revenus</h3>
+                        <div className="space-y-3 w-full min-w-0">
+                            <div className="space-y-1.5"><label className="text-[9px] font-bold text-zinc-500 uppercase">Salaire Net / Mois</label><Input type="number" value={revenue} onChange={e => handleInput(setRevenue, e.target.value)} className="bg-black/40 border-white/10 h-11 text-white font-bold text-base focus:border-indigo-500 w-full"/></div>
+                            <div className="space-y-1.5"><label className="text-[9px] font-bold text-zinc-500 uppercase">Crédits en cours</label><Input type="number" value={credits} onChange={e => handleInput(setCredits, e.target.value)} className="bg-black/40 border-white/10 h-11 text-white font-bold text-base focus:border-indigo-500 w-full"/></div>
+                            <div className="space-y-1.5 pt-3 border-t border-white/5"><label className="text-[9px] font-bold text-emerald-500 uppercase">Apport Perso</label><Input type="number" value={apportCapacity} onChange={e => handleInput(setApportCapacity, e.target.value)} className="bg-emerald-900/10 border-emerald-500/20 h-11 text-emerald-400 font-bold text-base focus:border-emerald-500 w-full"/></div>
                         </div>
                     </PremiumCard>
-                    <PremiumCard className="p-4 md:p-8">
-                        <h3 className="text-xs font-black text-blue-400 uppercase mb-4 md:mb-8 flex items-center gap-3 tracking-widest"><Landmark size={18}/> Banque</h3>
-                        <div className="space-y-4 w-full">
+                    <PremiumCard className="p-3 md:p-6">
+                        <h3 className="text-[10px] font-black text-blue-400 uppercase mb-4 flex items-center gap-2 tracking-widest"><Landmark size={16}/> Banque</h3>
+                        <div className="space-y-3 w-full min-w-0">
                             <PremiumSlider label="Durée" value={duration} min={10} max={30} step={1} unit="ans" onChange={setDuration}/>
                             <PremiumSlider label="Taux" value={rate} min={1} max={6} step={0.05} unit="%" onChange={setRate}/>
                         </div>
                     </PremiumCard>
                 </div>
-                <div className="lg:col-span-8 p-6 md:p-16 rounded-3xl bg-gradient-to-br from-zinc-900 via-black to-blue-950/20 border border-white/10 flex flex-col items-center justify-center text-center relative overflow-hidden shadow-2xl w-full">
-                    <div className="text-zinc-500 text-[9px] sm:text-[10px] font-black uppercase tracking-[0.25em] mb-4 md:mb-8 flex items-center justify-center flex-wrap gap-1">
+                <div className="lg:col-span-8 p-5 md:p-10 rounded-3xl bg-gradient-to-br from-zinc-900 via-black to-blue-950/20 border border-white/10 flex flex-col items-center justify-center text-center shadow-2xl w-full min-w-0 gap-4">
+                    <div className="text-zinc-500 text-[9px] font-black uppercase tracking-[0.2em] flex items-center justify-center gap-1 flex-wrap">
                         ENVELOPPE GLOBALE D'ACHAT <HelpTooltip text="La somme totale que vous pouvez dépenser (Apport + Prêt bancaire). Votre taux d'endettement maximal est fixé à 35% par la loi."/>
                     </div>
-                    <div className="text-[2.8rem] sm:text-6xl md:text-7xl lg:text-[9rem] font-black text-white tracking-tighter leading-none w-full text-center break-all"><AnimatedNumber value={totalEnvelope} /></div>
-                    <div className="mt-6 md:mt-10 flex flex-col sm:flex-row gap-2 sm:gap-6 justify-center text-xs font-bold text-zinc-500 bg-white/5 px-4 py-3 rounded-2xl border border-white/5 w-full sm:w-auto">
-                            <span className="flex items-center justify-center gap-2"><Landmark size={14} className="text-blue-500 shrink-0"/> Prêt Banque: {formatEuro(maxLoan)}</span>
-                            <span className="text-zinc-700 hidden sm:inline">|</span>
-                            <span className="flex items-center justify-center gap-2"><PiggyBank size={14} className="text-emerald-500 shrink-0"/> Apport: {formatEuro(Number(apportCapacity))}</span>
+                    <div className="font-black text-white tracking-tighter leading-none w-full text-center" style={{ fontSize: 'clamp(2.5rem, 12vw, 8rem)' }}>
+                        <AnimatedNumber value={totalEnvelope} />
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-2 sm:gap-6 justify-center text-xs font-bold text-zinc-500 bg-white/5 px-4 py-3 rounded-2xl border border-white/5 w-full sm:w-auto">
+                        <span className="flex items-center justify-center gap-2"><Landmark size={13} className="text-blue-500 shrink-0"/> Prêt: {formatEuro(maxLoan)}</span>
+                        <span className="text-zinc-700 hidden sm:inline">|</span>
+                        <span className="flex items-center justify-center gap-2"><PiggyBank size={13} className="text-emerald-500 shrink-0"/> Apport: {formatEuro(Number(apportCapacity))}</span>
                     </div>
                 </div>
             </motion.div>
           )}
 
           {mode === "RENTABILITE" && (
-            <motion.div key="renta" initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.98 }} className="grid grid-cols-1 xl:grid-cols-12 gap-4 w-full">
-                <div className="xl:col-span-4 space-y-4 w-full">
-                    <PremiumCard className="p-4 md:p-6 relative z-20">
-                        <h3 className="text-xs font-black text-white uppercase flex items-center gap-3 mb-4 tracking-widest"><Building size={18}/> Le Projet</h3>
-                        <div className="bg-black/40 p-3 rounded-2xl mb-4 border border-white/5 w-full relative z-20">
-                            <div className="mb-4">
-                                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block mb-2">Usage</label>
-                                <div className="grid grid-cols-3 gap-1">
-                                    {['LOC', 'RP', 'RS'].map(t => (
-                                        <button key={t} onClick={() => setProjectType(t as any)} className={`text-[10px] font-bold py-2.5 rounded-lg transition-all ${projectType === t ? "bg-zinc-700 text-white" : "text-zinc-500 hover:text-white hover:bg-zinc-800"}`}>{t === 'LOC' ? 'Invest.' : t === 'RP' ? 'Principale' : 'Secondaire'}</button>
-                                    ))}
-                                </div>
+            <motion.div key="renta" initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.98 }} className="grid grid-cols-1 xl:grid-cols-12 gap-4 w-full min-w-0">
+                <div className="xl:col-span-4 space-y-4 w-full min-w-0">
+                    <PremiumCard className="p-3 md:p-5 relative z-20 w-full">
+                        <h3 className="text-[10px] font-black text-white uppercase flex items-center gap-2 mb-3 tracking-widest"><Building size={16}/> Le Projet</h3>
+
+                        {/* Usage */}
+                        <div className="bg-black/40 p-3 rounded-xl mb-3 border border-white/5 w-full">
+                            <label className="text-[9px] font-bold text-zinc-500 uppercase tracking-wider block mb-2">Usage</label>
+                            <div className="grid grid-cols-3 gap-1 w-full">
+                                {['LOC', 'RP', 'RS'].map(t => (
+                                    <button key={t} onClick={() => setProjectType(t as any)} className={`text-[9px] font-bold py-2 rounded-lg transition-all ${projectType === t ? "bg-zinc-700 text-white" : "text-zinc-500 hover:text-white hover:bg-zinc-800"}`}>
+                                        {t === 'LOC' ? 'Invest.' : t === 'RP' ? 'Principale' : 'Secondaire'}
+                                    </button>
+                                ))}
                             </div>
                             {projectType === "LOC" && (
-                                <div className="animate-in slide-in-from-top-2 fade-in">
-                                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block mb-2">Stratégie Locative</label>
-                                    <div className="grid grid-cols-3 gap-1">
+                                <div className="mt-2">
+                                    <label className="text-[9px] font-bold text-zinc-500 uppercase tracking-wider block mb-2">Stratégie Locative</label>
+                                    <div className="grid grid-cols-3 gap-1 w-full">
                                         {['LMNP', 'NUE', 'LCD'].map(s => (
-                                            <button key={s} onClick={() => setRentalStrategy(s as any)} className={`text-[10px] font-bold py-2.5 rounded-lg transition-all ${rentalStrategy === s ? "bg-indigo-600 text-white" : "text-zinc-500 hover:text-white hover:bg-zinc-800"}`}>{s}</button>
+                                            <button key={s} onClick={() => setRentalStrategy(s as any)} className={`text-[9px] font-bold py-2 rounded-lg transition-all ${rentalStrategy === s ? "bg-indigo-600 text-white" : "text-zinc-500 hover:text-white hover:bg-zinc-800"}`}>{s}</button>
                                         ))}
                                     </div>
                                 </div>
                             )}
                         </div>
-                        <div className="space-y-3 w-full">
-                            <div><label className="text-[10px] font-bold text-zinc-500 uppercase">Prix Achat</label><Input type="number" value={price} onChange={e => handleInput(setPrice, e.target.value)} className="bg-black/40 border-white/10 h-11 text-white font-bold w-full"/></div>
-                            <div className="grid grid-cols-2 gap-3 w-full">
-                                <div><label className="text-[10px] font-bold text-zinc-500 uppercase block">Travaux</label><Input type="number" value={works} onChange={e => handleInput(setWorks, e.target.value)} className="bg-black/40 border-white/10 h-11 text-white font-bold w-full"/></div>
-                                <div><label className="text-[10px] font-bold text-zinc-500 uppercase block">Apport</label><Input type="number" value={apport} onChange={e => handleInput(setApport, e.target.value)} className="bg-black/40 border-white/10 h-11 text-white font-bold w-full"/></div>
+
+                        {/* Champs */}
+                        <div className="space-y-2.5 w-full min-w-0">
+                            <div className="min-w-0"><label className="text-[9px] font-bold text-zinc-500 uppercase block mb-1">Prix Achat</label><Input type="number" value={price} onChange={e => handleInput(setPrice, e.target.value)} className="bg-black/40 border-white/10 h-10 text-white font-bold w-full text-sm"/></div>
+                            <div className="grid grid-cols-2 gap-2 w-full min-w-0">
+                                <div className="min-w-0"><label className="text-[9px] font-bold text-zinc-500 uppercase block mb-1">Travaux</label><Input type="number" value={works} onChange={e => handleInput(setWorks, e.target.value)} className="bg-black/40 border-white/10 h-10 text-white font-bold w-full text-sm"/></div>
+                                <div className="min-w-0"><label className="text-[9px] font-bold text-zinc-500 uppercase block mb-1">Apport</label><Input type="number" value={apport} onChange={e => handleInput(setApport, e.target.value)} className="bg-black/40 border-white/10 h-10 text-white font-bold w-full text-sm"/></div>
                             </div>
-                            <div><label className="text-[10px] font-bold text-zinc-500 uppercase">Notaire (%)</label><Input type="number" step="0.1" value={notaryRate} onChange={e => handleInput(setNotaryRate, e.target.value)} className="bg-black/40 border-white/10 h-11 text-white font-bold w-full"/></div>
-                            <div className="pt-3 border-t border-white/5 space-y-3 w-full">
-                                <h4 className="text-[10px] font-bold text-blue-400 uppercase tracking-wider flex items-center gap-2"><Landmark size={12}/> Financement Bancaire</h4>
-                                <PremiumSlider label="Taux" value={rate} min={1} max={6} step={0.05} unit="%" onChange={setRate}/>
-                                <PremiumSlider label="Durée" value={duration} min={10} max={30} step={1} unit="ans" onChange={setDuration}/>
-                            </div>
-                            <div className="pt-3 border-t border-white/5 space-y-3 w-full">
-                                {projectType === "LOC" && (
-                                    <div><label className="text-[10px] font-bold text-zinc-500 uppercase">Loyer Mensuel CC</label><Input type="number" value={rent} onChange={e => handleInput(setRent, e.target.value)} className="bg-black/40 border-white/10 h-11 text-emerald-400 font-bold w-full"/></div>
-                                )}
-                                <div className="grid grid-cols-2 gap-3 w-full">
-                                    <div><label className="text-[10px] font-bold text-zinc-500 uppercase block">Charges /m</label><Input type="number" value={charges} onChange={e => handleInput(setCharges, e.target.value)} className="bg-black/40 border-white/10 h-11 text-white font-bold w-full"/></div>
-                                    <div><label className="text-[10px] font-bold text-zinc-500 uppercase block">Taxe Fonc. /an</label><Input type="number" value={tax} onChange={e => handleInput(setTax, e.target.value)} className="bg-black/40 border-white/10 h-11 text-white font-bold w-full"/></div>
-                                </div>
+                            <div className="min-w-0"><label className="text-[9px] font-bold text-zinc-500 uppercase block mb-1">Notaire (%)</label><Input type="number" step="0.1" value={notaryRate} onChange={e => handleInput(setNotaryRate, e.target.value)} className="bg-black/40 border-white/10 h-10 text-white font-bold w-full text-sm"/></div>
+                        </div>
+
+                        {/* Financement */}
+                        <div className="pt-3 border-t border-white/5 space-y-2.5 mt-3 w-full">
+                            <h4 className="text-[9px] font-bold text-blue-400 uppercase tracking-wider flex items-center gap-2"><Landmark size={11}/> Financement Bancaire</h4>
+                            <PremiumSlider label="Taux" value={rate} min={1} max={6} step={0.05} unit="%" onChange={setRate}/>
+                            <PremiumSlider label="Durée" value={duration} min={10} max={30} step={1} unit="ans" onChange={setDuration}/>
+                        </div>
+
+                        {/* Revenus locatifs */}
+                        <div className="pt-3 border-t border-white/5 space-y-2.5 mt-3 w-full">
+                            {projectType === "LOC" && (
+                                <div className="min-w-0"><label className="text-[9px] font-bold text-zinc-500 uppercase block mb-1">Loyer Mensuel CC</label><Input type="number" value={rent} onChange={e => handleInput(setRent, e.target.value)} className="bg-black/40 border-white/10 h-10 text-emerald-400 font-bold w-full text-sm"/></div>
+                            )}
+                            <div className="grid grid-cols-2 gap-2 w-full min-w-0">
+                                <div className="min-w-0"><label className="text-[9px] font-bold text-zinc-500 uppercase block mb-1">Charges /m</label><Input type="number" value={charges} onChange={e => handleInput(setCharges, e.target.value)} className="bg-black/40 border-white/10 h-10 text-white font-bold w-full text-sm"/></div>
+                                <div className="min-w-0"><label className="text-[9px] font-bold text-zinc-500 uppercase block mb-1">Taxe Fonc. /an</label><Input type="number" value={tax} onChange={e => handleInput(setTax, e.target.value)} className="bg-black/40 border-white/10 h-10 text-white font-bold w-full text-sm"/></div>
                             </div>
                         </div>
                     </PremiumCard>
                 </div>
-                <div className="xl:col-span-8 space-y-4 w-full">
+                <div className="xl:col-span-8 space-y-3 w-full min-w-0">
+                    {/* ── HERO CARD ── */}
                     {projectType === "LOC" ? (
-                        <PremiumCard className={`p-5 md:p-10 text-center flex flex-col items-center justify-center min-h-[180px] border transition-all duration-500 ${cashflowNetImpots < 0 ? 'border-rose-500/40' : 'border-emerald-500/20'}`}>
-                            <div className="flex items-center gap-2 mb-3 justify-center">
-                                <span className={`text-[10px] font-black uppercase tracking-[0.2em] ${cashflowNetImpots > 0 ? 'text-emerald-500' : 'text-rose-500'}`}>CASHFLOW NET / MOIS</span>
+                        <PremiumCard className={`p-4 md:p-8 text-center flex flex-col items-center justify-center border transition-all duration-500 ${cashflowNetImpots < 0 ? 'border-rose-500/40' : 'border-emerald-500/20'}`}>
+                            <div className="flex items-center gap-2 mb-2 justify-center">
+                                <span className={`text-[9px] font-black uppercase tracking-widest ${cashflowNetImpots > 0 ? 'text-emerald-500' : 'text-rose-500'}`}>CASHFLOW NET / MOIS</span>
                                 <HelpTooltip title="Cashflow Net" text="Loyers - (Crédit + Charges + Taxe Foncière + Impôts). C'est le vrai chiffre qui compte à la fin du mois."/>
                             </div>
-                            <div className={`text-5xl sm:text-6xl md:text-8xl font-black tracking-tighter mb-4 ${cashflowNetImpots > 0 ? 'text-emerald-400' : 'text-rose-500'}`}>{cashflowNetImpots > 0 ? '+':''}<AnimatedNumber value={Math.round(cashflowNetImpots)}/></div>
-                            <div className="flex flex-col sm:flex-row justify-center gap-2 sm:gap-12 text-xs font-bold w-full max-w-lg bg-black/30 p-3 rounded-2xl border border-white/5">
-                                <div className="text-zinc-400 flex flex-row sm:flex-col justify-between sm:justify-start items-center">Avant Impôt <span className="text-white text-sm ml-2 sm:ml-0">{cashflowBrut > 0 ? "+":""}{Math.round(cashflowBrut)}€</span></div>
-                                <div className="hidden sm:block w-px bg-white/10"></div>
-                                <div className="text-zinc-400 flex flex-row sm:flex-col justify-between sm:justify-start items-center">Fiscalité Moy. <span className="text-amber-500 text-sm ml-2 sm:ml-0">-{Math.round(Math.min(fiscalData.micro.total, fiscalData.reel.total)/12)}€</span></div>
+                            <div className={`text-[3rem] sm:text-6xl md:text-8xl font-black tracking-tighter leading-none mb-3 ${cashflowNetImpots > 0 ? 'text-emerald-400' : 'text-rose-500'}`}>{cashflowNetImpots > 0 ? '+':''}<AnimatedNumber value={Math.round(cashflowNetImpots)}/></div>
+                            <div className="flex justify-center gap-6 text-[10px] font-bold w-full bg-black/30 p-2.5 rounded-xl border border-white/5">
+                                <div className="text-zinc-400 flex items-center gap-1.5">Avant Impôt<span className="text-white">{cashflowBrut > 0 ? "+":""}{Math.round(cashflowBrut)}€</span></div>
+                                <div className="w-px bg-white/10"></div>
+                                <div className="text-zinc-400 flex items-center gap-1.5">Fiscalité<span className="text-amber-500">-{Math.round(Math.min(fiscalData.micro.total, fiscalData.reel.total)/12)}€</span></div>
                             </div>
                         </PremiumCard>
                     ) : (
-                        <PremiumCard className="p-5 md:p-10 text-center flex flex-col items-center justify-center min-h-[180px] border-amber-500/20">
-                            <div className="text-[10px] font-black text-amber-500 uppercase tracking-[0.2em] mb-3">COÛT MENSUEL TOTAL</div>
-                            <div className="text-4xl sm:text-5xl md:text-7xl font-black text-white tracking-tighter mb-4">-<AnimatedNumber value={Math.round(monthlyPayment + Number(charges) + (Number(tax)/12))}/></div>
-                            <div className="flex flex-wrap justify-center gap-2 text-[10px] font-bold text-zinc-500 bg-white/5 px-4 py-2 rounded-full border border-white/10">
+                        <PremiumCard className="p-4 md:p-8 text-center flex flex-col items-center justify-center border-amber-500/20">
+                            <div className="text-[9px] font-black text-amber-500 uppercase tracking-widest mb-2">COÛT MENSUEL TOTAL</div>
+                            <div className="text-[3rem] sm:text-5xl md:text-7xl font-black text-white tracking-tighter leading-none mb-3">-<AnimatedNumber value={Math.round(monthlyPayment + Number(charges) + (Number(tax)/12))}/></div>
+                            <div className="flex flex-wrap justify-center gap-1.5 text-[9px] font-bold text-zinc-500 bg-white/5 px-3 py-2 rounded-xl border border-white/10">
                                 <span>Crédit: {Math.round(monthlyPayment)}€</span><span>·</span><span>Charges: {Math.round(Number(charges))}€</span><span>·</span><span>Taxe: {Math.round(Number(tax)/12)}€</span>
                             </div>
                         </PremiumCard>
                     )}
-                    <div className="grid grid-cols-2 gap-3 w-full">
-                        <PremiumCard color="indigo" className="p-4 flex flex-col items-center justify-center relative">
-                            <div className="absolute top-2 right-2"><HelpTooltip title="Coût Projet" text="Prix + Travaux + Notaire. Ne prend pas en compte le coût du crédit sur 20 ans."/></div>
-                            <p className="text-[9px] text-zinc-500 font-bold uppercase mb-1 text-center">Coût Projet</p>
-                            <div className="text-2xl sm:text-3xl md:text-5xl font-black text-white">{Math.round(totalCost/1000)}<span className="text-indigo-500 text-base sm:text-xl">k€</span></div>
+
+                    {/* ── KPI CARDS ── */}
+                    <div className="grid grid-cols-2 gap-3 w-full min-w-0">
+                        <PremiumCard color="indigo" className="p-3 md:p-4 flex flex-col items-center justify-center relative min-h-[80px]">
+                            <div className="absolute top-1.5 right-1.5"><HelpTooltip title="Coût Projet" text="Prix + Travaux + Notaire. Ne prend pas en compte le coût du crédit."/></div>
+                            <p className="text-[8px] text-zinc-500 font-bold uppercase mb-1 text-center">Coût Projet</p>
+                            <div className="text-xl sm:text-2xl md:text-4xl font-black text-white leading-none">{Math.round(totalCost/1000)}<span className="text-indigo-500 text-sm">k€</span></div>
                         </PremiumCard>
                         {projectType === "LOC" ? (
-                            <PremiumCard color="emerald" className="p-4 flex flex-col items-center justify-center relative">
-                                <div className="absolute top-2 right-2"><HelpTooltip title="Rendement Brut" text="(Loyer annuel / Coût d'achat total) * 100."/></div>
-                                <p className="text-[9px] text-zinc-500 font-bold uppercase mb-1 text-center">Rendement Brut</p>
-                                <div className="text-2xl sm:text-3xl md:text-5xl font-black text-white">{yieldNet.toFixed(2)}<span className="text-emerald-500 text-base sm:text-xl">%</span></div>
+                            <PremiumCard color="emerald" className="p-3 md:p-4 flex flex-col items-center justify-center relative min-h-[80px]">
+                                <div className="absolute top-1.5 right-1.5"><HelpTooltip title="Rendement Brut" text="(Loyer annuel / Coût d'achat total) * 100."/></div>
+                                <p className="text-[8px] text-zinc-500 font-bold uppercase mb-1 text-center">Rendement Brut</p>
+                                <div className="text-xl sm:text-2xl md:text-4xl font-black text-white leading-none">{yieldNet.toFixed(2)}<span className="text-emerald-500 text-sm">%</span></div>
                             </PremiumCard>
                         ) : (
-                            <PremiumCard color="rose" className="p-4 flex flex-col items-center justify-center relative">
-                                <div className="absolute top-2 right-2"><HelpTooltip title="Coût du crédit" text="L'argent total que la banque va gagner grâce aux intérêts que vous allez lui payer."/></div>
-                                <p className="text-[9px] text-zinc-500 font-bold uppercase mb-1 text-center">Coût Crédit</p>
-                                <div className="text-xl sm:text-2xl md:text-4xl font-black text-white">{formatEuro(Math.round(totalCreditCost))}</div>
+                            <PremiumCard color="rose" className="p-3 md:p-4 flex flex-col items-center justify-center relative min-h-[80px]">
+                                <div className="absolute top-1.5 right-1.5"><HelpTooltip title="Coût du crédit" text="Total des intérêts versés à la banque."/></div>
+                                <p className="text-[8px] text-zinc-500 font-bold uppercase mb-1 text-center">Coût Crédit</p>
+                                <div className="text-lg sm:text-xl md:text-3xl font-black text-white leading-none">{Math.round(totalCreditCost/1000)}k€</div>
                             </PremiumCard>
                         )}
                     </div>
-                    <PremiumCard className="p-4 md:p-8 border-white/5 relative overflow-hidden">
-                        <div className="flex items-center justify-between mb-4 relative z-10">
-                            <h4 className="text-xs font-black text-white uppercase tracking-widest flex items-center gap-2"><BarChart3 size={16} className="text-blue-500 shrink-0"/> Amortissement <HelpTooltip text="Courbe bleue = capital restant dû. Courbe rouge = intérêts cumulés payés à la banque."/></h4>
-                            <div className="text-[10px] text-zinc-500 font-mono shrink-0">{duration} ans</div>
+
+                    {/* ── GRAPHIQUE AMORTISSEMENT ── */}
+                    <PremiumCard className="p-3 md:p-6 border-white/5 relative overflow-hidden">
+                        <div className="flex items-center justify-between mb-3 relative z-10">
+                            <h4 className="text-[10px] font-black text-white uppercase tracking-widest flex items-center gap-2 min-w-0">
+                                <BarChart3 size={14} className="text-blue-500 shrink-0"/>
+                                <span className="truncate">Amortissement</span>
+                                <HelpTooltip text="Courbe bleue = capital restant dû. Rouge = intérêts cumulés payés à la banque."/>
+                            </h4>
+                            <div className="text-[9px] text-zinc-500 font-mono shrink-0 ml-2">{duration} ans</div>
                         </div>
-                        <div className="h-[150px] sm:h-[200px] md:h-[250px] w-full relative z-10">
+                        <div className="h-[140px] sm:h-[180px] md:h-[220px] w-full relative z-10">
                             <ResponsiveContainer width="100%" height="100%">
-                                <AreaChart data={amortizationSchedule} margin={{ top: 10, right: 0, left: 0, bottom: 0 }}>
+                                <AreaChart data={amortizationSchedule} margin={{ top: 5, right: 0, left: 0, bottom: 0 }}>
                                     <defs>
                                         <linearGradient id="colorCapital" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#3b82f6" stopOpacity={0.3}/><stop offset="100%" stopColor="#3b82f6" stopOpacity={0}/></linearGradient>
                                         <linearGradient id="colorInterest" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#ef4444" stopOpacity={0.3}/><stop offset="100%" stopColor="#ef4444" stopOpacity={0}/></linearGradient>
                                     </defs>
                                     <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
-                                    <XAxis dataKey="year" stroke="#52525b" fontSize={9} tickLine={false} axisLine={false} tickFormatter={(val, index) => index % 5 === 0 ? val : ''} />
+                                    <XAxis dataKey="year" stroke="#52525b" fontSize={8} tickLine={false} axisLine={false} tickFormatter={(val, index) => index % 5 === 0 ? val : ''} />
                                     <Tooltip contentStyle={{ backgroundColor: '#09090b', border: '1px solid #27272a', borderRadius: '12px', fontSize:'11px' }} itemStyle={{ color: '#fff' }} formatter={(val: any) => formatEuro(val)}/>
                                     <Area type="monotone" dataKey="capital" stackId="1" stroke="#3b82f6" fill="url(#colorCapital)" name="Capital Restant" strokeWidth={2}/>
                                     <Area type="monotone" dataKey="interests" stackId="2" stroke="#ef4444" fill="url(#colorInterest)" name="Intérêts Cumulés" strokeWidth={2}/>
@@ -722,9 +733,11 @@ export default function SimulateurPage() {
                             </ResponsiveContainer>
                         </div>
                     </PremiumCard>
-                    <div className="flex flex-col sm:flex-row gap-3 w-full">
-                        <Input placeholder="Nom du projet" value={projectName} onChange={(e) => setProjectName(e.target.value)} className="bg-zinc-900 border-white/10 h-12 rounded-2xl text-white focus:border-indigo-500 w-full"/>
-                        <Button onClick={saveSimulation} className="h-12 px-6 bg-white text-black hover:bg-zinc-200 font-bold rounded-2xl gap-2 shadow-lg w-full sm:w-auto shrink-0"><Save size={16}/> Sauvegarder</Button>
+
+                    {/* ── SAUVEGARDE ── */}
+                    <div className="flex flex-col sm:flex-row gap-2 w-full">
+                        <Input placeholder="Nom du projet" value={projectName} onChange={(e) => setProjectName(e.target.value)} className="bg-zinc-900 border-white/10 h-11 rounded-xl text-white focus:border-indigo-500 w-full text-sm"/>
+                        <Button onClick={saveSimulation} className="h-11 px-5 bg-white text-black hover:bg-zinc-200 font-bold rounded-xl gap-2 shrink-0 w-full sm:w-auto"><Save size={15}/> Sauvegarder</Button>
                     </div>
                 </div>
             </motion.div>
@@ -735,13 +748,13 @@ export default function SimulateurPage() {
                 <motion.div key="fiscal" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="w-full min-w-0 space-y-4">
 
                   {/* Bouton export rapport fiscal */}
-                  <div className="flex justify-end">
+                  <div className="flex justify-end w-full overflow-hidden">
                     <button
                       onClick={() => setIsFiscalPrintReady(true)}
-                      className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm uppercase tracking-widest text-white transition-all hover:scale-[1.02] active:scale-95"
+                      className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider text-white transition-all hover:scale-[1.02] active:scale-95 max-w-full"
                       style={{ background: "linear-gradient(135deg, #6d28d9, #4f46e5)", boxShadow: "0 4px 20px -4px rgba(109,40,217,0.5)" }}
                     >
-                      <Printer size={15} /> Rapport Fiscal Client PDF
+                      <Printer size={14} className="shrink-0" /> <span className="truncate">Rapport Fiscal Client PDF</span>
                     </button>
                   </div>
 
@@ -766,7 +779,7 @@ export default function SimulateurPage() {
 
           {mode === "PROJETS" && (
             <PremiumGuard isPro={isPro} title="Portefeuille de Projets" description="Sauvegardez vos simulations et générez des dossiers bancaires PDF professionnels.">
-                <motion.div key="list" initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.98 }} className="space-y-4 w-full">
+                <motion.div key="list" initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.98 }} className="space-y-4 w-full min-w-0">
 
                   {savedSimulations.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-20 text-center">
@@ -780,7 +793,7 @@ export default function SimulateurPage() {
                       </button>
                     </div>
                   ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 w-full">
                       {savedSimulations.map((sim) => {
                         const d = sim.data;
                         const isLoc = d.projectType === "LOC";
@@ -789,22 +802,17 @@ export default function SimulateurPage() {
                         const apportPct = totalCostSim > 0 ? (d.apport / totalCostSim) * 100 : 0;
                         const endettement = d.revenue > 0 ? ((d.credits + d.monthlyPayment) / d.revenue) * 100 : 0;
                         return (
-                          <div key={sim.id} className="rounded-[24px] bg-zinc-900/40 border border-white/5 hover:border-indigo-500/30 transition-all duration-300 overflow-hidden flex flex-col">
-                            {/* Header coloré */}
+                          <div key={sim.id} className="rounded-[20px] bg-zinc-900/40 border border-white/5 hover:border-indigo-500/30 transition-all duration-300 overflow-hidden flex flex-col w-full">
                             <div className={`h-1.5 w-full ${isLoc ? "bg-gradient-to-r from-indigo-500 to-purple-500" : isRP ? "bg-gradient-to-r from-amber-500 to-orange-500" : "bg-gradient-to-r from-blue-500 to-cyan-500"}`} />
 
-                            <div className="p-5 flex flex-col gap-4 flex-1">
+                            <div className="p-4 flex flex-col gap-3 flex-1">
                               {/* Titre + meta */}
-                              <div className="flex justify-between items-start gap-3">
-                                <div className="min-w-0">
-                                  <h4 className="text-base font-bold text-white mb-1 truncate">{sim.name}</h4>
+                              <div className="flex justify-between items-start gap-2">
+                                <div className="min-w-0 flex-1">
+                                  <h4 className="text-sm font-bold text-white mb-1 truncate">{sim.name}</h4>
                                   <div className="flex items-center gap-2 flex-wrap">
                                     <span className="text-[9px] bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded uppercase tracking-wider">
-                                      {d.projectType === "LOC"
-                                        ? `LOC · ${d.rentalStrategy || "—"}`
-                                        : d.projectType === "RP"
-                                          ? "Résidence Principale"
-                                          : "Résidence Secondaire"}
+                                      {d.projectType === "LOC" ? `LOC · ${d.rentalStrategy || "—"}` : d.projectType === "RP" ? "Résidence Principale" : "Résidence Secondaire"}
                                     </span>
                                     <span className={`text-[9px] px-2 py-0.5 rounded uppercase tracking-wider font-bold ${endettement < 35 ? "bg-emerald-500/10 text-emerald-400" : "bg-rose-500/10 text-rose-400"}`}>{endettement.toFixed(0)}% endett.</span>
                                   </div>
