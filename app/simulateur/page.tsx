@@ -482,16 +482,19 @@ export default function SimulateurPage() {
 
   const importToPatrimoine = async (sim: any) => {
       setImportingId(sim.id);
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
-      const { data: profile } = await supabase.from('profiles').select('assets_json').eq('id', session.user.id).single();
-      const currentAssets = profile?.assets_json || [];
       const d = sim.data;
-      const newAsset = { id: Date.now().toString(), name: sim.name, type: "Immobilier", value: d.price, buyPrice: d.price, notaryFees: d.notaryFees, workCost: d.works, loanCost: d.totalCreditCost };
-      const updatedAssets = [...currentAssets, newAsset];
-      const newNetWorth = updatedAssets.reduce((acc: number, item: any) => acc + (Number(item.value) || 0), 0);
-      await supabase.from('profiles').update({ assets_json: updatedAssets, net_worth: newNetWorth }).eq('id', session.user.id);
-      setTimeout(() => { setImportingId(null); alert("Projet importé dans votre Patrimoine !"); }, 1000);
+      // Redirige vers patrimoine avec les données encodées en URL
+      const params = encodeURIComponent(JSON.stringify({
+        name: sim.name,
+        price: d.price,
+        works: d.works,
+        notaryFees: d.notaryFees,
+        totalCreditCost: d.totalCreditCost,
+      }));
+      setTimeout(() => {
+        window.location.href = `/patrimoine?import=${params}`;
+      }, 400);
+      setImportingId(null);
   };
 
   const deleteSimulation = async (id: number) => {
