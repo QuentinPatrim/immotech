@@ -1,11 +1,15 @@
 import { NextResponse } from 'next/server';
 import OpenAI from 'openai';
+import { authenticateRequest } from '@/lib/authGuard';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
 export async function POST(req: Request) {
+  const auth = await authenticateRequest(req);
+  if (auth.error) return auth.error;
+
   try {
     const { imageBase64 } = await req.json();
 
@@ -54,12 +58,11 @@ export async function POST(req: Request) {
 
     const content = response.choices[0].message.content;
     const parsedData = JSON.parse(content || '{"assets": []}');
-    console.log("🤖 IA a trouvé :", parsedData);
     
     return NextResponse.json(parsedData);
 
   } catch (error) {
-    console.error("Erreur serveur lors du scan AI :", error);
+    console.error("Erreur serveur lors du scan AI:", (error as Error).message);
     return NextResponse.json({ error: "Erreur lors de l'analyse." }, { status: 500 });
   }
 }

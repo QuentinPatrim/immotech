@@ -7,22 +7,12 @@ export async function GET(request: NextRequest) {
   if (!ticker) return NextResponse.json({ error: "Ticker manquant" }, { status: 400 });
 
   try {
-    // Obtenir un cookie de session Yahoo Finance
-    const cookieRes = await fetch("https://finance.yahoo.com", {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-      },
-    });
-    const sessionCookie = (cookieRes.headers.get("set-cookie") || "")
-      .split(",").map((c: string) => c.split(";")[0]).join("; ");
-
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1d`;
     const res = await fetch(url, {
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Accept": "application/json",
         "Referer": "https://finance.yahoo.com",
-        "Cookie": sessionCookie,
       },
       next: { revalidate: 300 },
     });

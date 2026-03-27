@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
+import { getAuthHeaders } from "@/lib/apiHelpers";
 
 interface NexusChatProps {
   isPro: boolean;
@@ -36,9 +37,10 @@ export default function NexusChat({ isPro, financialData }: NexusChatProps) {
     setLoading(true);
 
     try {
+      const authHeaders = await getAuthHeaders();
       const res = await fetch("/api/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...authHeaders },
         body: JSON.stringify({ 
             message: userMsg, 
             context: financialData 

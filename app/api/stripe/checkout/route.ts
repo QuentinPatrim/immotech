@@ -1,26 +1,30 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
+import { authenticateRequest } from "@/lib/authGuard";
 
-// Initialisation Stripe avec correction du type pour apiVersion
+// Initialisation Stripe
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  // @ts-ignore : Empêche l'erreur de type si la version installée est plus récente
+  // @ts-ignore : Correction du problème apiVersion
   apiVersion: "2023-10-16", 
 });
 
 export async function POST(req: Request) {
-  try {
-    const { email, userId } = await req.json();
+  // Vérification de l'authentification côté serveur
+  const auth = await authenticateRequest(req);
+  if (auth.error) return auth.error;
 
-    // Vérification des données
-    if (!email || !userId) {
-        return NextResponse.json({ error: "Données manquantes" }, { status: 400 });
+  try {
+    const { email } = await req.json();
+
+    // Vérification des données — on utilise l'ID de l'utilisateur authentifié, PAS celui du body
+    if (!email) {
+        return NextResponse.json({ error: "Email manquant" }, { status: 400 });
     }
 
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
       line_items: [
         {
-          // REMPLACEZ BIEN CECI PAR VOTRE ID DE PRIX RÉEL (ex: price_1P...)
           price: "price_1T1r4ZPqbFP5dfks28pR6D8u", 
           quantity: 1,
         },
@@ -30,7 +34,7 @@ export async function POST(req: Request) {
       cancel_url: `${process.env.NEXT_PUBLIC_BASE_URL}/tarifs`,
       customer_email: email,
       metadata: {
-        userId: userId,
+        userId: auth.user.id, // ✅ Utilise l'ID authentifié côté serveur
       },
     });
 

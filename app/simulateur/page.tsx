@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import Sidebar from "@/components/Sidebar";
 import { motion, AnimatePresence } from "framer-motion";
-import { Calculator, Home, Building, Wallet, Landmark, CheckCircle, PieChart as PieIcon, Scale, BedDouble, Armchair, Briefcase, Save, HelpCircle, FileText, Trash2, FolderOpen, MousePointerClick, TrendingUp, AlertTriangle, Crown, BarChart3, Check, Printer, Shield, PiggyBank, BookOpen, X, Info, ArrowRight } from "lucide-react";
+import { Calculator, Home, Building, Wallet, Landmark, CheckCircle, PieChart as PieIcon, Scale, Briefcase, Save, HelpCircle, FileText, Trash2, FolderOpen, MousePointerClick, TrendingUp, AlertTriangle, Crown, BarChart3, Check, Printer, Shield, PiggyBank, BookOpen, X, Info, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
@@ -16,8 +16,8 @@ import PremiumGuard from "@/components/PremiumGuard";
 import FiscaliteEngine from "./Fiscaliteengine";
 import DossierBancairePro from "./DossierBancairePro";
 import RapportFiscalPDF from "./RapportFiscalpdf";
-
-const formatEuro = (val: number) => new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(val);
+import HelpTooltip from "@/components/HelpTooltip";
+import { formatEuro } from "@/lib/formatters";
 
 // ==========================================
 // 1. POP-UP D'ACCUEIL : MASTERCLASS IMMO
@@ -88,181 +88,6 @@ function SimulateurTutorialModal({ isOpen, onClose }: { isOpen: boolean, onClose
   );
 }
 
-// ==========================================
-// 2. TOOLTIP — CSS pur, sans portal
-// ==========================================
-const HelpTooltip = ({ title, text }: { title?: string, text: string }) => {
-  const [open, setOpen] = useState(false);
-
-  return (
-    <span
-      className="relative inline-flex items-center ml-2 flex-shrink-0"
-      style={{ zIndex: 9999 }}
-    >
-      <button
-        type="button"
-        aria-label="Aide"
-        className={`inline-flex items-center justify-center p-1.5 rounded-full transition-colors cursor-pointer ${open ? "bg-white/20 text-white" : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-300"}`}
-        onMouseEnter={() => setOpen(true)}
-        onMouseLeave={() => setOpen(false)}
-        onTouchStart={(e) => { e.stopPropagation(); setOpen(v => !v); }}
-      >
-        <Info size={14} />
-      </button>
-
-      {open && (
-        <span
-          className="absolute bottom-[calc(100%+8px)] left-1/2 -translate-x-1/2 w-64 p-3 bg-[#1A1A1E] border border-zinc-600 rounded-xl text-white text-xs text-center leading-relaxed shadow-2xl pointer-events-none"
-          style={{ zIndex: 99999 }}
-        >
-          {title && <span className="block text-[10px] font-black text-indigo-400 uppercase tracking-wider mb-1">{title}</span>}
-          {text}
-          {/* flèche */}
-          <span className="absolute top-full left-1/2 -translate-x-1/2 border-[5px] border-transparent border-t-[#1A1A1E]" />
-        </span>
-      )}
-    </span>
-  );
-};
-
-// --- COMPOSANT DOSSIER BANCAIRE (VERSION FINALE PDF) ---
-const DossierBancaire = ({ data, refProp }: any) => {
-    const d = data || {};
-    const totalCost = (d.price || 0) + (d.works || 0) + (d.notaryFees || 0);
-    const isLoc = d.projectType === "LOC";
-    const isRP = d.projectType === "RP";
-    
-    const [dateStr, setDateStr] = useState("");
-    useEffect(() => { setDateStr(new Date().toLocaleDateString("fr-FR")); }, []);
-
-    return (
-      <div className="absolute top-0 left-0 w-0 h-0 opacity-0 pointer-events-none overflow-hidden -z-50 print:static print:w-auto print:h-auto print:opacity-100 print:overflow-visible print:z-auto">
-        <style type="text/css" media="print">
-          {`@page { size: A4; margin: 0; } body { -webkit-print-color-adjust: exact; print-color-adjust: exact; background-color: white; } nav, aside, header, .sidebar-mobile, button { display: none !important; } .print-container { width: 100%; height: 100%; margin: 0; padding: 0; }`}
-        </style>
-        <div ref={refProp} className="print-container bg-white text-black font-sans mx-auto relative print:w-full print:max-w-[210mm] print:min-h-[297mm] print:p-[10mm]">
-            <div className="flex flex-col h-full justify-between p-8 md:p-12">
-                <div>
-                    <div className="flex justify-between items-center border-b-2 border-black/10 pb-6 mb-8">
-                        <div className="flex items-center gap-4">
-                            <div className="text-black shrink-0 w-12 h-12"><NexusLogo className="w-full h-full"/></div>
-                            <div>
-                                <h1 className="text-2xl font-black uppercase tracking-tighter text-black leading-none">NEXUS <span className="text-indigo-600">INVEST</span></h1>
-                                <p className="text-[10px] text-gray-500 uppercase tracking-[0.2em] mt-1">Dossier de Financement</p>
-                            </div>
-                        </div>
-                        <div className="text-right">
-                            <p className="text-base font-bold text-gray-900">{d.name || "Projet Immobilier"}</p>
-                            <span className="inline-block bg-gray-100 text-gray-600 text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wide mt-1">
-                                {isLoc ? "Investissement Locatif" : isRP ? "Résidence Principale" : "Résidence Secondaire"}
-                            </span>
-                            <p className="text-xs text-gray-400 mt-1">{dateStr}</p>
-                        </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-6 mb-8">
-                        <div className="p-5 bg-gray-50 rounded-2xl border border-gray-100 shadow-sm break-inside-avoid">
-                            <h3 className="text-[10px] font-black uppercase text-indigo-600 mb-4 flex items-center gap-2 tracking-widest"><Home size={14}/> L'Acquisition</h3>
-                            <div className="space-y-2 text-sm text-gray-600">
-                                <div className="flex justify-between"><span>Prix Net Vendeur</span> <span className="font-bold text-gray-900">{formatEuro(d.price)}</span></div>
-                                <div className="flex justify-between"><span>Travaux Estimés</span> <span className="font-bold text-gray-900">{formatEuro(d.works)}</span></div>
-                                <div className="flex justify-between"><span>Frais de Notaire</span> <span className="font-bold text-gray-900">{formatEuro(d.notaryFees)}</span></div>
-                                <div className="h-px bg-gray-200 my-2"></div>
-                                <div className="flex justify-between text-base font-black text-black"><span>COÛT TOTAL</span> <span>{formatEuro(totalCost)}</span></div>
-                            </div>
-                        </div>
-                        <div className="p-5 bg-gray-50 rounded-2xl border border-gray-100 shadow-sm break-inside-avoid">
-                            <h3 className="text-[10px] font-black uppercase text-indigo-600 mb-4 flex items-center gap-2 tracking-widest"><Landmark size={14}/> Le Financement</h3>
-                            <div className="space-y-2 text-sm text-gray-600">
-                                <div className="flex justify-between"><span>Apport Personnel</span> <span className="font-bold text-gray-900">{formatEuro(d.apport)}</span></div>
-                                <div className="flex justify-between"><span>Emprunt Sollicité</span> <span className="font-bold text-gray-900">{formatEuro(totalCost - d.apport)}</span></div>
-                                <div className="flex justify-between"><span>Conditions</span> <span className="font-bold text-gray-900">{d.duration} ans à {d.rate}%</span></div>
-                                <div className="h-px bg-gray-200 my-2"></div>
-                                <div className="flex justify-between text-base font-black text-black"><span>Mensualité (Hors Ass.)</span> <span>{formatEuro(d.monthlyPayment || 0)}</span></div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="mb-8 break-inside-avoid">
-                        <h3 className="text-sm font-black uppercase text-gray-900 mb-4 border-l-4 border-indigo-600 pl-3">Indicateurs Financiers</h3>
-                        <div className="grid grid-cols-3 gap-4">
-                            {isLoc ? (
-                                <>
-                                    <div className="p-4 rounded-xl bg-indigo-50 border border-indigo-100 text-center">
-                                        <p className="text-[9px] uppercase font-bold text-indigo-400 mb-1 tracking-wider">Rendement Brut</p>
-                                        <p className="text-2xl font-black text-indigo-700">{Number(d.yieldNet).toFixed(2)}%</p>
-                                    </div>
-                                    <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-100 text-center">
-                                        <p className="text-[9px] uppercase font-bold text-emerald-600 mb-1 tracking-wider">Cashflow Net / Mois</p>
-                                        <p className={`text-2xl font-black ${d.cashflowNetImpots > 0 ? "text-emerald-700" : "text-amber-600"}`}>{d.cashflowNetImpots > 0 ? "+":""}{Math.round(d.cashflowNetImpots)}€</p>
-                                    </div>
-                                    <div className="p-4 rounded-xl bg-gray-50 border border-gray-200 text-center">
-                                        <p className="text-[9px] uppercase font-bold text-gray-400 mb-1 tracking-wider">Loyer Annuel</p>
-                                        <p className="text-2xl font-black text-gray-800">{formatEuro(d.rent * 12)}</p>
-                                    </div>
-                                </>
-                            ) : (
-                                <>
-                                    <div className="p-4 rounded-xl bg-gray-50 border border-gray-200 text-center">
-                                        <p className="text-[9px] uppercase font-bold text-gray-400 mb-1 tracking-wider">Effort Mensuel</p>
-                                        <p className="text-2xl font-black text-gray-800">{formatEuro(Math.round(d.monthlyPayment + (d.charges || 0) + ((d.tax || 0)/12)))}</p>
-                                    </div>
-                                    <div className="p-4 rounded-xl bg-indigo-50 border border-indigo-100 text-center">
-                                        <p className="text-[9px] uppercase font-bold text-indigo-400 mb-1 tracking-wider">Coût Crédit</p>
-                                        <p className="text-2xl font-black text-indigo-700">{formatEuro(Math.round(d.totalCreditCost))}</p>
-                                    </div>
-                                    <div className="p-4 rounded-xl bg-amber-50 border border-amber-100 text-center">
-                                        <p className="text-[9px] uppercase font-bold text-amber-500 mb-1 tracking-wider">Capitalisation</p>
-                                        <p className="text-2xl font-black text-amber-700">~{formatEuro(Math.round(d.monthlyPayment * 0.6))}</p>
-                                    </div>
-                                </>
-                            )}
-                        </div>
-                    </div>
-
-                    <div className="mb-8 break-inside-avoid">
-                        <h3 className="text-sm font-black uppercase text-gray-900 mb-4 border-l-4 border-indigo-600 pl-3">Analyse Stratégique</h3>
-                        <div className="p-6 border border-gray-200 rounded-xl bg-white shadow-sm">
-                            {isLoc ? (
-                                <>
-                                    <p className="text-sm text-gray-700 leading-relaxed mb-4">
-                                        Ce projet est structuré pour maximiser la rentabilité nette via le régime 
-                                        <strong className="text-black uppercase"> {d.rentalStrategy === "LMNP" ? "LMNP (Loueur Meublé Non Pro)" : d.rentalStrategy} </strong> 
-                                        au <strong className="text-black uppercase">{d.rentalStrategy !== "NUE" ? "RÉEL" : "FONCIER"}</strong>.
-                                    </p>
-                                    <ul className="grid grid-cols-2 gap-3 text-xs text-gray-600 font-medium">
-                                        <li className="flex items-center gap-2"><CheckCircle size={14} className="text-emerald-500 shrink-0"/> Déductibilité des intérêts</li>
-                                        <li className="flex items-center gap-2"><CheckCircle size={14} className="text-emerald-500 shrink-0"/> Amortissement comptable (Gomme l'impôt)</li>
-                                        <li className="flex items-center gap-2"><CheckCircle size={14} className="text-emerald-500 shrink-0"/> Optimisation du Cashflow</li>
-                                        <li className="flex items-center gap-2"><CheckCircle size={14} className="text-emerald-500 shrink-0"/> Effet de levier bancaire</li>
-                                    </ul>
-                                </>
-                            ) : (
-                                <>
-                                    <p className="text-sm text-gray-700 leading-relaxed mb-4">
-                                        Acquisition patrimoniale à usage de <strong>{isRP ? "RÉSIDENCE PRINCIPALE" : "RÉSIDENCE SECONDAIRE"}</strong>. 
-                                        L'objectif est la sécurisation du logement et la transformation d'un loyer à fonds perdus en épargne forcée.
-                                    </p>
-                                    <ul className="grid grid-cols-2 gap-3 text-xs text-gray-600 font-medium">
-                                        <li className="flex items-center gap-2"><CheckCircle size={14} className="text-amber-500 shrink-0"/> Constitution de Patrimoine</li>
-                                        <li className="flex items-center gap-2"><CheckCircle size={14} className="text-amber-500 shrink-0"/> Protection contre l'inflation</li>
-                                        {isRP && <li className="flex items-center gap-2 col-span-2"><CheckCircle size={14} className="text-emerald-500 shrink-0"/> <strong>Exonération Totale de Plus-Value (RP)</strong></li>}
-                                    </ul>
-                                </>
-                            )}
-                        </div>
-                    </div>
-                </div>
-                <div className="border-t pt-6 text-center mt-auto">
-                    <p className="text-[8px] text-gray-400 font-medium uppercase tracking-widest">
-                        Document généré par Nexus Invest. Ne constitue pas une offre de prêt.
-                    </p>
-                </div>
-            </div>
-        </div>
-      </div>
-    );
-};
 
 // --- COMPOSANTS UI ---
 const PremiumSlider = ({ label, value, min, max, step, unit, onChange }: any) => (
@@ -290,12 +115,12 @@ export default function SimulateurPage() {
   const [isPro, setIsPro] = useState(false);
   const [isTutorialOpen, setIsTutorialOpen] = useState(false);
 
-  const componentRef = useRef(null);
+  const componentRef = useRef<HTMLDivElement>(null);
   const [printData, setPrintData] = useState<any>(null); 
   const [isReadyToPrint, setIsReadyToPrint] = useState(false);
 
   // Rapport fiscal PDF
-  const fiscalRef = useRef(null);
+  const fiscalRef = useRef<HTMLDivElement>(null);
   const [isFiscalPrintReady, setIsFiscalPrintReady] = useState(false);
 
   const handlePrint = useReactToPrint({

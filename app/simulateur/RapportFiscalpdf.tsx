@@ -24,7 +24,7 @@ function calcIS(benefice: number) {
 }
 
 interface Props {
-  refProp: React.RefObject<HTMLDivElement>;
+  refProp: React.RefObject<HTMLDivElement | null>;
   // Données projet
   price: number; works: number; notaryFees: number;
   rent: number; charges: number; tax: number;

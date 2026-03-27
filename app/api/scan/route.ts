@@ -1,12 +1,15 @@
 import { NextResponse } from 'next/server';
 import OpenAI from 'openai';
+import { authenticateRequest } from '@/lib/authGuard';
 
-// Initialise OpenAI avec ta clé secrète (qui doit être dans .env.local)
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
 export async function POST(req: Request) {
+  const auth = await authenticateRequest(req);
+  if (auth.error) return auth.error;
+
   try {
     const { imageBase64 } = await req.json();
 
@@ -15,7 +18,7 @@ export async function POST(req: Request) {
     }
 
     const response = await openai.chat.completions.create({
-      model: "gpt-4o", // Le meilleur modèle pour analyser des images
+      model: "gpt-4o",
       messages: [
         {
           role: "system",
@@ -34,17 +37,16 @@ export async function POST(req: Request) {
           ]
         }
       ],
-      response_format: { type: "json_object" } // Force OpenAI à répondre en JSON parfait
+      response_format: { type: "json_object" }
     });
 
-    // On renvoie le résultat de l'IA au frontend
     const resultText = response.choices[0].message.content;
     const parsedResult = JSON.parse(resultText || '{"expenses": []}');
     
     return NextResponse.json(parsedResult);
 
   } catch (error) {
-    console.error("Erreur Scanner IA:", error);
+    console.error("Erreur Scanner IA:", (error as Error).message);
     return NextResponse.json({ error: "Erreur lors de l'analyse du document." }, { status: 500 });
   }
 }

@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { supabase } from "@/lib/supabaseClient";
+import { formatNumber as formatPrice } from "@/lib/formatters";
 
 // --- CHARTE GRAPHIQUE AGENCE PATRIM ---
 const COLORS = {
@@ -69,7 +70,6 @@ const DEFAULT_DATA: EstimationData = {
 
 const DPE_COLORS: Record<string, string> = { "A": "#00A06D", "B": "#52B153", "C": "#A5CC74", "D": "#F3E724", "E": "#F0B328", "F": "#EB8235", "G": "#D7221F" };
 
-const formatPrice = (price: number) => new Intl.NumberFormat('fr-FR').format(price);
 const getPriceSizeClass = (price: number) => {
     const len = formatPrice(price).length;
     if (len >= 10) return "text-2xl";

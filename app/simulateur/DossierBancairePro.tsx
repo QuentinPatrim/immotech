@@ -100,7 +100,7 @@ interface DossierData {
 
 interface Props {
   data: DossierData | null;
-  refProp: React.RefObject<HTMLDivElement>;
+  refProp: React.RefObject<HTMLDivElement | null>;
 }
 
 // ─── Sous-composants PDF ────────────────────────────────────

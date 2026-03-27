@@ -6,6 +6,7 @@ import { Check, X, Zap, Shield, Crown, ArrowLeft, Star, Loader2 } from "lucide-r
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
 import { supabase } from "@/lib/supabaseClient";
+import { getAuthHeaders } from "@/lib/apiHelpers";
 
 export default function PricingPage() {
   const [loading, setLoading] = useState(false);
@@ -24,12 +25,12 @@ export default function PricingPage() {
         }
 
         // 2. Appel à l'API interne pour créer la session Stripe
+        const authHeaders = await getAuthHeaders();
         const response = await fetch("/api/stripe/checkout", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", ...authHeaders },
             body: JSON.stringify({ 
-                email: session.user.email, 
-                userId: session.user.id 
+                email: session.user.email
             })
         });
 

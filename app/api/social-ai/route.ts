@@ -1,9 +1,13 @@
 import { NextResponse } from 'next/server';
 import OpenAI from 'openai';
+import { authenticateRequest } from '@/lib/authGuard';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 export async function POST(req: Request) {
+  const auth = await authenticateRequest(req);
+  if (auth.error) return auth.error;
+
   try {
     const { topic, theme, context, pdfSource } = await req.json();
 
@@ -72,7 +76,7 @@ export async function POST(req: Request) {
     return NextResponse.json(JSON.parse(response.choices[0].message.content || "{}"));
 
   } catch (error) {
-    console.error(error);
+    console.error("Erreur IA:", (error as Error).message);
     return NextResponse.json({ error: "Erreur IA" }, { status: 500 });
   }
 }
