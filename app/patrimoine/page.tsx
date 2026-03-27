@@ -146,7 +146,7 @@ function AddAssetModal({ open, onClose, onAdd }: { open: boolean; onClose: () =>
         const res = await fetch(`/api/search?q=${encodeURIComponent(val)}`);
         const data = await res.json();
         setSearchResults(data.results || []);
-        setShowResults(data.results?.length > 0);
+        setShowResults((data.results && data.results.length > 0) || false);
       } catch { setSearchResults([]); }
       setSearching(false);
     }, 350);
@@ -452,7 +452,7 @@ function AssetCard({ asset, onRemove, onUpdate, onRefreshPrice }: {
               <span className="text-sm font-semibold text-white truncate leading-tight">{asset.name}</span>
               {asset.ticker && <span className="text-[9px] font-mono text-zinc-600 shrink-0">{asset.ticker}</span>}
               {ec && asset.envelope && (
-                <span className="flex items-center gap-1.5 text-[9px] px-2 py-0.5 rounded" style={{ backgroundColor: ec.bg, color: ec.text }}>
+                <span className="flex items-center gap-1 text-[9px] font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: ec.bg, color: ec.text }}>
                   <span className="w-1 h-1 rounded-full" style={{ backgroundColor: ec.dot }} />{asset.envelope}
                 </span>
               )}
@@ -464,7 +464,7 @@ function AssetCard({ asset, onRemove, onUpdate, onRefreshPrice }: {
             ) : null}
           </div>
           {gainPct !== null && (
-            <div className="text-xs font-bold tabular-nums" >
+            <div className={`text-right ${gainPct >= 0 ? "text-emerald-400" : "text-red-400"}`}>
               <p className="text-xs font-bold tabular-nums">{gainPct >= 0 ? "+" : ""}{gainPct.toFixed(2)}%</p>
               {gainAbs !== null && <p className="text-[10px] opacity-60 tabular-nums">{gainAbs > 0 ? "+" : ""}{fmt(gainAbs)}</p>}
             </div>
@@ -500,9 +500,9 @@ function AssetCard({ asset, onRemove, onUpdate, onRefreshPrice }: {
                 { label: "Prix actuel (€)", val: editPrice, set: setEditPrice, green: true },
               ].map(f => (
                 <div key={f.label}>
-                  <label className="text-[9px] font-bold uppercase block mb-1">{f.label}</label>
+                  <label className="text-[9px] font-bold text-zinc-500 uppercase block mb-1">{f.label}</label>
                   <Input type="number" value={f.val} onChange={e => f.set(e.target.value)}
-                    className="h-9 rounded-lg text-xs bg-black/40 border-white/10 text-white w-full" />
+                    className={`h-9 rounded-lg text-xs w-full ${f.green ? "bg-emerald-950/30 border-emerald-500/30 text-emerald-400 font-bold" : "bg-black/40 border-white/10 text-white"}`} />
                 </div>
               ))}
               {editQty && editPrice && (
@@ -566,10 +566,10 @@ export default function PatrimoinePage() {
 
       if (error) console.error("fetchData error:", error.message);
 
-      if (data?.assets_json?.length > 0) {
+      if (data && data.assets_json && data.assets_json.length > 0) {
         setAssets(data.assets_json);
         calcTotals(data.assets_json);
-        if (data.net_worth_history?.length > 0) {
+        if (data.net_worth_history && data.net_worth_history.length > 0) {
           setNetWorthHistory(data.net_worth_history);
           netWorthHistoryRef.current = data.net_worth_history;
         }
@@ -722,7 +722,7 @@ export default function PatrimoinePage() {
 
       const res = await fetch("/api/scan-patrimoine", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ imageBase64: b64 }) });
       const data = await res.json();
-      if (data.assets?.length > 0) {
+      if (data && data.assets && data.assets.length > 0) {
         setScannedItems(data.assets.map((item: any, i: number) => ({ id: `ai-${Date.now()}-${i}`, name: item.name || "Actif IA", value: Number(item.value) || 0, type: (item.type as AssetType) || "Autre", quantity: item.quantity ? Number(item.quantity) : undefined, unitPrice: item.unitPrice ? Number(item.unitPrice) : undefined })));
         setShowValidation(true);
       } else alert("Aucun actif détecté.");
