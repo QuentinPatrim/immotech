@@ -28,6 +28,8 @@ const fileToBase64 = (file: File): Promise<string> => {
 
 // ==========================================
 // 1. WIZARD D'INSTALLATION (NOUVEL UTILISATEUR)
+// NOTE: Ce composant est défini ICI (inline) et non importé depuis BudgetWizard.tsx
+// pour garantir que les BudgetItem ont bien { id, category } dès la création.
 // ==========================================
 interface BudgetWizardProps {
     onComplete: () => void;
@@ -295,6 +297,7 @@ export default function BudgetPage() {
     const [currentCash, setCurrentCash] = useState(0);
     const [loading, setLoading] = useState(true);
     const [historyData, setHistoryData] = useState<any[]>([]);
+    const [isDirty, setIsDirty] = useState(false);
 
     const [isScanning, setIsScanning] = useState(false);
     const [scannedItems, setScannedItems] = useState<BudgetItem[]>([]);
@@ -365,6 +368,7 @@ export default function BudgetPage() {
             } else { setIncome(0); setExpenses([]); }
         }
         fetchHistoryGraph(user.id);
+        setIsDirty(false);
         setLoading(false);
     };
 
@@ -433,6 +437,7 @@ export default function BudgetPage() {
         
         triggerHaptic("success");
         setIsExistingMonth(true);
+        setIsDirty(false);
         
         const recurringExpenses = expenses.filter(e => e.category === 'BESOIN' || e.category === 'EPARGNE');
         
@@ -469,6 +474,7 @@ export default function BudgetPage() {
         }
 
         fetchHistoryGraph(user.id);
+        setIsDirty(false);
         setLoading(false);
     };
 
@@ -478,14 +484,16 @@ export default function BudgetPage() {
         const targetVal = target ? parseFloat(target) : undefined;
         const currentMonthStr = new Date(Date.UTC(selectedDate.getFullYear(), selectedDate.getMonth(), 1)).toISOString().split('T')[0];
         setExpenses([...expenses, { id: Date.now().toString(), name, amount: val, category, target: targetVal, startMonth: currentMonthStr }]);
+        setIsDirty(true);
     };
 
     const updateAmount = (id: string, newAmount: string) => {
         const val = parseFloat(newAmount);
         setExpenses(expenses.map(e => e.id === id ? { ...e, amount: isNaN(val) ? 0 : val } : e));
+        setIsDirty(true);
     };
 
-    const removeExpense = (id: string) => setExpenses(expenses.filter(e => e.id !== id));
+    const removeExpense = (id: string) => { setExpenses(expenses.filter(e => e.id !== id)); setIsDirty(true); };
 
     const triggerScanner = () => fileInputRef.current?.click();
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -620,11 +628,14 @@ export default function BudgetPage() {
                                         <span className="bg-emerald-500 text-black px-1.5 py-0.5 rounded-sm">ÉTAPE 1</span> Revenus du mois <HelpTooltip text="Votre salaire net et toutes autres rentrées d'argent régulières."/>
                                     </div>
                                     <div className="flex items-center gap-2 bg-black/50 px-3 md:px-4 py-1.5 md:py-2 rounded-lg md:rounded-xl border border-white/10 relative shrink-0">
-                                        <Input type="number" value={income === 0 ? "" : income} onChange={(e) => setIncome(parseFloat(e.target.value))} className="h-8 md:h-10 w-24 md:w-32 bg-transparent border-none text-right text-xl md:text-2xl font-black text-white p-0 pr-5 md:pr-6 focus-visible:ring-0" />
+                                        <Input type="number" value={income === 0 ? "" : income} onChange={(e) => { setIncome(parseFloat(e.target.value)); setIsDirty(true); }} className="h-8 md:h-10 w-24 md:w-32 bg-transparent border-none text-right text-xl md:text-2xl font-black text-white p-0 pr-5 md:pr-6 focus-visible:ring-0" />
                                         <span className="text-zinc-500 absolute right-2 md:right-4 top-1/2 -translate-y-1/2 pointer-events-none text-sm md:text-lg">€</span>
                                     </div>
                                 </div>
-                                <Button onClick={saveCurrentMonth} className="w-full sm:w-auto h-12 md:h-14 px-6 md:px-8 bg-gradient-to-r from-emerald-500 to-emerald-400 hover:scale-105 active:scale-95 text-black font-black uppercase tracking-widest rounded-xl md:rounded-2xl shadow-[0_0_20px_rgba(16,185,129,0.3)] text-xs md:text-sm shrink-0 transition-all"><Save size={16} className="mr-2"/> Sauvegarder</Button>
+                                <Button onClick={saveCurrentMonth} className={`w-full sm:w-auto h-12 md:h-14 px-6 md:px-8 font-black uppercase tracking-widest rounded-xl md:rounded-2xl text-xs md:text-sm shrink-0 transition-all hover:scale-105 active:scale-95 ${isDirty ? 'bg-gradient-to-r from-yellow-500 to-orange-400 text-black shadow-[0_0_20px_rgba(234,179,8,0.4)]' : 'bg-gradient-to-r from-emerald-500 to-emerald-400 text-black shadow-[0_0_20px_rgba(16,185,129,0.3)]'}`}>
+                                    <Save size={16} className="mr-2"/>
+                                    {isDirty ? "Sauvegarder *" : "Sauvegardé"}
+                                </Button>
                             </div>
                         </div>
 
@@ -851,9 +862,10 @@ export default function BudgetPage() {
                                                 <XAxis dataKey="name" stroke="#52525b" fontSize={10} tickLine={false} axisLine={false} />
                                                 <RechartsTooltip cursor={{fill: '#ffffff05'}} contentStyle={{ backgroundColor: 'rgba(26,26,30,1)', backdropFilter: 'blur(10px)', borderColor: 'rgba(255,255,255,0.1)', borderRadius: '12px', fontSize:'12px', color: '#fff', boxShadow: '0 20px 40px rgba(0,0,0,0.8)' }} itemStyle={{ color: '#fff' }} formatter={(val: any) => formatEuro(val)}/>
                                                 <Legend iconType="circle" wrapperStyle={{ fontSize: '9px', textTransform: 'uppercase', fontWeight: 'bold' }} />
-                                                <Bar dataKey="Revenus" fill="#e4e4e7" radius={[4, 4, 0, 0]} barSize={8} />
-                                                <Bar dataKey="Besoins" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={8} />
-                                                <Bar dataKey="Epargne" fill="#a855f7" radius={[4, 4, 0, 0]} barSize={8} />
+                                                <Bar dataKey="Revenus" fill="#e4e4e7" radius={[4, 4, 0, 0]} barSize={7} />
+                                                <Bar dataKey="Besoins" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={7} />
+                                                <Bar dataKey="Loisirs" fill="#eab308" radius={[4, 4, 0, 0]} barSize={7} />
+                                                <Bar dataKey="Epargne" fill="#a855f7" radius={[4, 4, 0, 0]} barSize={7} />
                                             </BarChart>
                                         </ResponsiveContainer>
                                     </div>

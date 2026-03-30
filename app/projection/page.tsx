@@ -686,7 +686,7 @@ function RapportPatrimonialPDF({ refProp, client, params, points, profile, tmi, 
           <Section title="Comprendre chaque enveloppe" color="#0d9488" />
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             {enveloppes.map(env => (
-              <div key={env.id} style={{ borderLeft: `4px solid ${env.color}`, borderRadius: "0 8px 8px 0", padding: "12px 14px", background: "#f8fafc", border: "1px solid #e2e8f0", borderLeft: `4px solid ${env.color}` }}>
+              <div key={env.id} style={{ border: "1px solid #e2e8f0", borderLeft: `4px solid ${env.color}`, borderRadius: "0 8px 8px 0", padding: "12px 14px", background: "#f8fafc" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
                   <p style={{ fontSize: 12, fontWeight: 900, color: env.color, margin: 0 }}>{env.label}</p>
                   <p style={{ fontSize: 12, fontWeight: 900, color: "#0f172a", margin: 0 }}>{fmtE(env.val)}</p>
