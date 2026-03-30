@@ -4,18 +4,23 @@ import { useEffect, useState, useCallback } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { TrendingUp, Wallet, ArrowUpRight, Lock, Building, PieChart, Calculator, Activity, Target, Settings, Sparkles } from "lucide-react";
+import {
+  TrendingUp, Wallet, ArrowUpRight, Building, PieChart,
+  Calculator, Target, Settings, Sparkles, MessageSquare, Activity,
+  Lightbulb, ChevronRight,
+} from "lucide-react";
 import AnimatedNumber from "@/components/AnimatedNumber";
 import Sidebar from "@/components/Sidebar";
-import { NexusLogo } from "@/components/NexusLogo"; 
+import { NexusLogo } from "@/components/NexusLogo";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/lib/supabaseClient";
-import OnboardingWizard from "@/components/OnboardingWizard"; 
-import NexusChat from "@/components/NexusChat"; 
-import { OnboardingModal } from "@/components/OnboardingModal"; 
+import OnboardingWizard from "@/components/OnboardingWizard";
+import { OnboardingModal } from "@/components/OnboardingModal";
 
-// Helper pour formater les chiffres envoyés à l'IA
-const formatEuro = (val: number) => new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(val);
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const formatEuro = (val: number) =>
+  new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(val);
 
 const getNextMilestone = (current: number) => {
   if (current < 10000) return 10000;
@@ -27,24 +32,127 @@ const getNextMilestone = (current: number) => {
   return Math.ceil((current + 1) / 1000000) * 1000000;
 };
 
+// Génère un conseil contextuel selon le taux d'épargne
+const getInsight = (savingsRate: number, totalNetWorth: number, monthlySavings: number) => {
+  if (savingsRate >= 50) return {
+    label: "Excellent taux d'épargne",
+    text: `Avec ${savingsRate.toFixed(0)}% d'épargne, vous faites partie des 5% les plus performants. Pensez à diversifier vers le PEA ou l'assurance-vie.`,
+    color: "#10b981",
+    bg: "bg-emerald-500/8",
+    border: "border-emerald-500/15",
+  };
+  if (savingsRate >= 30) return {
+    label: "Très bonne capacité d'épargne",
+    text: `${formatEuro(monthlySavings)}/mois investis régulièrement pendant 10 ans = patrimoine considérable grâce aux intérêts composés.`,
+    color: "#3b82f6",
+    bg: "bg-blue-500/8",
+    border: "border-blue-500/15",
+  };
+  if (savingsRate >= 15) return {
+    label: "Taux d'épargne correct",
+    text: `L'objectif recommandé est 20%. Identifier 2-3 postes de dépenses à réduire pourrait vous faire économiser ${formatEuro(monthlySavings * 0.3)} de plus par mois.`,
+    color: "#eab308",
+    bg: "bg-yellow-500/8",
+    border: "border-yellow-500/15",
+  };
+  if (totalNetWorth > 0) return {
+    label: "Optimisez votre budget",
+    text: "Votre patrimoine est constitué — concentrez-vous maintenant sur votre flux mensuel. La règle 50/30/20 peut vous aider à structurer vos dépenses.",
+    color: "#f97316",
+    bg: "bg-orange-500/8",
+    border: "border-orange-500/15",
+  };
+  return {
+    label: "Commencez à investir",
+    text: "Même 50€/mois investis dès maintenant changent radicalement la trajectoire de votre patrimoine sur 20 ans.",
+    color: "#a855f7",
+    bg: "bg-purple-500/8",
+    border: "border-purple-500/15",
+  };
+};
+
+// ─── Barre segmentée ──────────────────────────────────────────────────────────
+
+type Segment = { label: string; value: number; color: string };
+
+function AllocationBar({ segments, total }: { segments: Segment[]; total: number }) {
+  const active = segments.filter((s) => s.value > 0);
+  if (active.length === 0 || total === 0) return null;
+  return (
+    <div className="w-full">
+      <div className="flex gap-px mb-2">
+        {active.map((s) => {
+          const pct = (s.value / total) * 100;
+          return (
+            <div key={s.label} style={{ width: `${pct}%` }} className="overflow-hidden shrink-0">
+              {pct > 8 && (
+                <div>
+                  <span className="text-[9px] font-bold uppercase tracking-widest block" style={{ color: s.color }}>{s.label}</span>
+                  <span className="text-[11px] font-black text-white tabular-nums">{pct.toFixed(0)}%</span>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <div className="flex h-1 w-full rounded-full overflow-hidden gap-px">
+        {active.map((s) => {
+          const pct = (s.value / total) * 100;
+          return (
+            <motion.div
+              key={s.label}
+              initial={{ scaleX: 0 }}
+              animate={{ scaleX: 1 }}
+              transition={{ duration: 1.2, ease: "easeOut", delay: 0.45 }}
+              style={{ width: `${pct}%`, backgroundColor: s.color, transformOrigin: "left" }}
+              className="h-full rounded-sm"
+            />
+          );
+        })}
+      </div>
+      <div className="flex flex-wrap gap-x-4 gap-y-1 mt-3">
+        {active.map((s) => (
+          <div key={s.label} className="flex items-center gap-1.5">
+            <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: s.color }} />
+            <span className="text-[10px] text-zinc-400 uppercase tracking-widest font-bold">{s.label}</span>
+            <span className="text-[10px] text-zinc-600 tabular-nums">{formatEuro(s.value)}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Modules ──────────────────────────────────────────────────────────────────
+
+const MODULES = [
+  { href: "/projection", label: "Projection", sub: "Futur & intérêts composés", icon: TrendingUp, accent: "#a855f7", hero: true },
+  { href: "/simulateur", label: "Simulateur Immo", sub: "Rendement locatif & fiscal", icon: Calculator, accent: "#3b82f6", hero: false },
+  { href: "/budget", label: "Budget", sub: "Flux mensuels", icon: PieChart, accent: "#eab308", hero: false },
+  { href: "/patrimoine", label: "Patrimoine", sub: "Vos actifs", icon: Wallet, accent: "#10b981", hero: false },
+  { href: "/chat", label: "CFO IA", sub: "Chat patrimonial", icon: MessageSquare, accent: "#6366f1", hero: false },
+];
+
+// ─── Composant principal ──────────────────────────────────────────────────────
+
 export default function Dashboard() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [userName, setUserName] = useState("Investisseur");
-  
-  // États Financiers
+
   const [financialWealth, setFinancialWealth] = useState(0);
   const [realEstateWealth, setRealEstateWealth] = useState(0);
   const [totalNetWorth, setTotalNetWorth] = useState(0);
   const [monthlySavings, setMonthlySavings] = useState(0);
   const [savingsRate, setSavingsRate] = useState(0);
   const [milestone, setMilestone] = useState(10000);
-  
-  // États UX / Premium
+  const [cashWealth, setCashWealth] = useState(0);
+  const [cryptoWealth, setCryptoWealth] = useState(0);
+  const [stockWealth, setStockWealth] = useState(0);
+  const [monthlyIncome, setMonthlyIncome] = useState(0);
+
   const [isNewUser, setIsNewUser] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
-  const [isPro, setIsPro] = useState(false); 
-  const [aiContext, setAiContext] = useState<any>(null); 
 
   const fetchData = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -52,287 +160,416 @@ export default function Dashboard() {
 
     if (session?.user) {
       if (session.user.user_metadata?.full_name) {
-          setUserName(session.user.user_metadata.full_name.split(' ')[0]);
+        setUserName(session.user.user_metadata.full_name.split(" ")[0]);
       }
-
       const hasCompletedOnboarding = session.user.user_metadata?.onboarding_complete === true;
       setShowOnboarding(!hasCompletedOnboarding);
 
       const { data: profile } = await supabase
-        .from('profiles')
-        .select('is_pro, assets_json, budget_json')
-        .eq('id', session.user.id)
-        .maybeSingle();
-      
+        .from("profiles").select("is_pro, assets_json, budget_json")
+        .eq("id", session.user.id).maybeSingle();
+
       let hasAssets = false;
       let total = 0;
-      let savings = 0;
-
       let currentIncome = 0;
       let currentExpenses = 0;
       let hasBudget = false;
-
-      // Variables pour construire le cerveau de l'IA
-      let cash = 0;
-      let crypto = 0;
-      let stock = 0;
-      let financial = 0; 
-      let realEstate = 0;
+      let cash = 0, crypto = 0, stock = 0, financial = 0, realEstate = 0;
 
       if (profile) {
-          setIsPro(profile.is_pro === true);
-
-          if (Array.isArray(profile.assets_json) && profile.assets_json.length > 0) {
-              hasAssets = true;
-              profile.assets_json.forEach((asset: any) => {
-                  const val = Number(asset.value) || 0;
-                  if (asset.type === "Immobilier") { 
-                      realEstate += val; 
-                  } else { 
-                      financial += val; 
-                      if (asset.type === "Cash") cash += val;
-                      if (asset.type === "Crypto") crypto += val;
-                      if (asset.type === "Bourse") stock += val;
-                  }
-              });
-          }
-          total = financial + realEstate;
-          setFinancialWealth(financial); 
-          setRealEstateWealth(realEstate); 
-          setTotalNetWorth(total); 
-          setMilestone(getNextMilestone(total));
+        if (Array.isArray(profile.assets_json) && profile.assets_json.length > 0) {
+          hasAssets = true;
+          profile.assets_json.forEach((asset: { type: string; value: number }) => {
+            const val = Number(asset.value) || 0;
+            if (asset.type === "Immobilier") { realEstate += val; }
+            else {
+              financial += val;
+              if (asset.type === "Cash") cash += val;
+              if (asset.type === "Crypto") crypto += val;
+              if (asset.type === "Bourse") stock += val;
+            }
+          });
+        }
+        total = financial + realEstate;
+        setFinancialWealth(financial);
+        setRealEstateWealth(realEstate);
+        setTotalNetWorth(total);
+        setCashWealth(cash);
+        setCryptoWealth(crypto);
+        setStockWealth(stock);
+        setMilestone(getNextMilestone(total));
       }
 
       const now = new Date();
-      const startOfMonth = new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1)).toISOString().split('T')[0];
-      const { data: currentMonthHistory } = await supabase.from('monthly_history').select('*').eq('user_id', session.user.id).eq('month', startOfMonth).maybeSingle();
+      const startOfMonth = new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1)).toISOString().split("T")[0];
+      const { data: currentMonthHistory } = await supabase
+        .from("monthly_history").select("*")
+        .eq("user_id", session.user.id).eq("month", startOfMonth).maybeSingle();
 
       if (currentMonthHistory) {
-          currentIncome = Number(currentMonthHistory.income) || 0;
-          currentExpenses = Number(currentMonthHistory.expenses) || 0;
-          hasBudget = true;
-      } else if (profile && profile.budget_json) {
-          const b = profile.budget_json as any;
-          currentIncome = Number(b.income) || 0;
-          if (Array.isArray(b.details)) {
-              currentExpenses = b.details.reduce((acc: number, item: any) => acc + (Number(item.amount) || 0), 0);
-          } else {
-              currentExpenses = Number(b.expenses) || 0;
-          }
-          if (currentIncome > 0) hasBudget = true;
+        currentIncome = Number(currentMonthHistory.income) || 0;
+        currentExpenses = Number(currentMonthHistory.expenses) || 0;
+        hasBudget = true;
+      } else if (profile?.budget_json) {
+        const b = profile.budget_json as { income?: number; expenses?: number; details?: Array<{ amount: number }> };
+        currentIncome = Number(b.income) || 0;
+        if (Array.isArray(b.details)) {
+          currentExpenses = b.details.reduce((acc, item) => acc + (Number(item.amount) || 0), 0);
+        } else {
+          currentExpenses = Number(b.expenses) || 0;
+        }
+        if (currentIncome > 0) hasBudget = true;
       }
 
-      savings = Math.max(0, currentIncome - currentExpenses);
+      const savings = Math.max(0, currentIncome - currentExpenses);
       setMonthlySavings(savings);
+      setMonthlyIncome(currentIncome);
       setSavingsRate(currentIncome > 0 ? (savings / currentIncome) * 100 : 0);
 
-      if (profile) {
-          setAiContext({
-            patrimoine: {
-              total: formatEuro(total),
-              repartition: `Immobilier ${total > 0 ? ((realEstate/total)*100).toFixed(0) : 0}%, Bourse ${total > 0 ? ((stock/total)*100).toFixed(0) : 0}%, Crypto ${total > 0 ? ((crypto/total)*100).toFixed(0) : 0}%, Cash ${total > 0 ? ((cash/total)*100).toFixed(0) : 0}%`,
-              liste_des_actifs: profile.assets_json || [] 
-            },
-            budget_mensuel: {
-              revenus_totaux: formatEuro(currentIncome),
-              depenses_totales: formatEuro(currentExpenses),
-              cashflow_epargne: formatEuro(savings),
-              details_des_depenses: (profile.budget_json as any)?.details || []
-            }
-          });
-      }
-
-      if (hasCompletedOnboarding && !hasAssets && !hasBudget) {
-          setIsNewUser(true);
-      } else {
-          setIsNewUser(false);
-      }
+      if (hasCompletedOnboarding && !hasAssets && !hasBudget) setIsNewUser(true);
+      else setIsNewUser(false);
     }
     setLoading(false);
   }, [router]);
 
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+  useEffect(() => { fetchData(); }, [fetchData]);
 
   if (loading) return <div className="min-h-screen bg-[#050505]" />;
 
+  const segments: Segment[] = [
+    { label: "Immo", value: realEstateWealth, color: "#3b82f6" },
+    { label: "Bourse", value: stockWealth, color: "#10b981" },
+    { label: "Cash", value: cashWealth, color: "#eab308" },
+    { label: "Crypto", value: cryptoWealth, color: "#a855f7" },
+  ];
+
+  const milestoneProgress = milestone > 0 ? Math.min(100, (totalNetWorth / milestone) * 100) : 0;
+  const insight = getInsight(savingsRate, totalNetWorth, monthlySavings);
+  const heroModule = MODULES[0];
+  const smallModules = MODULES.slice(1);
+
+  // Projection simple : patrimoine dans 5 ans avec DCA mensuel à 6%/an
+  const projectedWealth5y = Math.round(
+    totalNetWorth * Math.pow(1.06, 5) +
+    monthlySavings * ((Math.pow(1.06, 5) - 1) / 0.06) * 12
+  );
+
+  const todayLabel = new Date()
+    .toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })
+    .replace(/^\w/, (c) => c.toUpperCase());
+
+  // ─── Render ──────────────────────────────────────────────────────────────────
+
   return (
-    <div className="min-h-screen bg-[#050505] text-zinc-100 font-sans selection:bg-emerald-500/30 selection:text-emerald-200 relative">
-      
+    <div className="min-h-screen bg-[#050505] text-zinc-100 font-sans selection:bg-emerald-500/30 selection:text-white">
       <OnboardingModal />
       <Sidebar />
       {showOnboarding && <OnboardingWizard onFinish={() => { setShowOnboarding(false); fetchData(); }} />}
 
-      <main className="md:ml-64 flex-1 w-auto max-w-full p-4 pt-6 pb-24 md:p-8 relative overflow-hidden">
-        
-        <div className="fixed top-0 left-64 w-[500px] h-[500px] bg-emerald-900/10 rounded-full blur-[120px] pointer-events-none"></div>
-        <div className="fixed bottom-0 right-0 w-[500px] h-[500px] bg-blue-900/10 rounded-full blur-[120px] pointer-events-none"></div>
+      <div className="fixed top-0 left-0 right-0 h-[300px] bg-gradient-to-b from-emerald-950/15 to-transparent pointer-events-none z-0" />
 
-        <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} className="max-w-[1800px] mx-auto space-y-8 md:space-y-12 relative z-10">
-          
-          <header className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 border-l-4 border-emerald-500 pl-4 md:pl-6 py-2">
-            <div>
-                <div className="flex items-center gap-3 mb-5 md:hidden">
-                    <div className="w-12 h-12 min-w-[3rem] min-h-[3rem]"><NexusLogo className="w-full h-full" /></div>
-                    <span className="text-2xl font-black text-white tracking-tighter uppercase font-sans opacity-90">NEXUS</span>
-                </div>
-                <p className="text-zinc-500 text-[10px] md:text-xs font-bold uppercase tracking-[0.2em] mb-1 md:mb-2">VUE D'ENSEMBLE</p>
-                <h1 className="text-3xl sm:text-4xl md:text-6xl font-black text-white tracking-tighter uppercase break-words">
-                    Bonjour, <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-teal-500">{userName}</span>
+      <main className="md:ml-64 px-4 pt-6 pb-28 md:px-10 md:pt-10 relative z-10">
+        <div className="max-w-4xl mx-auto space-y-4">
+
+          {/* ── HEADER ─────────────────────────────────────────────────────── */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, ease: "easeOut" }}
+            className="flex items-center justify-between"
+          >
+            {/* Gauche : logo + greeting fusionnés — adaptatif mobile/desktop */}
+            <div className="flex items-center gap-3">
+              {/* Logo visible sur mobile uniquement */}
+              <div className="w-8 h-8 shrink-0 md:hidden">
+                <NexusLogo className="w-full h-full" />
+              </div>
+              <div>
+                {/* Desktop */}
+                <p className="hidden md:block text-[10px] text-zinc-700 font-mono uppercase tracking-[0.22em] mb-0.5">
+                  {todayLabel}
+                </p>
+                <h1 className="hidden md:block text-2xl font-black text-white tracking-tighter">
+                  Bonjour, <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-teal-400">{userName}</span>
                 </h1>
+                {/* Mobile */}
+                <p className="md:hidden text-sm text-zinc-400">
+                  Bonjour <span className="text-white font-black">{userName}</span>
+                </p>
+              </div>
             </div>
-            
-            <div className="flex items-center gap-3 md:gap-4 w-full md:w-auto">
-                {!isNewUser && (
-                    <div className="bg-zinc-900/50 backdrop-blur-md p-3 md:p-4 rounded-[20px] md:rounded-2xl border border-white/5 shadow-xl flex-1 md:flex-none">
-                        <p className="text-[9px] md:text-[10px] text-zinc-400 font-bold uppercase tracking-wider mb-1 flex items-center gap-2"><Wallet size={12} className="text-emerald-500"/> Patrimoine Net</p>
-                        <div className="text-2xl md:text-3xl font-black text-white tracking-tight"><AnimatedNumber value={totalNetWorth}/></div>
-                    </div>
-                )}
-                <Link href="/parametres" className="h-14 w-14 md:h-20 md:w-20 rounded-[20px] md:rounded-2xl bg-zinc-900/50 border border-white/5 flex shrink-0 items-center justify-center text-zinc-400 hover:text-white hover:bg-zinc-800 transition-all shadow-xl backdrop-blur-md group">
-                    <Settings className="w-6 h-6 md:w-7 md:h-7 group-hover:rotate-90 transition-transform duration-500"/>
-                </Link>
-            </div>
-          </header>
+
+            {/* Settings */}
+            <Link
+              href="/parametres"
+              className="h-10 w-10 rounded-2xl bg-zinc-900/70 border border-white/5 flex items-center justify-center text-zinc-600 hover:text-white hover:bg-zinc-800/80 transition-all group shrink-0"
+            >
+              <Settings size={15} className="group-hover:rotate-90 transition-transform duration-500" />
+            </Link>
+          </motion.div>
 
           {isNewUser ? (
-              // =======================================================
-              // NOUVEL ÉTAT "VIDE" - GUIDE DE DÉMARRAGE INTUITIF
-              // =======================================================
-              <div className="mt-8 md:mt-16 max-w-5xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-700">
-                  <div className="bg-zinc-900/40 border border-white/10 rounded-[32px] md:rounded-[40px] p-6 md:p-12 backdrop-blur-xl shadow-2xl relative overflow-hidden">
-                      
-                      {/* Entête du guide */}
-                      <div className="flex flex-col items-center text-center mb-10 md:mb-14 relative z-10">
-                          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] md:text-xs font-bold uppercase tracking-widest mb-6">
-                              <Sparkles size={16} /> Étape finale
-                          </div>
-                          <h2 className="text-3xl md:text-5xl font-black text-white mb-4 tracking-tight">Activez votre moteur financier.</h2>
-                          <p className="text-zinc-400 text-base md:text-lg max-w-xl mx-auto font-medium leading-relaxed">
-                              Nexus a besoin de connaître votre point de départ pour calculer votre Valeur Nette et projeter votre avenir. Par quoi voulez-vous commencer ?
-                          </p>
-                      </div>
-
-                      {/* Les 2 missions */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8 relative z-10">
-                          
-                          {/* Carte 1 : Patrimoine */}
-                          <Link href="/patrimoine" className="group">
-                              <div className="h-full p-8 md:p-10 rounded-[24px] bg-black/40 border border-white/10 hover:border-emerald-500/50 transition-all duration-300 cursor-pointer relative overflow-hidden flex flex-col items-center text-center shadow-lg">
-                                  <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 blur-[50px] rounded-full group-hover:bg-emerald-500/20 transition-all"></div>
-                                  <div className="h-20 w-20 mb-6 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-400 border border-emerald-500/20 group-hover:scale-110 transition-transform duration-500 shadow-[0_0_30px_rgba(16,185,129,0.1)]">
-                                      <Wallet size={36} strokeWidth={1.5} />
-                                  </div>
-                                  <h3 className="text-2xl font-black text-white mb-3">1. Mon Patrimoine</h3>
-                                  <p className="text-zinc-400 text-sm mb-8 flex-1 leading-relaxed">
-                                      Comptes courants, livrets, bourse, immobilier ou crypto. Connectez ou déclarez ce que vous possédez.
-                                  </p>
-                                  <Button className="w-full bg-emerald-500 hover:bg-emerald-400 text-black font-bold rounded-2xl h-14 text-base transition-all shadow-[0_0_20px_rgba(16,185,129,0.2)] hover:shadow-[0_0_30px_rgba(16,185,129,0.4)]">
-                                      Ajouter mes actifs <ArrowUpRight className="ml-2" size={20}/>
-                                  </Button>
-                              </div>
-                          </Link>
-
-                          {/* Carte 2 : Budget */}
-                          <Link href="/budget" className="group">
-                              <div className="h-full p-8 md:p-10 rounded-[24px] bg-black/40 border border-white/10 hover:border-yellow-500/50 transition-all duration-300 cursor-pointer relative overflow-hidden flex flex-col items-center text-center shadow-lg">
-                                  <div className="absolute top-0 left-0 w-32 h-32 bg-yellow-500/10 blur-[50px] rounded-full group-hover:bg-yellow-500/20 transition-all"></div>
-                                  <div className="h-20 w-20 mb-6 rounded-full bg-yellow-500/10 flex items-center justify-center text-yellow-500 border border-yellow-500/20 group-hover:scale-110 transition-transform duration-500 shadow-[0_0_30px_rgba(234,179,8,0.1)]">
-                                      <PieChart size={36} strokeWidth={1.5} />
-                                  </div>
-                                  <h3 className="text-2xl font-black text-white mb-3">2. Mes Revenus</h3>
-                                  <p className="text-zinc-400 text-sm mb-8 flex-1 leading-relaxed">
-                                      Définissez votre salaire et vos revenus mensuels pour calculer instantanément votre capacité d'épargne.
-                                  </p>
-                                  <Button className="w-full bg-yellow-500 hover:bg-yellow-400 text-black font-bold rounded-2xl h-14 text-base transition-all shadow-[0_0_20px_rgba(234,179,8,0.2)] hover:shadow-[0_0_30px_rgba(234,179,8,0.4)]">
-                                      Configurer mon budget <ArrowUpRight className="ml-2" size={20}/>
-                                  </Button>
-                              </div>
-                          </Link>
-
-                      </div>
+            /* ── ONBOARDING ──────────────────────────────────────────────── */
+            <motion.div
+              initial={{ opacity: 0, y: 14 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, ease: "easeOut", delay: 0.1 }}
+              className="mt-6"
+            >
+              <div className="bg-zinc-900/50 border border-white/5 rounded-[28px] p-8 md:p-12 relative overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-br from-emerald-950/20 to-transparent pointer-events-none" />
+                <div className="relative z-10 flex flex-col items-center text-center mb-8">
+                  <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-bold uppercase tracking-widest mb-5">
+                    <Sparkles size={11} /> Étape finale
                   </div>
+                  <h2 className="text-2xl md:text-3xl font-black text-white mb-2 tracking-tight">Activez votre tableau de bord.</h2>
+                  <p className="text-zinc-500 text-sm max-w-sm leading-relaxed">
+                    Nexus a besoin de votre point de départ pour calculer votre valeur nette et projeter votre avenir.
+                  </p>
+                </div>
+                <div className="relative z-10 grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <Link href="/patrimoine" className="group">
+                    <div className="p-6 rounded-[20px] bg-black/40 border border-white/5 hover:border-emerald-500/25 transition-all duration-300 flex flex-col gap-4">
+                      <div className="h-11 w-11 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-400 group-hover:scale-110 transition-transform">
+                        <Wallet size={20} strokeWidth={1.5} />
+                      </div>
+                      <div>
+                        <p className="font-black text-white text-sm mb-1">1. Mon Patrimoine</p>
+                        <p className="text-zinc-500 text-xs leading-relaxed">Comptes, livrets, bourse, immobilier, crypto.</p>
+                      </div>
+                      <Button className="w-full bg-emerald-500 hover:bg-emerald-400 text-black font-bold rounded-xl h-10 text-sm">
+                        Ajouter mes actifs <ArrowUpRight className="ml-1.5" size={14} />
+                      </Button>
+                    </div>
+                  </Link>
+                  <Link href="/budget" className="group">
+                    <div className="p-6 rounded-[20px] bg-black/40 border border-white/5 hover:border-yellow-500/25 transition-all duration-300 flex flex-col gap-4">
+                      <div className="h-11 w-11 rounded-xl bg-yellow-500/10 flex items-center justify-center text-yellow-400 group-hover:scale-110 transition-transform">
+                        <PieChart size={20} strokeWidth={1.5} />
+                      </div>
+                      <div>
+                        <p className="font-black text-white text-sm mb-1">2. Mes Revenus</p>
+                        <p className="text-zinc-500 text-xs leading-relaxed">Salaire et dépenses pour calculer votre épargne.</p>
+                      </div>
+                      <Button className="w-full bg-yellow-500 hover:bg-yellow-400 text-black font-bold rounded-xl h-10 text-sm">
+                        Configurer mon budget <ArrowUpRight className="ml-1.5" size={14} />
+                      </Button>
+                    </div>
+                  </Link>
+                </div>
               </div>
-              // =======================================================
+            </motion.div>
           ) : (
             <>
-              {/* VUE UTILISATEUR CLASSIQUE */}
-              <div className="grid grid-cols-2 lg:grid-cols-2 gap-3 md:gap-8">
-                <Link href="/patrimoine" className="group h-full">
-                    <div className="relative overflow-hidden rounded-[24px] md:rounded-[40px] border border-white/5 bg-zinc-900/40 backdrop-blur-md p-4 md:p-10 h-full transition-all duration-500 hover:border-emerald-500/30 hover:bg-zinc-900/60 shadow-2xl flex flex-col justify-between min-h-[150px] md:min-h-[220px]">
-                        <div className="relative z-10 flex flex-col justify-between h-full">
-                            <div className="flex justify-between items-start mb-6 md:mb-10">
-                                <div className="flex flex-col md:flex-row items-start md:items-center gap-3 md:gap-4">
-                                    <div className="h-10 w-10 md:h-14 md:w-14 rounded-xl md:rounded-2xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center border border-emerald-500/20 shadow-lg"><Wallet className="w-5 h-5 md:w-6 md:h-6"/></div>
-                                    <div><span className="text-white font-black text-sm md:text-xl tracking-wide uppercase block">Financier</span><span className="text-[9px] md:text-xs text-zinc-500 font-mono hidden md:block">LIQUIDITÉ & BOURSE</span></div>
-                                </div>
-                                <div className="hidden md:flex h-10 w-10 rounded-full border border-white/10 items-center justify-center text-zinc-500 group-hover:text-white transition-colors"><ArrowUpRight size={18}/></div>
-                            </div>
-                            <div><div className="text-2xl sm:text-3xl md:text-6xl lg:text-7xl font-black text-white tracking-tighter mb-2 md:mb-3 group-hover:translate-x-2 transition-transform"><AnimatedNumber value={financialWealth} /></div><div className="h-1 w-12 md:w-24 bg-emerald-500 rounded-full group-hover:w-full transition-all duration-700 ease-out"></div></div>
-                        </div>
+              {/* ── HERO : PATRIMOINE NET ─────────────────────────────────── */}
+              <motion.div
+                initial={{ opacity: 0, y: 14 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, ease: "easeOut", delay: 0.08 }}
+              >
+                <div className="rounded-[28px] bg-zinc-900/50 border border-white/5 overflow-hidden">
+                  <div className="h-px w-full bg-gradient-to-r from-emerald-500/0 via-emerald-500/60 to-blue-500/20" />
+                  <div className="p-6 md:p-8">
+                    <div className="flex items-center justify-between mb-5">
+                      <p className="text-[11px] font-bold text-zinc-500 uppercase tracking-[0.25em] flex items-center gap-1.5">
+                        <span className="w-1 h-1 rounded-full bg-emerald-500 inline-block" />
+                        Patrimoine Net Total
+                      </p>
+                      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border" style={{ backgroundColor: "#10b98108", borderColor: "#10b98120" }}>
+                        <Activity size={10} className="text-emerald-500" />
+                        <span className="text-[11px] font-black text-emerald-400 tabular-nums">+{savingsRate.toFixed(0)}% épargné</span>
+                      </div>
                     </div>
-                </Link>
-                <Link href="/patrimoine" className="group h-full">
-                    <div className="relative overflow-hidden rounded-[24px] md:rounded-[40px] border border-white/5 bg-zinc-900/40 backdrop-blur-md p-4 md:p-10 h-full transition-all duration-500 hover:border-blue-500/30 hover:bg-zinc-900/60 shadow-2xl flex flex-col justify-between min-h-[150px] md:min-h-[220px]">
-                        <div className="relative z-10 flex flex-col justify-between h-full">
-                            <div className="flex justify-between items-start mb-6 md:mb-10">
-                                <div className="flex flex-col md:flex-row items-start md:items-center gap-3 md:gap-4">
-                                    <div className="h-10 w-10 md:h-14 md:w-14 rounded-xl md:rounded-2xl bg-blue-500/10 text-blue-500 flex items-center justify-center border border-blue-500/20 shadow-lg"><Building className="w-5 h-5 md:w-6 md:h-6"/></div>
-                                    <div><span className="text-white font-black text-sm md:text-xl tracking-wide uppercase block">Immobilier</span><span className="text-[9px] md:text-xs text-zinc-500 font-mono hidden md:block">PIERRE & SCPI</span></div>
-                                </div>
-                                <div className="hidden md:flex h-10 w-10 rounded-full border border-white/10 items-center justify-center text-zinc-500 group-hover:text-white transition-colors"><ArrowUpRight size={18}/></div>
-                            </div>
-                            <div><div className="text-2xl sm:text-3xl md:text-6xl lg:text-7xl font-black text-white tracking-tighter mb-2 md:mb-3 group-hover:translate-x-2 transition-transform"><AnimatedNumber value={realEstateWealth} /></div><div className="h-1 w-12 md:w-24 bg-blue-500 rounded-full group-hover:w-full transition-all duration-700 ease-out"></div></div>
-                        </div>
-                    </div>
-                </Link>
-              </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-8">
-                <Link href="/budget" className="group md:col-span-1">
-                    <div className="p-6 md:p-8 rounded-[24px] md:rounded-[32px] bg-zinc-900/40 backdrop-blur-md border border-white/5 hover:border-yellow-500/30 transition-all h-full flex flex-col justify-center relative overflow-hidden shadow-xl">
-                        <div className="relative z-10">
-                            <div className="flex justify-between items-center mb-6 md:mb-8"><p className="text-[10px] md:text-xs font-bold text-zinc-400 uppercase flex items-center gap-2 tracking-widest"><Activity size={14} className="text-yellow-500"/> Flux Mensuel</p><span className="text-[9px] md:text-[10px] font-black px-2 md:px-3 py-1 rounded-full bg-yellow-500/10 text-yellow-500">{savingsRate.toFixed(0)}% TAUX</span></div>
-                            <div className="text-4xl md:text-5xl font-black text-white tracking-tighter">+<AnimatedNumber value={monthlySavings}/></div>
-                            <p className="text-[10px] md:text-xs text-zinc-500 mt-2 font-medium">Épargne disponible ce mois-ci</p>
-                        </div>
+                    <div className="text-5xl sm:text-6xl md:text-7xl font-black text-white tracking-tighter tabular-nums leading-none mb-1">
+                      <AnimatedNumber value={totalNetWorth} />
                     </div>
-                </Link>
-                <div className="md:col-span-2 p-6 md:p-8 rounded-[24px] md:rounded-[32px] bg-zinc-900/40 backdrop-blur-md border border-white/5 flex flex-col justify-center relative overflow-hidden shadow-xl group">
-                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-500 via-blue-500 to-purple-500 opacity-30 group-hover:opacity-60 transition-opacity"></div>
-                    <div className="flex flex-row justify-between items-end mb-6 md:mb-8 gap-4">
-                        <div><p className="text-[10px] md:text-xs font-bold text-purple-400 uppercase mb-2 md:mb-3 tracking-[0.2em] flex items-center gap-2"><Target size={14}/> Prochain Palier</p><div className="text-3xl sm:text-4xl md:text-5xl lg:text-5xl font-black text-white tracking-tighter"><AnimatedNumber value={milestone}/></div></div>
-                        <div className="text-right"><span className="text-4xl md:text-6xl font-black text-white/10 group-hover:text-white/20 transition-colors">{milestone > 0 ? ((totalNetWorth / milestone) * 100).toFixed(0) : 0}%</span></div>
-                    </div>
-                    <div className="h-3 md:h-4 w-full bg-black/50 rounded-full overflow-hidden border border-white/5 p-[2px]"><motion.div initial={{ width: 0 }} animate={{ width: `${Math.min(100, (totalNetWorth / milestone) * 100)}%` }} transition={{ duration: 1.5, ease: "circOut" }} className="h-full bg-gradient-to-r from-purple-600 to-blue-500 rounded-full" /></div>
-                </div>
-              </div>
+                    <p className="text-[11px] text-zinc-600 font-mono mb-7">
+                      Valeur nette · {new Date().toLocaleDateString("fr-FR", { month: "long", year: "numeric" })}
+                    </p>
 
-              <div>
-                <h3 className="text-[10px] md:text-xs font-bold text-zinc-500 uppercase tracking-[0.2em] mb-4 md:mb-6 pl-2">Accès Rapide</h3>
-                <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
-                    {[{ href: "/projection", label: "Projection", sub: "Futur & Intérêts", icon: TrendingUp, color: "text-purple-400", bg: "bg-purple-500/10", border: "hover:border-purple-500/30" }, { href: "/simulateur", label: "Simulateur Immo", sub: "Rentabilité", icon: Calculator, color: "text-blue-400", bg: "bg-blue-500/10", border: "hover:border-blue-500/30" }, { href: "/budget", label: "Mon Budget", sub: "Flux mensuels", icon: PieChart, color: "text-yellow-400", bg: "bg-yellow-500/10", border: "hover:border-yellow-500/30" },].map((item) => (
-                        <Link key={item.href} href={item.href} className={`p-4 md:p-6 rounded-[20px] md:rounded-[24px] bg-zinc-900/40 border border-white/5 ${item.border} hover:bg-zinc-900/60 transition-all flex flex-col md:flex-row items-start md:items-center gap-3 md:gap-5 group backdrop-blur-sm`}>
-                            <div className={`h-10 w-10 md:h-14 md:w-14 rounded-xl md:rounded-2xl ${item.bg} ${item.color} flex items-center justify-center group-hover:scale-110 transition-transform shadow-inner`}><item.icon className="w-5 h-5 md:w-6 md:h-6"/></div>
-                            <div><p className="font-bold text-white text-sm md:text-base tracking-wide">{item.label}</p><p className="text-[9px] md:text-xs text-zinc-500">{item.sub}</p></div>
-                        </Link>
-                    ))}
-                    
-                    <div onClick={() => {}} className="relative p-4 md:p-6 rounded-[20px] md:rounded-[24px] bg-indigo-900/20 border border-indigo-500/30 hover:bg-indigo-900/40 transition-all cursor-pointer flex flex-col md:flex-row items-start md:items-center gap-3 md:gap-5 overflow-hidden group">
-                        <div className="h-10 w-10 md:h-14 md:w-14 rounded-xl md:rounded-2xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center shadow-inner group-hover:scale-110 transition-transform"><Activity className="w-5 h-5 md:w-6 md:h-6"/></div>
-                        <div><p className="font-bold text-white text-sm md:text-base">CFO Assistant</p><p className="text-[9px] md:text-xs text-indigo-300">Chat avec l'IA</p></div>
+                    <AllocationBar segments={segments} total={totalNetWorth} />
+
+                    <div className="my-6 h-px bg-white/5" />
+
+                    <div className="grid grid-cols-3 gap-2 md:gap-6">
+                      {[
+                        { label: "Financier", value: financialWealth, icon: Wallet, iconColor: "#10b981" },
+                        { label: "Immobilier", value: realEstateWealth, icon: Building, iconColor: "#3b82f6" },
+                        { label: "Épargne/mois", value: monthlySavings, icon: Activity, iconColor: "#eab308", prefix: "+" },
+                      ].map((kpi) => (
+                        <div key={kpi.label}>
+                          <p className="text-[10px] font-bold text-zinc-600 uppercase tracking-[0.2em] mb-2 flex items-center gap-1">
+                            <kpi.icon size={8} style={{ color: kpi.iconColor }} />
+                            {kpi.label}
+                          </p>
+                          <p className="text-lg md:text-2xl font-black text-white tabular-nums leading-none">
+                            {kpi.prefix ?? ""}<AnimatedNumber value={kpi.value} />
+                          </p>
+                        </div>
+                      ))}
                     </div>
+                  </div>
                 </div>
-              </div>
+              </motion.div>
+
+              {/* ── PROJECTION 5 ANS + PALIER ────────────────────────────── */}
+              <motion.div
+                initial={{ opacity: 0, y: 14 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, ease: "easeOut", delay: 0.13 }}
+                className="grid grid-cols-2 gap-4"
+              >
+                {/* Projection 5 ans */}
+                <div className="rounded-[22px] bg-zinc-900/50 border border-white/5 p-4 md:p-5 flex flex-col gap-1">
+                  <p className="text-[10px] font-bold text-zinc-600 uppercase tracking-[0.2em] flex items-center gap-1.5">
+                    <TrendingUp size={9} className="text-purple-400" />
+                    Dans 5 ans*
+                  </p>
+                  <p className="text-xl md:text-3xl font-black text-white tabular-nums leading-tight">
+                    {formatEuro(projectedWealth5y)}
+                  </p>
+                  <p className="text-[9px] text-zinc-700 font-mono mt-auto">*DCA actuel · 6%/an</p>
+                </div>
+
+                {/* Revenus mensuels */}
+                <div className="rounded-[22px] bg-zinc-900/50 border border-white/5 p-4 md:p-5 flex flex-col gap-1">
+                  <p className="text-[10px] font-bold text-zinc-600 uppercase tracking-[0.2em] flex items-center gap-1.5">
+                    <Activity size={9} className="text-yellow-400" />
+                    Revenus nets
+                  </p>
+                  <p className="text-xl md:text-3xl font-black text-white tabular-nums leading-tight">
+                    {formatEuro(monthlyIncome)}
+                  </p>
+                  <p className="text-[9px] text-zinc-700 font-mono mt-auto">ce mois · mensuel</p>
+                </div>
+              </motion.div>
+
+              {/* ── PALIER ───────────────────────────────────────────────── */}
+              <motion.div
+                initial={{ opacity: 0, y: 14 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, ease: "easeOut", delay: 0.16 }}
+              >
+                <div className="rounded-[22px] bg-zinc-900/50 border border-white/5 px-5 py-4 md:px-7 md:py-5">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <Target size={11} className="text-purple-400" />
+                      <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-[0.22em]">Prochain palier</p>
+                    </div>
+                    <div className="flex items-center gap-2 text-[11px] tabular-nums">
+                      <span className="font-black text-white"><AnimatedNumber value={totalNetWorth} /></span>
+                      <span className="text-zinc-800">·</span>
+                      <span className="text-zinc-600">{formatEuro(milestone)}</span>
+                      <span className="font-black text-purple-400 ml-1">{milestoneProgress.toFixed(0)}%</span>
+                    </div>
+                  </div>
+                  <div className="h-px w-full bg-zinc-800 rounded-full overflow-hidden">
+                    <motion.div
+                      initial={{ width: 0 }}
+                      animate={{ width: `${milestoneProgress}%` }}
+                      transition={{ duration: 1.8, ease: "easeOut", delay: 0.5 }}
+                      className="h-full bg-gradient-to-r from-purple-600 via-purple-500 to-blue-500 rounded-full"
+                    />
+                  </div>
+                  <div className="flex justify-between mt-2">
+                    {[10000, 50000, 100000, 250000, 500000, 1000000]
+                      .filter((m) => m <= milestone * 1.2).slice(0, 6)
+                      .map((m) => (
+                        <span key={m} className={`text-[9px] font-mono tabular-nums ${totalNetWorth >= m ? "text-zinc-500" : "text-zinc-800"}`}>
+                          {m >= 1000000 ? "1M" : `${m / 1000}k`}
+                        </span>
+                      ))}
+                  </div>
+                </div>
+              </motion.div>
+
+              {/* ── CONSEIL CONTEXTUEL ───────────────────────────────────── */}
+              <motion.div
+                initial={{ opacity: 0, y: 14 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, ease: "easeOut", delay: 0.2 }}
+              >
+                <Link href="/chat" className="group block">
+                  <div className={`rounded-[22px] border ${insight.border} ${insight.bg} p-5 flex items-start gap-4 hover:opacity-90 transition-all`}>
+                    <div className="h-10 w-10 rounded-xl flex items-center justify-center shrink-0" style={{ backgroundColor: `${insight.color}18` }}>
+                      <Lightbulb size={18} strokeWidth={1.5} style={{ color: insight.color }} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[10px] font-bold uppercase tracking-[0.2em] mb-1" style={{ color: insight.color }}>
+                        {insight.label}
+                      </p>
+                      <p className="text-sm text-zinc-300 leading-relaxed">{insight.text}</p>
+                    </div>
+                    <ChevronRight size={16} className="text-zinc-700 shrink-0 mt-1 group-hover:translate-x-1 transition-transform" />
+                  </div>
+                </Link>
+              </motion.div>
+
+              {/* ── MODULES ──────────────────────────────────────────────── */}
+              <motion.div
+                initial={{ opacity: 0, y: 14 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, ease: "easeOut", delay: 0.24 }}
+              >
+                <p className="text-[10px] font-bold text-zinc-600 uppercase tracking-[0.28em] mb-3 pl-0.5">Accès rapide</p>
+                <div className="grid grid-cols-2 gap-3">
+                  {/* Hero module */}
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.4, ease: "easeOut", delay: 0.3 }}
+                    className="row-span-2"
+                  >
+                    <Link href={heroModule.href} className="group block h-full">
+                      <div
+                        className="h-full rounded-[22px] border border-white/5 hover:border-white/10 transition-all duration-300 p-5 md:p-6 flex flex-col relative overflow-hidden"
+                        style={{ backgroundColor: `${heroModule.accent}08` }}
+                      >
+                        <div className="absolute top-0 right-0 w-28 h-28 rounded-full blur-[60px] opacity-25 pointer-events-none" style={{ backgroundColor: heroModule.accent }} />
+                        <div className="relative z-10 flex flex-col h-full gap-4">
+                          <div className="h-12 w-12 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300" style={{ backgroundColor: `${heroModule.accent}20` }}>
+                            <heroModule.icon size={22} strokeWidth={1.5} style={{ color: heroModule.accent }} />
+                          </div>
+                          <div className="flex-1">
+                            <p className="font-black text-white text-base tracking-tight leading-tight mb-1.5">{heroModule.label}</p>
+                            <p className="text-xs leading-relaxed" style={{ color: `${heroModule.accent}80` }}>{heroModule.sub}</p>
+                          </div>
+                          <div className="flex items-center gap-1 mt-auto">
+                            <span className="text-[9px] font-bold uppercase tracking-widest" style={{ color: `${heroModule.accent}60` }}>Simuler</span>
+                            <ArrowUpRight size={12} style={{ color: `${heroModule.accent}60` }} className="group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform duration-200" />
+                          </div>
+                        </div>
+                      </div>
+                    </Link>
+                  </motion.div>
+
+                  {/* 4 petits modules */}
+                  {smallModules.map((mod, i) => (
+                    <motion.div
+                      key={mod.href}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.4, ease: "easeOut", delay: 0.34 + i * 0.05 }}
+                    >
+                      <Link href={mod.href} className="group block h-full">
+                        <div className="h-full rounded-[20px] bg-zinc-900/50 border border-white/5 hover:border-white/10 hover:bg-zinc-900/70 transition-all duration-300 p-4 flex items-center gap-3">
+                          <div className="h-9 w-9 rounded-xl flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform duration-300" style={{ backgroundColor: `${mod.accent}15` }}>
+                            <mod.icon size={16} strokeWidth={1.5} style={{ color: mod.accent }} />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="font-black text-white text-sm tracking-tight leading-tight truncate">{mod.label}</p>
+                            <p className="text-[10px] text-zinc-500 mt-0.5 leading-tight truncate">{mod.sub}</p>
+                          </div>
+                        </div>
+                      </Link>
+                    </motion.div>
+                  ))}
+                </div>
+              </motion.div>
             </>
           )}
-
-          {!isNewUser && aiContext && (
-             <NexusChat isPro={isPro} financialData={aiContext} />
-          )}
-
-        </motion.div>
+        </div>
       </main>
     </div>
   );
