@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   TrendingUp, Download, Info, Landmark, ShieldCheck,
   BarChart3, Scale, Sparkles, AlertTriangle, Check,
-  Loader2, BookOpen, RefreshCw, Coins
+  Loader2, BookOpen, RefreshCw, Coins, Crown
 } from "lucide-react";
 import { Slider } from "@/components/ui/slider";
 import { Input } from "@/components/ui/input";
@@ -1025,12 +1025,21 @@ export default function ProjectionPage() {
               </h1>
               <p className="text-zinc-500 text-xs mt-1">Comparatif fiscal · 5 enveloppes · Succession · Rapport client personnalisé</p>
             </div>
-            <button onClick={() => setShowClientModal(true)}
-              className="flex items-center gap-2.5 px-5 py-3 rounded-xl font-bold text-sm transition-all hover:scale-[1.02] active:scale-95 shrink-0 text-white"
-              style={{ background: "linear-gradient(135deg, #065f46, #064e3b)", boxShadow: "0 8px 32px -8px rgba(16,185,129,0.5)", border: "1px solid rgba(16,185,129,0.3)" }}>
-              <Download size={15} />
-              Générer le Dossier Client
-            </button>
+            {isPro ? (
+              <button onClick={() => setShowClientModal(true)}
+                className="flex items-center gap-2.5 px-5 py-3 rounded-xl font-bold text-sm transition-all hover:scale-[1.02] active:scale-95 shrink-0 text-white"
+                style={{ background: "linear-gradient(135deg, #065f46, #064e3b)", boxShadow: "0 8px 32px -8px rgba(16,185,129,0.5)", border: "1px solid rgba(16,185,129,0.3)" }}>
+                <Download size={15} />
+                Générer le Dossier
+              </button>
+            ) : (
+              <a href="/billing"
+                className="flex items-center gap-2.5 px-5 py-3 rounded-xl font-bold text-sm transition-all hover:scale-[1.02] active:scale-95 shrink-0 text-white border border-yellow-500/30 hover:border-yellow-500/60"
+                style={{ background: "linear-gradient(135deg, #78350f, #451a03)", boxShadow: "0 8px 32px -8px rgba(234,179,8,0.3)" }}>
+                <Crown size={15} className="text-yellow-400" />
+                Générer le Dossier · Pro
+              </a>
+            )}
           </div>
 
           <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
@@ -1210,35 +1219,41 @@ export default function ProjectionPage() {
                     label: "Enveloppe Optimale",
                     value: bestEnvConfig.label,
                     sub: last ? fmt(last[bestEnvKey]) : "—",
-                    color: bestEnvConfig.color, icon: Sparkles,
+                    color: bestEnvConfig.color, icon: Sparkles, pro: false,
                   },
                   {
                     label: "Capital PEA final",
                     value: last ? fmt(last.PEA) : "—",
                     sub: `18,6% PS · IR exonéré · ${years} ans`,
-                    color: "#10b981", icon: TrendingUp,
+                    color: "#10b981", icon: TrendingUp, pro: false,
                   },
                   {
                     label: "Rente mensuelle",
                     value: last ? fmt(Math.round(last[bestEnvKey] * 0.04 / 12)) : "—",
                     sub: "Règle des 4% · " + bestEnvConfig.label,
-                    color: "#6366f1", icon: BarChart3,
+                    color: "#6366f1", icon: BarChart3, pro: true,
                   },
                   {
                     label: "Indépendance (FIRE)",
                     value: fireYear != null ? `An ${fireYear}` : "Hors portée",
                     sub: `Cible : ${fmt(fireTarget)} (25× dép.)`,
                     color: fireYear != null ? "#10b981" : "#71717a",
-                    icon: fireYear != null ? ShieldCheck : AlertTriangle,
+                    icon: fireYear != null ? ShieldCheck : AlertTriangle, pro: true,
                   },
                 ].map((k, i) => (
                   <motion.div key={i} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.06 }}
                     className="rounded-2xl border p-4 overflow-hidden relative"
                     style={{ borderColor: k.color + "30", backgroundColor: k.color + "07" }}>
                     <div className="absolute -right-3 -bottom-3 w-14 h-14 rounded-full opacity-10" style={{ backgroundColor: k.color }} />
+                    {(k as any).pro && !isPro && (
+                      <a href="/billing" className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-1.5 rounded-2xl cursor-pointer" style={{ backdropFilter: "blur(6px)", backgroundColor: "rgba(0,0,0,0.55)" }}>
+                        <Crown size={16} className="text-yellow-400" />
+                        <span className="text-[8px] font-black text-yellow-400 uppercase tracking-widest">Pro</span>
+                      </a>
+                    )}
                     <p className="text-[9px] font-bold uppercase tracking-widest mb-1.5" style={{ color: k.color }}>{k.label}</p>
-                    <p className="text-xl font-black text-white leading-tight">{k.value}</p>
-                    <p className="text-[10px] text-zinc-600 mt-1">{k.sub}</p>
+                    <p className={`text-xl font-black text-white leading-tight ${(k as any).pro && !isPro ? "blur-sm select-none" : ""}`}>{k.value}</p>
+                    <p className={`text-[10px] text-zinc-600 mt-1 ${(k as any).pro && !isPro ? "blur-sm select-none" : ""}`}>{k.sub}</p>
                   </motion.div>
                 ))}
               </div>
@@ -1246,14 +1261,20 @@ export default function ProjectionPage() {
               {/* TABS */}
               <div className="flex gap-1 p-1 rounded-xl border border-zinc-800/50 bg-zinc-900/50">
                 {([
-                  { id: "comparaison", label: "Comparaison", icon: BarChart3 },
-                  { id: "frais",       label: "Guerre des frais", icon: AlertTriangle },
-                  { id: "fiscalite",   label: "Fiscalité 2026", icon: Scale },
-                  { id: "succession",  label: "Succession", icon: Landmark },
+                  { id: "comparaison", label: "Comparaison", icon: BarChart3,      pro: false },
+                  { id: "frais",       label: "Frais",        icon: AlertTriangle,  pro: true  },
+                  { id: "fiscalite",   label: "Fiscalité",    icon: Scale,          pro: true  },
+                  { id: "succession",  label: "Succession",   icon: Landmark,       pro: true  },
                 ] as const).map(tab => (
-                  <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+                  <button key={tab.id}
+                    onClick={() => {
+                      if ((tab as any).pro && !isPro) { window.location.href = "/billing"; return; }
+                      setActiveTab(tab.id);
+                    }}
                     className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-[10px] md:text-xs font-bold uppercase tracking-widest transition-all ${activeTab === tab.id ? "bg-indigo-600 text-white" : "text-zinc-600 hover:text-zinc-300"}`}>
-                    <tab.icon size={11} className="shrink-0" /><span className="truncate">{tab.label}</span>
+                    <tab.icon size={11} className="shrink-0" />
+                    <span className="truncate hidden sm:inline">{tab.label}</span>
+                    {(tab as any).pro && !isPro && <Crown size={9} className="text-yellow-400 shrink-0" />}
                   </button>
                 ))}
               </div>
@@ -1396,8 +1417,9 @@ export default function ProjectionPage() {
                   </motion.div>
                 )}
 
-                {/* ─── TAB FRAIS ─── */}
+                {/* ─── TAB FRAIS — Pro ─── */}
                 {activeTab === "frais" && (
+                  <PremiumGuard isPro={isPro} title="Guerre des frais" description="Visualisez l'impact dévastateur des frais bancaires sur votre patrimoine final. Réservé aux membres Pro.">
                   <motion.div key="frais" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-4">
                     <div className="rounded-2xl border border-amber-500/20 p-5" style={{ backgroundColor: "rgba(120,53,15,0.08)" }}>
                       <h3 className="text-sm font-black text-white mb-1 flex items-center gap-2">
@@ -1456,10 +1478,12 @@ export default function ProjectionPage() {
                       )}
                     </div>
                   </motion.div>
+                  </PremiumGuard>
                 )}
 
-                {/* ─── TAB FISCALITÉ ─── */}
+                {/* ─── TAB FISCALITÉ — Pro ─── */}
                 {activeTab === "fiscalite" && (
+                  <PremiumGuard isPro={isPro} title="Fiscalité 2026" description="Comparatif détaillé PFU, PS, abattements et optimisations fiscales par enveloppe. Réservé aux membres Pro.">
                   <motion.div key="fisc" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-4">
 
                     {/* PFU 2026 explication */}
@@ -1562,10 +1586,12 @@ export default function ProjectionPage() {
                       ))}
                     </div>
                   </motion.div>
+                  </PremiumGuard>
                 )}
 
-                {/* ─── TAB SUCCESSION ─── */}
+                {/* ─── TAB SUCCESSION — Pro ─── */}
                 {activeTab === "succession" && (
+                  <PremiumGuard isPro={isPro} title="Stratégie Succession" description="Tableau de transmission par enveloppe, démembrement de clause, optimisation successorale. Réservé aux membres Pro.">
                   <motion.div key="succ" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-4">
 
                     <div className="rounded-2xl bg-[#080808] border border-zinc-800/50 overflow-hidden">
@@ -1658,6 +1684,7 @@ export default function ProjectionPage() {
                       </div>
                     </div>
                   </motion.div>
+                  </PremiumGuard>
                 )}
 
               </AnimatePresence>

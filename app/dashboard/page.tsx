@@ -149,8 +149,6 @@ export default function Dashboard() {
   const [cashWealth, setCashWealth] = useState(0);
   const [cryptoWealth, setCryptoWealth] = useState(0);
   const [stockWealth, setStockWealth] = useState(0);
-  const [monthlyIncome, setMonthlyIncome] = useState(0);
-
   const [isNewUser, setIsNewUser] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
 
@@ -223,7 +221,6 @@ export default function Dashboard() {
 
       const savings = Math.max(0, currentIncome - currentExpenses);
       setMonthlySavings(savings);
-      setMonthlyIncome(currentIncome);
       setSavingsRate(currentIncome > 0 ? (savings / currentIncome) * 100 : 0);
 
       if (hasCompletedOnboarding && !hasAssets && !hasBudget) setIsNewUser(true);
@@ -248,12 +245,6 @@ export default function Dashboard() {
   const heroModule = MODULES[0];
   const smallModules = MODULES.slice(1);
 
-  // Projection simple : patrimoine dans 5 ans avec DCA mensuel à 6%/an
-  const projectedWealth5y = Math.round(
-    totalNetWorth * Math.pow(1.06, 5) +
-    monthlySavings * ((Math.pow(1.06, 5) - 1) / 0.06) * 12
-  );
-
   const todayLabel = new Date()
     .toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })
     .replace(/^\w/, (c) => c.toUpperCase());
@@ -269,7 +260,7 @@ export default function Dashboard() {
       <div className="fixed top-0 left-0 right-0 h-[300px] bg-gradient-to-b from-emerald-950/15 to-transparent pointer-events-none z-0" />
 
       <main className="md:ml-64 px-4 pt-6 pb-28 md:px-10 md:pt-10 relative z-10">
-        <div className="max-w-4xl mx-auto space-y-4">
+        <div className="space-y-4">
 
           {/* ── HEADER ─────────────────────────────────────────────────────── */}
           <motion.div
@@ -410,38 +401,6 @@ export default function Dashboard() {
                       ))}
                     </div>
                   </div>
-                </div>
-              </motion.div>
-
-              {/* ── PROJECTION 5 ANS + PALIER ────────────────────────────── */}
-              <motion.div
-                initial={{ opacity: 0, y: 14 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5, ease: "easeOut", delay: 0.13 }}
-                className="grid grid-cols-2 gap-4"
-              >
-                {/* Projection 5 ans */}
-                <div className="rounded-[22px] bg-zinc-900/50 border border-white/5 p-4 md:p-5 flex flex-col gap-1">
-                  <p className="text-[10px] font-bold text-zinc-600 uppercase tracking-[0.2em] flex items-center gap-1.5">
-                    <TrendingUp size={9} className="text-purple-400" />
-                    Dans 5 ans*
-                  </p>
-                  <p className="text-xl md:text-3xl font-black text-white tabular-nums leading-tight">
-                    {formatEuro(projectedWealth5y)}
-                  </p>
-                  <p className="text-[9px] text-zinc-700 font-mono mt-auto">*DCA actuel · 6%/an</p>
-                </div>
-
-                {/* Revenus mensuels */}
-                <div className="rounded-[22px] bg-zinc-900/50 border border-white/5 p-4 md:p-5 flex flex-col gap-1">
-                  <p className="text-[10px] font-bold text-zinc-600 uppercase tracking-[0.2em] flex items-center gap-1.5">
-                    <Activity size={9} className="text-yellow-400" />
-                    Revenus nets
-                  </p>
-                  <p className="text-xl md:text-3xl font-black text-white tabular-nums leading-tight">
-                    {formatEuro(monthlyIncome)}
-                  </p>
-                  <p className="text-[9px] text-zinc-700 font-mono mt-auto">ce mois · mensuel</p>
                 </div>
               </motion.div>
 

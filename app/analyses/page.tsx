@@ -1,380 +1,666 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Sidebar from "@/components/Sidebar";
-import { motion } from "framer-motion";
-import { 
-  Brain, ShieldCheck, TrendingUp, AlertTriangle, Loader2, CheckCircle, 
-  Sparkles, RefreshCw, Layers, TrendingDown, Zap, BarChart2, Target, 
-  Info, Rocket, Percent, Wallet, Scale, Lock, Lightbulb
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  TrendingDown, TrendingUp, Wallet, Zap, AlertTriangle,
+  ChevronRight, RefreshCw, CheckCircle2, Loader2,
+  BarChart2, Bell, ArrowUpRight, ArrowDownRight, Minus,
+  Building2, Target, Activity,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { 
-  Radar, RadarChart, PolarGrid, PolarAngleAxis, ResponsiveContainer, 
-  AreaChart, Area, XAxis, Tooltip
-} from "recharts";
 import { supabase } from "@/lib/supabaseClient";
-import PremiumGuard from "@/components/PremiumGuard"; // ✅ Import du Guard
+import Link from "next/link";
 
-const formatEuro = (val: number) => new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(val);
+// ─── Types ────────────────────────────────────────────────────────────────────
 
-// --- MOTEUR D'ANALYSE & CONSEILS ---
-const runDeepAnalysis = (assets: any[], budget: any, simulations: any[]) => {
-    // 1. AGGREGATION DONNÉES
-    const totalWealth = assets.reduce((acc, a) => acc + (Number(a.value) || 0), 0);
-    const cash = assets.filter(a => a.type === 'Cash').reduce((acc, a) => acc + Number(a.value), 0);
-    const crypto = assets.filter(a => a.type === 'Crypto').reduce((acc, a) => acc + Number(a.value), 0);
-    const stock = assets.filter(a => a.type === 'Bourse').reduce((acc, a) => acc + Number(a.value), 0);
-    const realEstate = assets.filter(a => a.type === 'Immobilier').reduce((acc, a) => acc + Number(a.value), 0);
-    
-    // Simulations (Dette potentielle)
-    const projectedDebt = simulations.reduce((acc, sim) => acc + (sim.data?.totalCreditCost > 0 ? (sim.data.price - sim.data.apport) : 0), 0);
-    
-    const income = Number(budget.income) || 0;
-    const monthlyExpenses = budget.expenses || 1; // Eviter division par 0
-    const savings = Math.max(0, income - monthlyExpenses);
-    
-    // 2. CALCUL RATIOS
-    const liquidityRatio = cash / (totalWealth || 1); // % de cash
-    const runwayMonths = cash / monthlyExpenses; // Mois de survie
-    const savingsRate = income > 0 ? (savings / income) * 100 : 0;
-    const cryptoExposure = crypto / (totalWealth || 1);
-    
-    // Score de Diversification (HHI inversé simplifié)
-    const assetCounts = [cash, crypto, stock, realEstate].filter(v => v > 0).length;
-    const diversificationScore = Math.min(100, (assetCounts / 4) * 100);
+type Severity = "critical" | "warning" | "info" | "positive";
+type Category = "epargne" | "emprunt" | "dca" | "marche";
 
-    // 3. GÉNÉRATION INSIGHTS (Alertes & Succès)
-    const insights = [];
-    let score = 50; // Base neutre
+interface PulseAlert {
+  id: string;
+  category: Category;
+  severity: Severity;
+  title: string;
+  body: string;
+  value?: string;
+  delta?: string;
+  deltaPositive?: boolean;
+  cta?: { label: string; href: string };
+  ts: Date;
+}
 
-    if (runwayMonths >= 6) { 
-        score += 15; 
-        insights.push({ type: "success", title: "Matelas de Sécurité Solide", text: `Vous avez ${runwayMonths.toFixed(1)} mois d'avance. Excellent.` });
-    } else if (runwayMonths < 3) {
-        score -= 10;
-        insights.push({ type: "danger", title: "Liquidité Critique", text: `Attention, seulement ${runwayMonths.toFixed(1)} mois de charges devant vous.` });
-    }
+interface Asset {
+  type: string;
+  name?: string;
+  ticker?: string;
+  value: number;
+  quantity?: number;
+  buyPrice?: number;
+}
 
-    if (cryptoExposure > 0.30) {
-        score -= 5;
-        insights.push({ type: "warning", title: "Exposition Crypto Élevée", text: `La crypto représente ${(cryptoExposure*100).toFixed(0)}% de votre patrimoine.` });
-    }
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-    if (savingsRate > 20) {
-        score += 15;
-        insights.push({ type: "success", title: "Machine à Cash", text: `Taux d'épargne de ${savingsRate.toFixed(0)}%.` });
-    } else if (savingsRate < 5) {
-        score -= 10;
-        insights.push({ type: "danger", title: "Flux Tendu", text: "Capacité d'épargne trop faible pour investir sereinement." });
-    }
+const fmt = (v: number) =>
+  new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(v);
 
-    if (totalWealth > 100000) score += 10;
-    if (assetCounts >= 3) score += 10;
-    
-    const finalScore = Math.min(100, Math.max(0, score));
+const fmtPct = (v: number) => `${v > 0 ? "+" : ""}${v.toFixed(1)} %`;
 
-    // 4. GÉNÉRATION CONSEILS PERSONNALISÉS
-    const tips = [];
+// ─── Config catégories ────────────────────────────────────────────────────────
 
-    // Conseil Cash Trop Plein
-    if (runwayMonths > 12) {
-        const surplus = cash - (monthlyExpenses * 6);
-        tips.push({
-            icon: TrendingUp,
-            color: "text-blue-400",
-            bg: "bg-blue-500/10",
-            title: "Optimisez votre Trésorerie",
-            text: `Vous avez ~${formatEuro(surplus)} de "cash dormant" au-delà des 6 mois de sécurité. Pensez au DCA en Bourse (PEA/CTO) pour battre l'inflation.`
-        });
-    }
-
-    // Conseil Immobilier
-    if ((realEstate / totalWealth) > 0.75) {
-        tips.push({
-            icon: Scale,
-            color: "text-amber-400",
-            bg: "bg-amber-500/10",
-            title: "Diversification Requise",
-            text: "L'immobilier pèse très lourd (>75%). Votre patrimoine est peu liquide. Orientez votre nouvelle épargne vers des actifs financiers (Bourse, Assurance Vie)."
-        });
-    }
-
-    // Conseil Crypto Secure
-    if (cryptoExposure > 0.4 && totalWealth > 50000) {
-        tips.push({
-            icon: Lock,
-            color: "text-indigo-400",
-            bg: "bg-indigo-500/10",
-            title: "Sécurisation des Gains",
-            text: "Votre exposition crypto est forte. Envisagez de 'cranter' vos plus-values en les réallouant vers des actifs plus stables (Stablecoins ou Immo)."
-        });
-    }
-
-    // Conseil Épargne Boost
-    if (savingsRate < 15 && income > 2500) {
-        tips.push({
-            icon: Zap,
-            color: "text-purple-400",
-            bg: "bg-purple-500/10",
-            title: "Boostez l'Épargne",
-            text: `Avec ${formatEuro(income)} de revenus, visez au moins 20% d'épargne. Automatisez un virement de ${formatEuro(income * 0.2)} en début de mois.`
-        });
-    }
-
-    // Conseil Défaut
-    if (tips.length === 0) {
-        tips.push({
-            icon: Rocket,
-            color: "text-emerald-400",
-            bg: "bg-emerald-500/10",
-            title: "Maintenez le Cap",
-            text: "Votre allocation est équilibrée et cohérente. Continuez votre stratégie d'investissement régulière (DCA) et surveillez vos opportunités."
-        });
-    }
-
-    return {
-        metrics: { runwayMonths, savingsRate, liquidityRatio, cryptoExposure, projectedDebt },
-        totals: { cash, crypto, stock, realEstate, totalWealth, cashFlow: savings },
-        score: finalScore,
-        insights,
-        tips, 
-        radar: [
-            { subject: 'Sécurité', A: Math.min(100, runwayMonths * 15), fullMark: 100 },
-            { subject: 'Croissance', A: Math.min(100, (stock + crypto + realEstate) / 1000), fullMark: 100 },
-            { subject: 'Flux', A: Math.min(100, savingsRate * 3), fullMark: 100 },
-            { subject: 'Diversif.', A: diversificationScore, fullMark: 100 },
-            { subject: 'Levier', A: Math.min(100, (projectedDebt / (totalWealth || 1)) * 50), fullMark: 100 },
-        ]
-    };
+const CATEGORIES: Record<Category, { label: string; icon: React.ElementType; color: string; bg: string }> = {
+  epargne:  { label: "Épargne",         icon: Activity,   color: "#10b981", bg: "#10b98112" },
+  emprunt:  { label: "Capacité d'emprunt", icon: Building2,  color: "#3b82f6", bg: "#3b82f612" },
+  dca:      { label: "DCA & Tréso",     icon: Zap,        color: "#a855f7", bg: "#a855f712" },
+  marche:   { label: "Marchés",         icon: BarChart2,  color: "#eab308", bg: "#eab30812" },
 };
 
-export default function AnalysesPage() {
-  const [loading, setLoading] = useState(true);
-  const [analyzing, setAnalyzing] = useState(false);
-  const [isPro, setIsPro] = useState(false); // ✅ État PRO
-  const [data, setData] = useState<any>(null);
-  const [scanText, setScanText] = useState("Connexion au Neural Engine...");
-  
-  // Simulations graphiques
-  const [compoundData, setCompoundData] = useState<any[]>([]);
+const SEVERITY_CONFIG: Record<Severity, { dot: string; border: string }> = {
+  critical: { dot: "#ef4444", border: "border-red-500/20" },
+  warning:  { dot: "#eab308", border: "border-yellow-500/20" },
+  info:     { dot: "#3b82f6", border: "border-blue-500/15" },
+  positive: { dot: "#10b981", border: "border-emerald-500/20" },
+};
 
-  useEffect(() => {
-    setTimeout(() => { setLoading(false); runFullAudit(); }, 800);
-  }, []);
+// ─── Fetch prix live — même logique que /app/patrimoine ─────────────────────
 
-  const runFullAudit = async () => {
-    setAnalyzing(true);
-    const steps = ["Agrégation des actifs...", "Analyse des ratios...", "Génération des conseils...", "Finalisation du rapport..."];
-    
-    for (const step of steps) {
-        setScanText(step);
-        await new Promise(r => setTimeout(r, 500));
+async function fetchLivePrices(ticker: string): Promise<{ curr: number; prev: number } | null> {
+  const endpoints = [
+    `/api/price?ticker=${encodeURIComponent(ticker)}`,
+    `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1d&range=5d`,
+    `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1d&range=5d`,
+  ];
+  for (const url of endpoints) {
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(4000) });
+      if (!res.ok) continue;
+      const json = await res.json();
+      if (json.price && json.previousClose) return { curr: json.price, prev: json.previousClose };
+      const closes: number[] = json?.chart?.result?.[0]?.indicators?.quote?.[0]?.close ?? [];
+      const valid = closes.filter((v): v is number => v != null && !isNaN(v));
+      if (valid.length >= 2) return { curr: valid[valid.length - 1], prev: valid[valid.length - 2] };
+    } catch { continue; }
+  }
+  return null;
+}
+
+// ─── Moteur d'alertes ─────────────────────────────────────────────────────────
+
+async function buildAlerts(profile: {
+  assets_json: Array<Asset>;
+  budget_json: { income?: number; expenses?: number; details?: Array<{ amount: number }> };
+  monthly_history?: Array<{ month: string; income: number; expenses: number }>;
+}): Promise<PulseAlert[]> {
+  const alerts: PulseAlert[] = [];
+  const now = new Date();
+
+  const assets = Array.isArray(profile.assets_json) ? profile.assets_json : [];
+  const bj = (profile.budget_json || {}) as { income?: number; expenses?: number; details?: Array<{ amount: number }> };
+
+  const income = Number(bj.income) || 0;
+  const expenses = Array.isArray(bj.details)
+    ? bj.details.reduce((s, i) => s + (Number(i.amount) || 0), 0)
+    : Number(bj.expenses) || 0;
+  const savings = Math.max(0, income - expenses);
+  const savingsRate = income > 0 ? (savings / income) * 100 : 0;
+
+  const totalWealth = assets.reduce((s, a) => s + (Number(a.value) || 0), 0);
+  const cash = assets.filter(a => a.type === "Cash").reduce((s, a) => s + Number(a.value), 0);
+  const stock = assets.filter(a => a.type === "Bourse").reduce((s, a) => s + Number(a.value), 0);
+  const crypto = assets.filter(a => a.type === "Crypto").reduce((s, a) => s + Number(a.value), 0);
+
+  // ── 1. ÉPARGNE — taux vs mois précédent ──────────────────────────────────
+  const history = Array.isArray(profile.monthly_history) ? profile.monthly_history : [];
+  if (history.length >= 2) {
+    const [prev, curr] = history.slice(-2);
+    const prevRate = prev.income > 0 ? ((prev.income - prev.expenses) / prev.income) * 100 : 0;
+    const currRate = curr.income > 0 ? ((curr.income - curr.expenses) / curr.income) * 100 : 0;
+    const diff = currRate - prevRate;
+
+    if (diff < -5) {
+      alerts.push({
+        id: "savings-drop",
+        category: "epargne",
+        severity: "warning",
+        title: "Taux d'épargne en baisse",
+        body: `Votre taux est passé de ${prevRate.toFixed(0)}% à ${currRate.toFixed(0)}% ce mois-ci. Identifiez le poste responsable dans votre budget.`,
+        value: `${currRate.toFixed(0)} %`,
+        delta: fmtPct(diff),
+        deltaPositive: false,
+        cta: { label: "Voir mon budget", href: "/budget" },
+        ts: now,
+      });
+    } else if (diff > 5) {
+      alerts.push({
+        id: "savings-up",
+        category: "epargne",
+        severity: "positive",
+        title: "Taux d'épargne en hausse",
+        body: `Bravo — votre épargne a progressé de ${diff.toFixed(0)} points ce mois. Pensez à automatiser ce surplus vers votre PEA.`,
+        value: `${currRate.toFixed(0)} %`,
+        delta: fmtPct(diff),
+        deltaPositive: true,
+        cta: { label: "Simuler la projection", href: "/projection" },
+        ts: now,
+      });
     }
+  }
 
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session) {
-        const { data: profile } = await supabase.from('profiles').select('is_pro, assets_json, budget_json, simulations_json').eq('id', session.user.id).single();
-        if (profile) {
-            setIsPro(profile.is_pro === true); // ✅ Stockage du statut PRO
-            
-            const result = runDeepAnalysis(
-                profile.assets_json || [], 
-                profile.budget_json || {}, 
-                profile.simulations_json || []
-            );
-            setData(result);
-            runSimulations(result.totals.totalWealth, result.totals.cashFlow);
+  // Alerte taux d'épargne absolu faible
+  if (savingsRate > 0 && savingsRate < 10) {
+    alerts.push({
+      id: "savings-low",
+      category: "epargne",
+      severity: "critical",
+      title: "Épargne insuffisante",
+      body: `Avec ${savingsRate.toFixed(0)}% d'épargne, votre capacité d'investissement est très limitée. Objectif recommandé : 20% minimum.`,
+      value: `${savingsRate.toFixed(0)} %`,
+      cta: { label: "Revoir mon budget", href: "/budget" },
+      ts: now,
+    });
+  } else if (savingsRate >= 30) {
+    alerts.push({
+      id: "savings-excellent",
+      category: "epargne",
+      severity: "positive",
+      title: "Excellent taux d'épargne",
+      body: `${savingsRate.toFixed(0)}% d'épargne — vous êtes dans le top 5% des épargnants français. Votre DCA mensuel peut être optimisé.`,
+      value: `${savingsRate.toFixed(0)} %`,
+      cta: { label: "Optimiser ma projection", href: "/projection" },
+      ts: now,
+    });
+  }
+
+  // ── 2. CAPACITÉ D'EMPRUNT ─────────────────────────────────────────────────
+  if (income > 0) {
+    // Règle des 35% d'endettement max
+    const maxMonthly = income * 0.35;
+    const loanCapacity = maxMonthly * 12 * 20; // 20 ans horizon
+    const ltvBonus = cash * 4; // apport × 4 = levier immobilier
+    const totalBorrowingPower = loanCapacity + ltvBonus;
+
+    alerts.push({
+      id: "borrow-capacity",
+      category: "emprunt",
+      severity: "info",
+      title: "Capacité d'emprunt estimée",
+      body: `Avec ${fmt(income)}/mois de revenus et ${fmt(cash)} d'apport, votre enveloppe d'achat estimée est de ${fmt(totalBorrowingPower)}. Simulez un projet.`,
+      value: fmt(totalBorrowingPower),
+      cta: { label: "Simuler un achat", href: "/simulateur" },
+      ts: now,
+    });
+
+    // Alerte si taux endettement critique
+    const debtRatio = expenses / income;
+    if (debtRatio > 0.5) {
+      alerts.push({
+        id: "debt-high",
+        category: "emprunt",
+        severity: "critical",
+        title: "Charges élevées",
+        body: `Vos charges représentent ${(debtRatio * 100).toFixed(0)}% de vos revenus. Au-delà de 50%, les banques refusent généralement tout nouveau crédit.`,
+        value: `${(debtRatio * 100).toFixed(0)} %`,
+        cta: { label: "Analyser mon budget", href: "/budget" },
+        ts: now,
+      });
+    }
+  }
+
+  // ── 3. DCA & TRÉSORERIE ────────────────────────────────────────────────────
+  const runwayMonths = expenses > 0 ? cash / expenses : 0;
+
+  if (runwayMonths > 12 && totalWealth > 0) {
+    const surplus = cash - expenses * 6;
+    alerts.push({
+      id: "dca-opportunity",
+      category: "dca",
+      severity: "warning",
+      title: "Cash dormant détecté",
+      body: `Vous avez ${runwayMonths.toFixed(0)} mois de charges en cash. Au-delà de 6 mois, le surplus (${fmt(surplus)}) perd de la valeur face à l'inflation.`,
+      value: fmt(surplus),
+      cta: { label: "Optimiser via DCA", href: "/projection" },
+      ts: now,
+    });
+  } else if (runwayMonths < 3 && income > 0) {
+    alerts.push({
+      id: "cash-critical",
+      category: "dca",
+      severity: "critical",
+      title: "Réserve de sécurité insuffisante",
+      body: `Seulement ${runwayMonths.toFixed(1)} mois de charges en cash. Constituez un matelas de 3 à 6 mois avant d'investir.`,
+      value: `${runwayMonths.toFixed(1)} mois`,
+      cta: { label: "Ajuster mon budget", href: "/budget" },
+      ts: now,
+    });
+  }
+
+  if (savings > 0 && stock === 0 && crypto === 0) {
+    alerts.push({
+      id: "dca-start",
+      category: "dca",
+      severity: "info",
+      title: "DCA non démarré",
+      body: `Vous épargnez ${fmt(savings)}/mois mais aucun actif financier n'est déclaré. Même ${fmt(Math.round(savings * 0.5))}/mois en PEA sur 10 ans fait une différence considérable.`,
+      value: fmt(savings) + "/mois",
+      cta: { label: "Simuler le DCA", href: "/projection" },
+      ts: now,
+    });
+  }
+
+  // ── 4. ALERTES MARCHÉ — positions réelles du portefeuille ──────────────────
+  const stockAssets = assets.filter(a => a.type === "Bourse" && a.ticker);
+  const cryptoAssets = assets.filter(a => a.type === "Crypto" && a.ticker);
+  const watchAssets = [...stockAssets, ...cryptoAssets].slice(0, 6); // max 6 requêtes
+
+  if (watchAssets.length > 0) {
+    await Promise.all(
+      watchAssets.map(async (asset) => {
+        const prices = await fetchLivePrices(asset.ticker!);
+        if (!prices) return;
+
+        const { curr, prev } = prices;
+        const pctChange = ((curr - prev) / prev) * 100;
+        const name = asset.name || asset.ticker!;
+
+        // Calcul impact sur la position réelle
+        const qty = Number(asset.quantity) || 0;
+        const positionValue = qty > 0 ? qty * curr : Number(asset.value) || 0;
+        const positionImpact = positionValue * (pctChange / 100);
+
+        // Plus-value latente si buyPrice renseigné
+        const buyPrice = Number(asset.buyPrice) || 0;
+        const latentPnL = buyPrice > 0 && qty > 0
+          ? (curr - buyPrice) * qty
+          : null;
+        const latentPct = buyPrice > 0 ? ((curr - buyPrice) / buyPrice) * 100 : null;
+
+        // Seuils : 2% pour les cryptos (plus volatiles), 1.5% pour les actions
+        const threshold = asset.type === "Crypto" ? 2 : 1.5;
+
+        if (Math.abs(pctChange) >= threshold) {
+          const isBig = Math.abs(pctChange) >= 5;
+          alerts.push({
+            id: `market-${asset.ticker}`,
+            category: "marche",
+            severity: pctChange <= -5 ? "critical" : pctChange < 0 ? "warning" : "positive",
+            title: pctChange < 0
+              ? `${name} — ${isBig ? "forte baisse" : "baisse"}`
+              : `${name} — ${isBig ? "forte hausse" : "hausse"}`,
+            body: [
+              `Variation hier : ${pctChange > 0 ? "+" : ""}${pctChange.toFixed(2)}% · Cours actuel : ${curr.toFixed(2)}€`,
+              `Impact sur votre position : ${positionImpact > 0 ? "+" : ""}${fmt(positionImpact)}`,
+              latentPnL !== null
+                ? `PnL total : ${latentPnL >= 0 ? "+" : ""}${fmt(latentPnL)} (${latentPct! >= 0 ? "+" : ""}${latentPct!.toFixed(1)}% vs prix d'achat)`
+                : "",
+            ].filter(Boolean).join(" · "),
+            value: `${pctChange > 0 ? "+" : ""}${pctChange.toFixed(2)} %`,
+            deltaPositive: pctChange > 0,
+            cta: { label: "Voir mon patrimoine", href: "/patrimoine" },
+            ts: now,
+          });
+        } else if (latentPnL !== null && Math.abs(latentPct!) >= 15) {
+          // Alerte PnL même sans mouvement journalier si PnL latent important
+          alerts.push({
+            id: `market-pnl-${asset.ticker}`,
+            category: "marche",
+            severity: latentPnL >= 0 ? "positive" : "warning",
+            title: latentPnL >= 0
+              ? `${name} — Plus-value latente significative`
+              : `${name} — Moins-value latente`,
+            body: `Cours actuel : ${curr.toFixed(2)}€ · Achat à ${buyPrice.toFixed(2)}€ · PnL : ${latentPnL >= 0 ? "+" : ""}${fmt(latentPnL)} (${latentPct! >= 0 ? "+" : ""}${latentPct!.toFixed(1)}%)`,
+            value: `${latentPct! >= 0 ? "+" : ""}${latentPct!.toFixed(1)} %`,
+            deltaPositive: latentPnL >= 0,
+            cta: { label: "Voir mon patrimoine", href: "/patrimoine" },
+            ts: now,
+          });
         }
+      })
+    );
+
+    // Si aucune alerte marché générée — tout est stable
+    const hasMarketAlert = alerts.some(a => a.category === "marche");
+    if (!hasMarketAlert) {
+      alerts.push({
+        id: "market-stable",
+        category: "marche",
+        severity: "positive",
+        title: "Portefeuille stable",
+        body: `Vos ${watchAssets.length} position(s) suivie(s) n'ont pas connu de mouvement significatif sur la journée.`,
+        value: `${watchAssets.length} actifs`,
+        cta: { label: "Voir mon patrimoine", href: "/patrimoine" },
+        ts: now,
+      });
     }
-    setAnalyzing(false);
-  };
+  } else if (stock > 0 || crypto > 0) {
+    // Actifs sans ticker renseigné
+    alerts.push({
+      id: "market-no-ticker",
+      category: "marche",
+      severity: "info",
+      title: "Alertes cours non configurées",
+      body: `Vous avez ${fmt(stock + crypto)} en actifs financiers mais sans ticker renseigné. Ajoutez le ticker (ex: AAPL, BTC-EUR) pour suivre vos positions en temps réel.`,
+      value: fmt(stock + crypto),
+      cta: { label: "Configurer mes actifs", href: "/patrimoine" },
+      ts: now,
+    });
+  } else {
+    alerts.push({
+      id: "market-empty",
+      category: "marche",
+      severity: "info",
+      title: "Aucune position suivie",
+      body: "Ajoutez des actifs boursiers ou crypto avec leur ticker dans la page Patrimoine pour recevoir des alertes de cours personnalisées.",
+      cta: { label: "Ajouter des actifs", href: "/patrimoine" },
+      ts: now,
+    });
+  }
 
-  const runSimulations = (wealth: number, monthlySavings: number) => {
-      const compound = [];
-      let capital = wealth;
-      let total = wealth;
-      for(let i=0; i<=10; i++) {
-          compound.push({ year: `An ${i}`, Total: Math.round(total), Capital: Math.round(capital) });
-          total = (total + monthlySavings*12) * 1.07;
-          capital += monthlySavings*12;
-      }
-      setCompoundData(compound);
-  };
+  return alerts;
+}
 
-  if (loading) return <div className="min-h-screen bg-[#050505]" />;
+// ─── Composant AlertCard ──────────────────────────────────────────────────────
+
+function AlertCard({ alert, index }: { alert: PulseAlert; index: number }) {
+  const cat = CATEGORIES[alert.category];
+  const sev = SEVERITY_CONFIG[alert.severity];
+  const CatIcon = cat.icon;
 
   return (
-    <div className="min-h-screen bg-[#050505] text-zinc-100 font-sans pb-24 md:pb-8 selection:bg-emerald-500/30 selection:text-emerald-200">
-      <Sidebar />
-      <main className="md:ml-64 flex-1 w-auto max-w-full p-4 md:p-8 relative overflow-hidden">
-        
-        <div className="fixed top-0 left-64 w-[600px] h-[600px] bg-purple-900/10 rounded-full blur-[120px] pointer-events-none"></div>
-        <div className="fixed bottom-0 right-0 w-[500px] h-[500px] bg-blue-900/10 rounded-full blur-[120px] pointer-events-none"></div>
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, ease: "easeOut", delay: index * 0.05 }}
+      className={`relative rounded-[22px] border ${sev.border} p-5 flex flex-col gap-4 hover:bg-white/[0.02] transition-all duration-200 group`}
+      style={{ backgroundColor: `${cat.color}06` }}
+    >
+      {/* Dot de sévérité */}
+      <div className="absolute top-4 right-4 flex items-center gap-1.5">
+        <div
+          className="w-1.5 h-1.5 rounded-full"
+          style={{ backgroundColor: sev.dot }}
+        />
+        {alert.severity === "critical" && (
+          <div
+            className="w-1.5 h-1.5 rounded-full animate-ping absolute"
+            style={{ backgroundColor: sev.dot, opacity: 0.5 }}
+          />
+        )}
+      </div>
 
-        <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} className="max-w-[1800px] mx-auto space-y-8 relative z-10">
-          
-          <header className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 border-l-4 border-purple-500 pl-6 py-2">
-            <div>
-              <h1 className="text-4xl md:text-5xl font-black text-white tracking-tight uppercase">
-                Nexus <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-indigo-400">Vision</span>
-              </h1>
-              <p className="text-zinc-400 text-sm md:text-base font-light tracking-wide mt-2">Audit IA & Recommandations Stratégiques.</p>
+      {/* Header */}
+      <div className="flex items-start gap-3">
+        <div
+          className="h-9 w-9 rounded-xl flex items-center justify-center shrink-0"
+          style={{ backgroundColor: cat.bg }}
+        >
+          <CatIcon size={16} strokeWidth={1.5} style={{ color: cat.color }} />
+        </div>
+        <div className="flex-1 min-w-0 pt-0.5">
+          <p
+            className="text-[9px] font-bold uppercase tracking-[0.2em] mb-0.5"
+            style={{ color: `${cat.color}90` }}
+          >
+            {cat.label}
+          </p>
+          <p className="text-sm font-black text-white leading-tight">{alert.title}</p>
+        </div>
+      </div>
+
+      {/* Valeur mise en avant */}
+      {alert.value && (
+        <div className="flex items-center gap-2">
+          <span className="text-2xl font-black tabular-nums" style={{ color: cat.color }}>
+            {alert.value}
+          </span>
+          {alert.delta && (
+            <div className="flex items-center gap-0.5">
+              {alert.deltaPositive
+                ? <ArrowUpRight size={13} className="text-emerald-400" />
+                : <ArrowDownRight size={13} className="text-red-400" />
+              }
+              <span className={`text-xs font-bold ${alert.deltaPositive ? "text-emerald-400" : "text-red-400"}`}>
+                {alert.delta}
+              </span>
             </div>
-            <Button onClick={runFullAudit} disabled={analyzing} className="h-12 px-8 rounded-full bg-white text-black font-bold hover:bg-zinc-200 transition-all shadow-[0_0_20px_rgba(255,255,255,0.2)]">
-                {analyzing ? <Loader2 className="animate-spin mr-2"/> : <RefreshCw className="mr-2"/>} 
-                {analyzing ? "ANALYSE EN COURS..." : "LANCER L'AUDIT"}
-            </Button>
-          </header>
+          )}
+        </div>
+      )}
 
-          {analyzing ? (
-              <div className="h-[60vh] flex flex-col items-center justify-center space-y-6">
-                  <div className="relative">
-                      <div className="absolute inset-0 bg-purple-500/20 blur-xl rounded-full animate-pulse"></div>
-                      <Brain className="text-white w-20 h-20 animate-bounce relative z-10" strokeWidth={1} />
+      {/* Corps */}
+      <p className="text-xs text-zinc-500 leading-relaxed">{alert.body}</p>
+
+      {/* CTA */}
+      {alert.cta && (
+        <Link
+          href={alert.cta.href}
+          className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest transition-colors self-start"
+          style={{ color: `${cat.color}70` }}
+        >
+          {alert.cta.label}
+          <ChevronRight size={11} className="group-hover:translate-x-0.5 transition-transform" />
+        </Link>
+      )}
+    </motion.div>
+  );
+}
+
+// ─── Page principale ──────────────────────────────────────────────────────────
+
+const ALL_CATEGORIES: Array<Category | "all"> = ["all", "epargne", "emprunt", "dca", "marche"];
+
+export default function PulsePage() {
+  const [alerts, setAlerts] = useState<PulseAlert[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [filter, setFilter] = useState<Category | "all">("all");
+  const [userName, setUserName] = useState("Investisseur");
+
+  const load = useCallback(async (isRefresh = false) => {
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
+
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) { setLoading(false); return; }
+
+    if (session.user.user_metadata?.full_name) {
+      setUserName(session.user.user_metadata.full_name.split(" ")[0]);
+    }
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("assets_json, budget_json")
+      .eq("id", session.user.id)
+      .maybeSingle();
+
+    const { data: history } = await supabase
+      .from("monthly_history")
+      .select("month, income, expenses")
+      .eq("user_id", session.user.id)
+      .order("month", { ascending: true })
+      .limit(6);
+
+    const enriched = { ...(profile || {}), monthly_history: history || [] };
+    const result = await buildAlerts(enriched as Parameters<typeof buildAlerts>[0]);
+
+    // Tri : critical en premier, puis warning, info, positive
+    const ORDER: Record<Severity, number> = { critical: 0, warning: 1, info: 2, positive: 3 };
+    result.sort((a, b) => ORDER[a.severity] - ORDER[b.severity]);
+
+    setAlerts(result);
+    setLoading(false);
+    setRefreshing(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const filtered = filter === "all" ? alerts : alerts.filter(a => a.category === filter);
+
+  const criticalCount = alerts.filter(a => a.severity === "critical").length;
+  const positiveCount = alerts.filter(a => a.severity === "positive").length;
+
+  // ── Render ────────────────────────────────────────────────────────────────
+
+  return (
+    <div className="min-h-screen bg-[#050505] text-zinc-100 font-sans pb-28 md:pb-10">
+      <Sidebar />
+
+      <main className="md:ml-64 px-4 pt-6 pb-10 md:px-10 md:pt-10 relative overflow-hidden">
+
+        {/* Ambient */}
+        <div className="fixed top-0 left-0 right-0 h-[300px] bg-gradient-to-b from-yellow-950/10 to-transparent pointer-events-none z-0" />
+
+        <div className="relative z-10 space-y-6">
+
+          {/* ── HEADER ─────────────────────────────────────────────────────── */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, ease: "easeOut" }}
+            className="flex items-start justify-between gap-4"
+          >
+            <div>
+              <p className="text-[10px] text-zinc-700 font-bold uppercase tracking-[0.25em] mb-1">
+                {new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" }).replace(/^\w/, c => c.toUpperCase())}
+              </p>
+              <h1 className="text-2xl md:text-3xl font-black text-white tracking-tighter">
+                Nexus <span className="text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-orange-400">Pulse</span>
+              </h1>
+              <p className="text-xs text-zinc-600 mt-0.5">Alertes & signaux patrimoniaux · {userName}</p>
+            </div>
+
+            <button
+              onClick={() => load(true)}
+              disabled={refreshing}
+              className="h-9 w-9 rounded-xl bg-zinc-900/70 border border-white/5 flex items-center justify-center text-zinc-500 hover:text-white hover:bg-zinc-800 transition-all disabled:opacity-40"
+            >
+              <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />
+            </button>
+          </motion.div>
+
+          {/* ── RÉSUMÉ ─────────────────────────────────────────────────────── */}
+          {!loading && alerts.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.35, ease: "easeOut", delay: 0.05 }}
+              className="grid grid-cols-3 gap-3"
+            >
+              {[
+                { label: "Alertes totales", value: alerts.length, color: "#71717a", icon: Bell },
+                { label: "Critiques", value: criticalCount, color: "#ef4444", icon: AlertTriangle },
+                { label: "Positives", value: positiveCount, color: "#10b981", icon: CheckCircle2 },
+              ].map((s) => (
+                <div key={s.label} className="rounded-[18px] bg-zinc-900/40 border border-white/5 p-3 md:p-4 flex items-center gap-3">
+                  <div className="h-8 w-8 rounded-xl flex items-center justify-center shrink-0" style={{ backgroundColor: `${s.color}12` }}>
+                    <s.icon size={14} style={{ color: s.color }} strokeWidth={1.5} />
                   </div>
-                  <p className="text-purple-300 font-mono text-sm animate-pulse">{scanText}</p>
-              </div>
-          ) : data ? (
-            // ✅ VERROUILLAGE GLOBAL DE TOUT LE RAPPORT
-            <PremiumGuard isPro={isPro} title="Rapport d'Audit Complet" description="Accédez à votre score de santé, vos alertes critiques et nos recommandations stratégiques.">
-                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-8">
-                    
-                    {/* 1. SCORE & DIAGNOSTIC */}
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                        {/* SCORE */}
-                        <div className="p-8 rounded-[32px] bg-zinc-900/40 backdrop-blur-xl border border-white/5 relative overflow-hidden flex flex-col items-center justify-center text-center shadow-2xl">
-                            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-red-500 via-yellow-500 to-emerald-500 opacity-50"></div>
-                            <h2 className="text-zinc-500 text-xs font-bold uppercase tracking-[0.3em] mb-6">SCORE SANTÉ</h2>
-                            <div className="relative">
-                                <svg className="w-48 h-48 transform -rotate-90">
-                                    <circle cx="96" cy="96" r="88" stroke="#18181b" strokeWidth="12" fill="transparent" />
-                                    <motion.circle 
-                                        initial={{ strokeDasharray: 553, strokeDashoffset: 553 }} 
-                                        animate={{ strokeDashoffset: 553 - (553 * data.score) / 100 }} 
-                                        transition={{ duration: 1.5, ease: "circOut" }}
-                                        cx="96" cy="96" r="88" 
-                                        stroke={data.score > 70 ? "#10b981" : data.score > 40 ? "#eab308" : "#ef4444"} 
-                                        strokeWidth="12" fill="transparent" strokeLinecap="round" 
-                                    />
-                                </svg>
-                                <div className="absolute inset-0 flex flex-col items-center justify-center">
-                                    <span className="text-6xl font-black text-white">{data.score}</span>
-                                    <span className="text-xs text-zinc-500 font-bold uppercase">/ 100</span>
-                                </div>
-                            </div>
-                        </div>
+                  <div>
+                    <p className="text-xl font-black text-white tabular-nums leading-none">{s.value}</p>
+                    <p className="text-[9px] text-zinc-600 font-bold uppercase tracking-wider mt-0.5">{s.label}</p>
+                  </div>
+                </div>
+              ))}
+            </motion.div>
+          )}
 
-                        {/* DIAGNOSTIC IA */}
-                        <div className="lg:col-span-2 p-8 rounded-[32px] bg-zinc-900/40 backdrop-blur-xl border border-white/5 flex flex-col">
-                            <div className="flex items-center gap-3 mb-6">
-                                <Sparkles className="text-purple-400" size={20}/>
-                                <h3 className="text-lg font-bold text-white uppercase tracking-wide">Diagnostic IA</h3>
-                            </div>
-                            <div className="flex-1 space-y-4 overflow-y-auto pr-2 custom-scrollbar max-h-[300px]">
-                                {data.insights.length > 0 ? data.insights.map((insight: any, idx: number) => (
-                                    <div key={idx} className={`p-5 rounded-2xl border flex gap-4 items-start transition-all ${
-                                        insight.type === 'success' ? 'bg-emerald-950/20 border-emerald-500/20' : 
-                                        insight.type === 'danger' ? 'bg-red-950/20 border-red-500/20' : 
-                                        'bg-yellow-950/20 border-yellow-500/20'
-                                    }`}>
-                                        <div className={`p-2 rounded-lg shrink-0 ${
-                                            insight.type === 'success' ? 'bg-emerald-500/20 text-emerald-400' : 
-                                            insight.type === 'danger' ? 'bg-red-500/20 text-red-400' : 
-                                            'bg-yellow-500/20 text-yellow-400'
-                                        }`}>
-                                            {insight.type === 'success' ? <CheckCircle size={18}/> : <AlertTriangle size={18}/>}
-                                        </div>
-                                        <div>
-                                            <h4 className={`text-sm font-bold uppercase mb-1 ${
-                                                insight.type === 'success' ? 'text-emerald-400' : 
-                                                insight.type === 'danger' ? 'text-red-400' : 
-                                                'text-yellow-400'
-                                            }`}>{insight.title}</h4>
-                                            <p className="text-xs text-zinc-300 leading-relaxed">{insight.text}</p>
-                                        </div>
-                                    </div>
-                                )) : (
-                                    <div className="text-center py-10 text-zinc-500 italic">Aucune alerte majeure détectée. Votre profil est sain.</div>
-                                )}
-                            </div>
-                        </div>
-                    </div>
+          {/* ── FILTRES ────────────────────────────────────────────────────── */}
+          {!loading && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.3, delay: 0.1 }}
+              className="flex gap-2 overflow-x-auto pb-1 scrollbar-none"
+            >
+              {ALL_CATEGORIES.map((cat) => {
+                const isAll = cat === "all";
+                const cfg = isAll ? null : CATEGORIES[cat];
+                const count = isAll ? alerts.length : alerts.filter(a => a.category === cat).length;
+                const active = filter === cat;
 
-                    {/* 2. COACH STRATÉGIQUE */}
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                        <div className="p-8 rounded-[32px] bg-gradient-to-br from-zinc-900/60 to-black border border-white/5 flex flex-col shadow-xl">
-                            <div className="flex items-center gap-3 mb-6">
-                                <Lightbulb className="text-yellow-400" size={24}/>
-                                <h3 className="text-xl font-bold text-white uppercase tracking-wide">Coach Stratégique</h3>
-                            </div>
-                            <div className="space-y-4">
-                                {data.tips.map((tip: any, idx: number) => (
-                                    <div key={idx} className="p-5 rounded-2xl bg-zinc-900 border border-white/5 flex gap-4 transition-all hover:bg-zinc-800/50">
-                                        <div className={`h-10 w-10 rounded-xl flex items-center justify-center shrink-0 ${tip.bg} ${tip.color}`}>
-                                            <tip.icon size={20}/>
-                                        </div>
-                                        <div>
-                                            <h4 className={`text-sm font-bold uppercase mb-1 ${tip.color}`}>{tip.title}</h4>
-                                            <p className="text-xs text-zinc-300 leading-relaxed">{tip.text}</p>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
+                return (
+                  <button
+                    key={cat}
+                    onClick={() => setFilter(cat)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all shrink-0 border ${
+                      active
+                        ? "text-white border-white/20 bg-white/8"
+                        : "text-zinc-600 border-white/5 hover:text-zinc-400 hover:border-white/10"
+                    }`}
+                  >
+                    {cfg && <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: cfg.color }} />}
+                    {isAll ? "Tout" : cfg!.label}
+                    <span className={`tabular-nums ${active ? "text-zinc-400" : "text-zinc-700"}`}>
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
+            </motion.div>
+          )}
 
-                        {/* RADAR & KPIS */}
-                        <div className="p-8 rounded-[32px] bg-zinc-900/40 border border-white/5 flex flex-col">
-                            <h4 className="text-xs font-bold text-zinc-500 uppercase tracking-[0.2em] mb-4">MATRICE D'ÉQUILIBRE</h4>
-                            <div className="h-[250px] w-full mb-6">
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <RadarChart cx="50%" cy="50%" outerRadius="70%" data={data.radar}>
-                                        <PolarGrid stroke="#27272a" />
-                                        <PolarAngleAxis dataKey="subject" tick={{ fill: '#a1a1aa', fontSize: 10, fontWeight: 'bold' }} />
-                                        <Radar name="Profil" dataKey="A" stroke="#8b5cf6" strokeWidth={3} fill="#8b5cf6" fillOpacity={0.3} />
-                                        <Tooltip contentStyle={{ backgroundColor: '#09090b', borderColor: '#27272a', borderRadius: '12px' }} itemStyle={{ color: '#fff' }}/>
-                                    </RadarChart>
-                                </ResponsiveContainer>
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="bg-black/20 p-3 rounded-xl border border-white/5">
-                                    <p className="text-[10px] text-zinc-500 uppercase font-bold">Épargne Mensuelle</p>
-                                    <p className="text-xl font-black text-white">{formatEuro(data.totals.cashFlow)}</p>
-                                </div>
-                                <div className="bg-black/20 p-3 rounded-xl border border-white/5">
-                                    <p className="text-[10px] text-zinc-500 uppercase font-bold">Runway Cash</p>
-                                    <p className="text-xl font-black text-white">{data.metrics.runwayMonths.toFixed(1)} <span className="text-xs text-zinc-500 font-normal">mois</span></p>
-                                </div>
-                            </div>
+          {/* ── CONTENU ────────────────────────────────────────────────────── */}
+          {loading ? (
+            <div className="flex flex-col items-center justify-center py-24 gap-4">
+              <Loader2 size={28} className="animate-spin text-zinc-700" />
+              <p className="text-xs text-zinc-700 font-mono uppercase tracking-widest">Analyse en cours…</p>
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-24 text-center gap-3">
+              <CheckCircle2 size={32} className="text-emerald-500/40" />
+              <p className="text-sm font-black text-white">Aucune alerte dans cette catégorie</p>
+              <p className="text-xs text-zinc-600 max-w-xs">
+                {filter === "all"
+                  ? "Votre patrimoine ne déclenche aucun signal pour le moment."
+                  : "Ajoutez des données dans cette catégorie pour voir des alertes."}
+              </p>
+            </div>
+          ) : (
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={filter}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
+              >
+                {/* Groupement par catégorie si "all" */}
+                {filter === "all" ? (
+                  <div className="space-y-6">
+                    {(["critical", "warning", "info", "positive"] as Severity[]).map((sev) => {
+                      const group = filtered.filter(a => a.severity === sev);
+                      if (group.length === 0) return null;
+                      const labels: Record<Severity, string> = {
+                        critical: "⚠ À traiter en priorité",
+                        warning: "Surveiller",
+                        info: "Informations",
+                        positive: "✓ Bonne nouvelle",
+                      };
+                      return (
+                        <div key={sev}>
+                          <p className="text-[9px] font-bold text-zinc-700 uppercase tracking-[0.25em] mb-3 pl-1">
+                            {labels[sev]}
+                          </p>
+                          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                            {group.map((alert, i) => (
+                              <AlertCard key={alert.id} alert={alert} index={i} />
+                            ))}
+                          </div>
                         </div>
-                    </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                    {filtered.map((alert, i) => (
+                      <AlertCard key={alert.id} alert={alert} index={i} />
+                    ))}
+                  </div>
+                )}
+              </motion.div>
+            </AnimatePresence>
+          )}
 
-                    {/* 3. PROJECTION */}
-                    <div className="p-8 rounded-[32px] bg-zinc-900/40 border border-white/5">
-                        <div className="flex justify-between items-center mb-8">
-                            <h3 className="text-lg font-bold text-white uppercase flex items-center gap-2"><TrendingUp size={20} className="text-emerald-500"/> Projection Patrimoine (10 ans)</h3>
-                            <div className="text-xs text-zinc-500 font-mono">Hypothèse : 7% / an</div>
-                        </div>
-                        <div className="h-[300px] w-full">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <AreaChart data={compoundData}>
-                                    <defs>
-                                        <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/><stop offset="95%" stopColor="#10b981" stopOpacity={0}/></linearGradient>
-                                    </defs>
-                                    <XAxis dataKey="year" stroke="#52525b" fontSize={10} tickLine={false} axisLine={false} />
-                                    <Tooltip contentStyle={{ backgroundColor: '#09090b', borderColor: '#27272a', borderRadius: '12px' }} formatter={(val: any) => formatEuro(Number(val))}/>
-                                    <Area type="monotone" dataKey="Total" stroke="#10b981" strokeWidth={3} fill="url(#colorTotal)" name="Patrimoine Total" stackId="1"/>
-                                    <Area type="monotone" dataKey="Capital" stroke="#3f3f46" strokeWidth={2} fill="transparent" name="Capital Versé" stackId="2"/>
-                                </AreaChart>
-                            </ResponsiveContainer>
-                        </div>
-                    </div>
-
-                </motion.div>
-            </PremiumGuard>
-          ) : null}
-
-        </motion.div>
+        </div>
       </main>
     </div>
   );
