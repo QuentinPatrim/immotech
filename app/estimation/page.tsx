@@ -897,15 +897,15 @@ export default function EstimationManager() {
                         <div className="relative z-10 space-y-3">
                             <div className="flex items-center gap-2 mb-2">
                                 <div className="h-px flex-1" style={{ background: `linear-gradient(to right, ${COLORS.primary}, transparent)` }}></div>
-                                <span className="text-[9px] font-bold uppercase tracking-[0.3em] text-zinc-600">Avis de Valeur</span>
+                                <span className="text-[9px] font-bold uppercase tracking-[0.3em] text-zinc-600">Estimation immobilière</span>
                             </div>
                             <h1 className="pdf-display font-black uppercase leading-[0.88] tracking-tight" style={{ fontSize: '48px', color: COLORS.secondary }}>
-                                Estimation<br/>
-                                <span style={{ color: '#ffffff' }}>Immobilière</span>
+                                Avis <br/>
+                                <span style={{ color: '#ffffff' }}>de valeur</span>
                             </h1>
                             {/* Demandant(s) */}
                             <div className="border-t border-white/10 pt-3 mt-3">
-                                <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-semibold mb-1">Préparé pour</p>
+                                <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-semibold mb-1">A la demande de</p>
                                 <p className="text-[17px] font-bold text-white leading-snug">{data.clientName || "—"}</p>
                                 {(data.clientAddress) && (
                                     <p className="text-[11px] text-zinc-400 mt-1 leading-snug">

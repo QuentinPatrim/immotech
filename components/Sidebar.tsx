@@ -112,7 +112,7 @@ export default function Sidebar() {
             }`}
           >
             <BrainCircuit size={20} className={`transition-colors ${pathname === "/analyses" ? "text-emerald-400" : "text-zinc-500 group-hover:text-emerald-400"}`} />
-            <span className="font-bold text-sm tracking-wide">Analyses IA</span>
+            <span className="font-bold text-sm tracking-wide">Nexus Stocks</span>
           </Link>
         </nav>
 
