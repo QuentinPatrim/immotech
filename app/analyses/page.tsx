@@ -1,12 +1,13 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
+import Link from "next/link";
 import Sidebar from "@/components/Sidebar";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Search, RefreshCw, Loader2, ChevronUp, ChevronDown, X, Clock,
   TrendingUp, TrendingDown, Shield, Target, Eye, Zap, AlertTriangle,
-  Activity, Layers, Crosshair, BarChart3, ArrowRight,
+  Activity, Layers, Crosshair, BarChart3, ArrowRight, BookOpen,
 } from "lucide-react";
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -337,8 +338,16 @@ export default function NexusStocksPage() {
             <h1 className="text-lg font-semibold tracking-tight" style={{ color: P.text }}>
               Nexus <span style={{ color: P.blue }}>Stocks</span>
             </h1>
-            <div className="flex items-center gap-2 text-[11px]" style={{ color: P.textLight }}>
-              <div className="h-1.5 w-1.5 rounded-full animate-pulse" style={{ background: P.green }} />Temps réel
+            <div className="flex items-center gap-3">
+              <Link href="/analyses/guide"
+                className="flex items-center gap-2 px-4 py-2 rounded-xl border text-[12px] font-medium transition-all hover:shadow-md"
+                style={{ background: P.card, borderColor: P.border, color: P.blue }}>
+                <BookOpen size={13} />
+                Guide
+              </Link>
+              <div className="flex items-center gap-2 text-[11px]" style={{ color: P.textLight }}>
+                <div className="h-1.5 w-1.5 rounded-full animate-pulse" style={{ background: P.green }} />Temps réel
+              </div>
             </div>
           </div>
 
@@ -626,6 +635,12 @@ export default function NexusStocksPage() {
                   return <button key={n} onClick={() => pickStock(s)} className="px-5 py-2.5 rounded-xl border text-sm transition-all hover:shadow-md" style={{ background: P.card, borderColor: P.border, color: P.textMid }}>{n}</button>;
                 })}
               </div>
+              <Link href="/analyses/guide"
+                className="flex items-center gap-2 text-sm font-medium transition-colors hover:opacity-70"
+                style={{ color: P.blue }}>
+                <BookOpen size={15} />
+                Comprendre les indicateurs techniques
+              </Link>
             </div>
           )}
 
