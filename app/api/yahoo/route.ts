@@ -2,12 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 
 /**
  * Proxy Yahoo Finance — évite les restrictions CORS browser
- * Usage :
+ * Endpoints :
  *   /api/yahoo?endpoint=chart&ticker=AAPL&range=6mo&interval=1d
  *   /api/yahoo?endpoint=search&q=LVMH
  *   /api/yahoo?endpoint=quote&ticker=MC.PA
- *   /api/yahoo?endpoint=quoteSummary&ticker=MC.PA   (dividendes + profile)
- *   /api/yahoo?endpoint=yahoosearch&q=tesla          (recherche Yahoo dynamique)
+ *   /api/yahoo?endpoint=quoteSummary&ticker=MC.PA   ← NEW (fondamentaux + dividendes)
  */
 
 const HEADERS: HeadersInit = {
@@ -21,10 +20,19 @@ const HEADERS: HeadersInit = {
 };
 
 async function yahooFetch(url: string) {
-  let response = await fetch(url, { headers: HEADERS, signal: AbortSignal.timeout(10000) });
+  let response = await fetch(url, {
+    headers: HEADERS,
+    signal: AbortSignal.timeout(10000),
+  });
   if (!response.ok) {
-    const fallback = url.replace("query1.finance.yahoo.com", "query2.finance.yahoo.com");
-    response = await fetch(fallback, { headers: HEADERS, signal: AbortSignal.timeout(10000) });
+    const fallback = url.replace(
+      "query1.finance.yahoo.com",
+      "query2.finance.yahoo.com"
+    );
+    response = await fetch(fallback, {
+      headers: HEADERS,
+      signal: AbortSignal.timeout(10000),
+    });
   }
   return response;
 }
@@ -41,46 +49,57 @@ export async function GET(req: NextRequest) {
       const ticker = searchParams.get("ticker");
       const range = searchParams.get("range") || "6mo";
       const interval = searchParams.get("interval") || "1d";
-      if (!ticker) return NextResponse.json({ error: "ticker requis" }, { status: 400 });
-      yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=${interval}&range=${range}&includePrePost=false`;
+      if (!ticker)
+        return NextResponse.json({ error: "ticker requis" }, { status: 400 });
+      yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(
+        ticker
+      )}?interval=${interval}&range=${range}&includePrePost=false`;
     }
 
-    // ── Local search (autocomplete) ──
+    // ── Search (autocomplete) ──
     else if (endpoint === "search") {
       const q = searchParams.get("q");
-      if (!q) return NextResponse.json({ error: "q requis" }, { status: 400 });
-      yahooUrl = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(q)}&quotesCount=8&newsCount=0&listsCount=0&enableFuzzyQuery=false&enableCb=false`;
+      if (!q)
+        return NextResponse.json({ error: "q requis" }, { status: 400 });
+      yahooUrl = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(
+        q
+      )}&quotesCount=8&newsCount=0&listsCount=0&enableFuzzyQuery=true&enableCb=false`;
     }
 
-    // ── Yahoo dynamic search (complément de la liste locale) ──
-    else if (endpoint === "yahoosearch") {
-      const q = searchParams.get("q");
-      if (!q) return NextResponse.json({ error: "q requis" }, { status: 400 });
-      yahooUrl = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(q)}&quotesCount=12&newsCount=0&listsCount=0&enableFuzzyQuery=true&enableCb=false&enableNavLinks=false`;
-    }
-
-    // ── Quote (prix en temps réel) ──
+    // ── Quote (prix temps réel) ──
     else if (endpoint === "quote") {
       const ticker = searchParams.get("ticker");
-      if (!ticker) return NextResponse.json({ error: "ticker requis" }, { status: 400 });
-      yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1d&range=5d`;
+      if (!ticker)
+        return NextResponse.json({ error: "ticker requis" }, { status: 400 });
+      yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(
+        ticker
+      )}?interval=1d&range=5d`;
     }
 
-    // ── QuoteSummary (dividendes, profile, stats) ──
+    // ── QuoteSummary (fondamentaux + dividendes + financials) ──
     else if (endpoint === "quoteSummary") {
       const ticker = searchParams.get("ticker");
-      if (!ticker) return NextResponse.json({ error: "ticker requis" }, { status: 400 });
+      if (!ticker)
+        return NextResponse.json({ error: "ticker requis" }, { status: 400 });
       const modules = [
         "summaryDetail",
         "defaultKeyStatistics",
         "calendarEvents",
-        "assetProfile",
+        "financialData",
+        "price",
+        "summaryProfile",
       ].join(",");
-      yahooUrl = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(ticker)}?modules=${modules}`;
+      yahooUrl = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(
+        ticker
+      )}?modules=${modules}`;
     }
 
+    // ── Invalid ──
     else {
-      return NextResponse.json({ error: "endpoint invalide" }, { status: 400 });
+      return NextResponse.json(
+        { error: "endpoint invalide (chart|search|quote|quoteSummary)" },
+        { status: 400 }
+      );
     }
 
     const response = await yahooFetch(yahooUrl);
@@ -95,7 +114,9 @@ export async function GET(req: NextRequest) {
     const data = await response.json();
 
     return NextResponse.json(data, {
-      headers: { "Cache-Control": "public, s-maxage=300, stale-while-revalidate=60" },
+      headers: {
+        "Cache-Control": "public, s-maxage=300, stale-while-revalidate=60",
+      },
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Erreur inconnue";
