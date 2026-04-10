@@ -9,11 +9,12 @@ import {
   Activity, Layers, BarChart3, BookOpen, Globe, DollarSign,
   Plus, Briefcase, ScanLine, Check, Download, FileText,
   Zap, Heart, Scale, Gauge, Sparkles, ArrowUpRight, Maximize2,
-  ChevronRight, AlignLeft, Target, PieChart, TrendingUp as TrendingUpIcon
+  ChevronRight, AlignLeft, Target, PieChart, TrendingUp as TrendingUpIcon,
+  PiggyBank
 } from "lucide-react";
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  ReferenceLine, Cell, CartesianGrid, BarChart as RBarChart, Area,
+  ReferenceLine, Cell, CartesianGrid, BarChart as RBarChart, Area, AreaChart,
   PieChart as RechartsPieChart, Pie, Cell as PieCell
 } from "recharts";
 
@@ -22,11 +23,14 @@ import type { StockInfo, OHLCV, TechResult, Confluence, Fundamentals, PortfolioP
 import { computeAll, analyzeConfluence, computeHealthScore, computeValuationScore, computeMomentumScore, COLLECTIONS } from "./engine";
 import { STOCKS, searchStocks, SCAN_UNIVERSES, fetchChart, fetchMeta, fetchFundamentals, fetchYahooSearch, loadPortfolio, addToPortfolio } from "./api";
 import type { YahooResult } from "./api";
-import { exportFullPDF, exportSummaryPDF } from "./generateReport";
+import { exportFullPDF, exportSummaryPDF, exportStrategyPDF } from "./generateReport"; // CORRIGÉ : L'import inclut bien exportStrategyPDF
 import ScoreRing from "./components/ScoreRing";
 import SignalRow from "./components/SignalRow";
 import TradePlanVisual from "./components/TradePlanVisual";
 import InvestorProfileManager from "./components/InvestorProfile";
+
+// CORRECTION : Ajout des accolades pour importer le composant nommé
+import { NexusLogo } from "@/components/NexusLogo";
 
 // ═══════════════════════════════════════════════════════════════
 // STYLES & CONFIG
@@ -64,7 +68,22 @@ function ChartTip({ active, payload }: { active?: boolean; payload?: Array<{ pay
   );
 }
 
-// Fonction utilitaire pour scanner en silence une action
+// Custom Tooltip for Strategy Chart
+function StratChartTip({ active, payload }: any) {
+  if (!active || !payload || !payload.length) return null;
+  const data = payload[0].payload;
+  return (
+    <div className="rounded-2xl px-4 py-3 text-xs shadow-2xl" style={{ ...glass, borderColor: T.borderMid }}>
+      <p className="font-bold mb-2 text-[10px] uppercase tracking-wider" style={{ color: T.textSub }}>{data.year}</p>
+      <div className="space-y-1.5">
+        <div className="flex justify-between gap-6"><span style={{ color: T.cyan }} className="font-bold">Capital total</span><span className="font-mono font-bold" style={{ color: T.text }}>{data.total.toFixed(0)} €</span></div>
+        <div className="flex justify-between gap-6"><span style={{ color: T.textDim }}>Montant investi</span><span className="font-mono" style={{ color: T.textSub }}>{data.investi.toFixed(0)} €</span></div>
+        <div className="flex justify-between gap-6 border-t pt-1.5 mt-1.5" style={{ borderColor: T.borderMid }}><span style={{ color: T.green }}>Plus-value</span><span className="font-mono font-bold" style={{ color: T.green }}>{data.plusValue.toFixed(0)} €</span></div>
+      </div>
+    </div>
+  );
+}
+
 async function quickScore(ticker: string) {
   try {
     const ohlcv = await fetchChart(ticker, "6mo", "1d");
@@ -132,10 +151,12 @@ export default function NexusStocksPage() {
 
   // Strategy Builder States
   const [stratAmount, setStratAmount] = useState<number>(10000);
-  const [stratYears, setStratYears] = useState<number>(5);
+  const [stratDca, setStratDca] = useState<number>(250); // Apport mensuel
+  const [stratYears, setStratYears] = useState<number>(10);
   const [stratYield, setStratYield] = useState<number>(8);
   const [stratRisk, setStratRisk] = useState<string>("equilibre");
-  const [stratPlan, setStratPlan] = useState<Array<{stock: StockInfo, weight: number, amount: number, score: number}>>([]);
+  const [stratPlan, setStratPlan] = useState<Array<{stock: StockInfo, weight: number, amount: number, score: number, divYield?: number, entryMin?: number, entryMax?: number}>>([]);
+  const [stratDivYield, setStratDivYield] = useState<number>(0); // Dividende moyen
   const [isGeneratingStrat, setIsGeneratingStrat] = useState(false);
   const [stratProgress, setStratProgress] = useState(0); 
   const [currentScanTicker, setCurrentScanTicker] = useState("");
@@ -174,10 +195,9 @@ export default function NexusStocksPage() {
     try { setViewData(await fetchChart(selected.ticker, per.v, per.i)); } catch { }
   }, [selected, analysisData]);
 
-  // CORRECTION UX: Vider la recherche empêche le menu de s'ouvrir tout seul en boucle
   const pickStock = (s: StockInfo) => { 
     setSelected(s); 
-    setQuery(""); // <-- On vide l'input, prépare le terrain pour la prochaine recherche
+    setQuery(""); 
     setYahooResults([]); 
     setShowSugg(false); 
     analyze(s); 
@@ -232,6 +252,7 @@ export default function NexusStocksPage() {
     setIsGeneratingStrat(true);
     setStratProgress(0);
     setStratPlan([]);
+    setStratDivYield(0);
 
     const safeSectors = ["Santé", "Assurance", "Alimentation", "Énergie", "Finance", "Construction"];
     const growthSectors = ["Technologie", "Logiciel", "Semi-conducteurs", "Luxe", "Cosmétiques", "Aéronautique"];
@@ -262,7 +283,7 @@ export default function NexusStocksPage() {
        setStratProgress(Math.round(((i + 1) / poolToScan.length) * 100));
     }
 
-    const finalPlan: Array<{stock: StockInfo, weight: number, amount: number, score: number}> = [];
+    const finalPlan: Array<{stock: StockInfo, weight: number, amount: number, score: number, divYield?: number, entryMin?: number, entryMax?: number}> = [];
     
     const allocate = (poolArr: typeof scoredAssets, weight: number, maxAssets: number) => {
       const best = poolArr.sort((a,b) => b.score - a.score).slice(0, maxAssets);
@@ -276,18 +297,62 @@ export default function NexusStocksPage() {
     if(targetRiskW > 0) allocate(scoredAssets.filter(a => a.stock.sector === "Crypto"), targetRiskW, 2);
 
     const totalW = finalPlan.reduce((acc, curr) => acc + curr.weight, 0);
+    let avgDiv = 0;
+
     if (totalW > 0) {
-      finalPlan.forEach(p => {
-        p.weight = p.weight / totalW;
-        p.amount = stratAmount * p.weight;
-      });
+      for (let i = 0; i < finalPlan.length; i++) {
+        finalPlan[i].weight = finalPlan[i].weight / totalW;
+        finalPlan[i].amount = stratAmount * finalPlan[i].weight;
+        
+        setCurrentScanTicker(`Niveaux: ${finalPlan[i].stock.ticker}`);
+        const [fund, ohlcv] = await Promise.all([
+          fetchFundamentals(finalPlan[i].stock.ticker),
+          fetchChart(finalPlan[i].stock.ticker, ANALYSIS_PERIOD.v, ANALYSIS_PERIOD.i)
+        ]);
+        
+        const yld = fund?.dividendYield || 0;
+        finalPlan[i].divYield = yld;
+        avgDiv += yld * finalPlan[i].weight;
+
+        if(ohlcv.length > 0) {
+          const lastC = ohlcv[ohlcv.length - 1].close;
+          finalPlan[i].entryMin = lastC * 0.985; 
+          finalPlan[i].entryMax = lastC * 1.005; 
+        }
+      }
     }
 
+    setStratDivYield(avgDiv);
     setStratPlan(finalPlan.sort((a,b) => b.weight - a.weight));
     setIsGeneratingStrat(false);
   };
 
-  const expectedFutureValue = stratAmount * Math.pow(1 + stratYield / 100, stratYears);
+  const projectionData = useMemo(() => {
+    const data = [];
+    const r = stratYield / 100;
+    const n = 12; 
+    const pmt = stratDca; 
+    
+    for(let y = 0; y <= stratYears; y++) {
+      const months = y * 12;
+      const compoundPrincipal = stratAmount * Math.pow(1 + r/n, months);
+      const compoundDCA = pmt * ((Math.pow(1 + r/n, months) - 1) / (r/n));
+      const totalValue = compoundPrincipal + compoundDCA;
+      
+      const totalInvested = stratAmount + (pmt * months);
+      
+      data.push({
+        year: y === 0 ? "Aujourd'hui" : `Année ${y}`,
+        total: totalValue,
+        investi: totalInvested,
+        plusValue: totalValue - totalInvested
+      });
+    }
+    return data;
+  }, [stratAmount, stratYears, stratYield, stratDca]);
+
+  const expectedFutureValue = projectionData[projectionData.length - 1]?.total || 0;
+  const expectedTotalInvested = projectionData[projectionData.length - 1]?.investi || 0;
 
   const pieClassData = useMemo(() => {
     let crypto = 0, bourse = 0;
@@ -319,6 +384,18 @@ export default function NexusStocksPage() {
   const isTrendUp = meta ? meta.pct >= 0 : true;
   const chartColor = isTrendUp ? T.green : T.red;
 
+  const handleExportStrategy = () => {
+    exportStrategyPDF({
+      amount: stratAmount,
+      dca: stratDca,
+      years: stratYears,
+      yield: stratYield,
+      risk: stratRisk,
+      divYield: stratDivYield,
+      plan: stratPlan
+    });
+  };
+
   // ═══════════════════════════════════════════════════════════════
   // RENDER
   // ═══════════════════════════════════════════════════════════════
@@ -336,8 +413,8 @@ export default function NexusStocksPage() {
           {/* ══ HEADER ══ */}
           <div className="flex items-center justify-between flex-wrap gap-4">
             <div className="flex items-center gap-4 cursor-pointer" onClick={clear}>
-              <div className="w-10 h-10 rounded-2xl flex items-center justify-center shadow-lg shadow-cyan-500/20" style={{ background: T.gradPrimary }}>
-                <span className="text-white font-black text-sm" style={{ fontFamily: FONT_MONO }}>NX</span>
+              <div className="w-10 h-10 overflow-hidden">
+                 <NexusLogo />
               </div>
               <div>
                 <h1 className="text-lg font-black tracking-tight" style={{ fontFamily: FONT_DISPLAY }}>
@@ -375,7 +452,7 @@ export default function NexusStocksPage() {
             </div>
           </div>
 
-          {/* ══ GLOBAL SEARCH (Correction du bug UX) ══ */}
+          {/* ══ GLOBAL SEARCH ══ */}
           <div className="relative z-50">
             <div className="flex items-center gap-3 px-5 py-4 rounded-3xl transition-all duration-300 shadow-xl" style={{ ...glass, background: T.cardSolid, border: `1px solid ${T.borderMid}` }}>
               <Search size={18} style={{ color: T.textSub }} />
@@ -383,7 +460,7 @@ export default function NexusStocksPage() {
                 value={query} 
                 onChange={e => setQuery(e.target.value)} 
                 onFocus={() => query.length >= 2 && setShowSugg(true)}
-                onBlur={() => setTimeout(() => setShowSugg(false), 200)} // Laisse le temps au clic
+                onBlur={() => setTimeout(() => setShowSugg(false), 200)}
                 placeholder="Rechercher une action, crypto, ETF..." 
                 className="flex-1 bg-transparent text-sm md:text-base outline-none font-medium placeholder:text-gray-600" 
                 style={{ color: T.text }} 
@@ -395,7 +472,7 @@ export default function NexusStocksPage() {
                 <motion.div initial={{ opacity: 0, y: 10, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 10, scale: 0.98 }}
                   className="absolute top-full mt-3 left-0 right-0 rounded-3xl overflow-hidden max-h-[400px] overflow-y-auto shadow-2xl" style={{ ...glass, background: T.elevated, border: `1px solid ${T.borderMid}` }}>
                   {suggestions.map((s, i) => (
-                    <button key={s.ticker} onClick={() => pickStock(s)} className="w-full flex items-center justify-between px-5 py-4 text-left transition-colors hover:bg-white/5" style={{ borderBottom: i === suggestions.length - 1 && yahooResults.length === 0 ? 'none' : `1px solid ${T.border}` }}>
+                    <button key={s.ticker} onMouseDown={(e) => { e.preventDefault(); pickStock(s); }} className="w-full flex items-center justify-between px-5 py-4 text-left transition-colors hover:bg-white/5" style={{ borderBottom: i === suggestions.length - 1 && yahooResults.length === 0 ? 'none' : `1px solid ${T.border}` }}>
                       <div className="flex items-center gap-4">
                         <div className="h-10 w-10 rounded-xl flex items-center justify-center shadow-inner" style={{ background: T.cardHover, border: `1px solid ${T.border}` }}><span className="text-sm font-black" style={{ color: T.cyan }}>{s.name[0]}</span></div>
                         <div><span className="text-sm font-bold block mb-0.5" style={{ color: T.text }}>{s.name}</span><span className="text-[10px] font-mono uppercase tracking-wider" style={{ color: T.textSub }}>{s.ticker}</span></div>
@@ -404,7 +481,7 @@ export default function NexusStocksPage() {
                     </button>
                   ))}
                   {yahooResults.filter(r => !suggestions.some(s => s.ticker === r.symbol)).map(r => (
-                    <button key={r.symbol} onClick={() => pickYahoo(r)} className="w-full flex items-center justify-between px-5 py-4 text-left transition-colors hover:bg-white/5" style={{ borderBottom: `1px solid ${T.border}` }}>
+                    <button key={r.symbol} onMouseDown={(e) => { e.preventDefault(); pickYahoo(r); }} className="w-full flex items-center justify-between px-5 py-4 text-left transition-colors hover:bg-white/5" style={{ borderBottom: `1px solid ${T.border}` }}>
                       <div className="flex items-center gap-4">
                         <div className="h-10 w-10 rounded-xl flex items-center justify-center shadow-inner" style={{ background: T.violetBg, border: `1px solid rgba(139, 92, 246, 0.2)` }}><Globe size={16} style={{ color: T.violet }} /></div>
                         <div><span className="text-sm font-bold block mb-0.5" style={{ color: T.text }}>{r.longname || r.shortname}</span><span className="text-[10px] font-mono uppercase tracking-wider" style={{ color: T.textSub }}>{r.symbol}</span></div>
@@ -497,7 +574,7 @@ export default function NexusStocksPage() {
             </motion.div>
           )}
 
-          {/* ══ STRATEGY BUILDER VIEW ══ */}
+          {/* ══ STRATEGY BUILDER VIEW (Avec DCA, Projection & Export) ══ */}
           {showStrategy && !selected && !loading && (
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-8 pt-4 pb-10">
               <div className="flex items-center gap-5 mb-8">
@@ -506,27 +583,31 @@ export default function NexusStocksPage() {
                 </div>
                 <div>
                   <h2 className="text-3xl font-black tracking-tight" style={{ fontFamily: FONT_DISPLAY }}>Architecte de Stratégie</h2>
-                  <p className="text-sm font-medium mt-1" style={{ color: T.textSub }}>Diversifiez votre patrimoine avec notre algorithme quantique scannant le marché en temps réel.</p>
+                  <p className="text-sm font-medium mt-1" style={{ color: T.textSub }}>Diversifiez avec un DCA planifié et notre algorithme quantique en temps réel.</p>
                 </div>
               </div>
 
-              {/* Form Controls */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Form Controls - Passé en 5 colonnes */}
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
                 <div className="p-5 rounded-3xl transition-colors hover:bg-white/5" style={premiumCard}>
                    <label className="text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 mb-3" style={{color: T.textDim}}><DollarSign size={14}/> Capital initial (€)</label>
                    <input type="number" value={stratAmount} onChange={e => setStratAmount(Number(e.target.value))} className="w-full bg-transparent text-2xl font-black font-mono outline-none focus:text-cyan-400 transition-colors" style={{color: T.text}} />
+                </div>
+                <div className="p-5 rounded-3xl transition-colors hover:bg-white/5" style={{...premiumCard, border: `1px solid ${T.cyan}40`}}>
+                   <label className="text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 mb-3" style={{color: T.cyan}}><PiggyBank size={14}/> Apport / Mois (DCA)</label>
+                   <input type="number" value={stratDca} onChange={e => setStratDca(Number(e.target.value))} className="w-full bg-transparent text-2xl font-black font-mono outline-none focus:text-cyan-400 transition-colors" style={{color: T.text}} />
                 </div>
                 <div className="p-5 rounded-3xl transition-colors hover:bg-white/5" style={premiumCard}>
                    <label className="text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 mb-3" style={{color: T.textDim}}><Activity size={14}/> Horizon (Années)</label>
                    <input type="number" value={stratYears} onChange={e => setStratYears(Number(e.target.value))} className="w-full bg-transparent text-2xl font-black font-mono outline-none focus:text-cyan-400 transition-colors" style={{color: T.text}} />
                 </div>
                 <div className="p-5 rounded-3xl transition-colors hover:bg-white/5" style={premiumCard}>
-                   <label className="text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 mb-3" style={{color: T.textDim}}><TrendingUpIcon size={14}/> Objectif de rendement (%)</label>
+                   <label className="text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 mb-3" style={{color: T.textDim}}><TrendingUpIcon size={14}/> Rendement espéré (%)</label>
                    <input type="number" value={stratYield} onChange={e => setStratYield(Number(e.target.value))} className="w-full bg-transparent text-2xl font-black font-mono outline-none focus:text-cyan-400 transition-colors" style={{color: T.text}} />
                 </div>
                 <div className="p-5 rounded-3xl transition-colors hover:bg-white/5" style={premiumCard}>
                    <label className="text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 mb-3" style={{color: T.textDim}}><Target size={14}/> Profil de risque</label>
-                   <select value={stratRisk} onChange={e => setStratRisk(e.target.value)} className="w-full bg-transparent text-lg font-bold outline-none cursor-pointer" style={{color: T.text}}>
+                   <select value={stratRisk} onChange={e => setStratRisk(e.target.value)} className="w-full bg-transparent text-lg font-bold outline-none cursor-pointer mt-1" style={{color: T.text}}>
                       <option value="conservateur" className="bg-[#0e0e1a]">Conservateur</option>
                       <option value="equilibre" className="bg-[#0e0e1a]">Équilibré</option>
                       <option value="dynamique" className="bg-[#0e0e1a]">Dynamique</option>
@@ -534,17 +615,40 @@ export default function NexusStocksPage() {
                 </div>
               </div>
 
-              {/* Simulation Result */}
-              <div className="p-6 rounded-3xl flex flex-col md:flex-row items-center justify-between gap-6" style={{ background: T.elevated, border: `1px solid ${T.borderMid}` }}>
-                <div>
-                   <p className="text-[11px] font-black uppercase tracking-widest mb-1" style={{color: T.cyan}}>Projection à {stratYears} ans</p>
-                   <p className="text-sm font-medium" style={{color: T.textSub}}>
-                      Avec un rendement estimé de {stratYield}%, votre portefeuille de {stratAmount}€ atteindra une valeur totale de :
-                   </p>
+              {/* Simulation Chart & Result */}
+              <div className="p-6 md:p-8 rounded-3xl flex flex-col gap-8 shadow-xl" style={{ background: T.elevated, border: `1px solid ${T.borderMid}` }}>
+                <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                  <div>
+                     <p className="text-[11px] font-black uppercase tracking-widest mb-2" style={{color: T.cyan}}>Projection de l'investissement à {stratYears} ans</p>
+                     <p className="text-sm font-medium leading-relaxed max-w-xl" style={{color: T.textSub}}>
+                        En plaçant <strong>{stratAmount}€</strong> aujourd'hui, plus <strong>{stratDca}€</strong> chaque mois, avec un rendement estimé de <strong>{stratYield}%/an</strong>, voici l'évolution de votre capital (intérêts composés inclus).
+                     </p>
+                  </div>
+                  <div className="text-left md:text-right shrink-0 p-4 rounded-2xl" style={{background: T.bgSub}}>
+                     <p className="text-[10px] font-bold uppercase tracking-wider mb-1" style={{color: T.textDim}}>Capital projeté</p>
+                     <p className="text-4xl font-black font-mono tracking-tighter" style={{color: T.green}}>{expectedFutureValue.toFixed(0)} €</p>
+                     <p className="text-xs font-bold mt-1" style={{color: T.cyan}}>+{(expectedFutureValue - expectedTotalInvested).toFixed(0)} € générés</p>
+                  </div>
                 </div>
-                <div className="text-right shrink-0">
-                   <p className="text-3xl font-black font-mono" style={{color: T.green}}>{expectedFutureValue.toFixed(0)} €</p>
-                   <p className="text-xs font-bold mt-1" style={{color: T.textDim}}>+{(expectedFutureValue - stratAmount).toFixed(0)} € de plus-value</p>
+
+                {/* Graphique de projection AreaChart */}
+                <div className="h-64 w-full">
+                  <ResponsiveContainer>
+                    <AreaChart data={projectionData} margin={{ top: 10, right: 0, left: 0, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor={T.cyan} stopOpacity={0.4}/>
+                          <stop offset="95%" stopColor={T.cyan} stopOpacity={0}/>
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke={T.borderMid} vertical={false} />
+                      <XAxis dataKey="year" tick={{fontSize: 10, fill: T.textDim, fontFamily: FONT_MONO}} axisLine={false} tickLine={false} dy={10} />
+                      <YAxis tickFormatter={(val) => `${(val/1000).toFixed(0)}k`} tick={{fontSize: 10, fill: T.textDim, fontFamily: FONT_MONO}} axisLine={false} tickLine={false} dx={-10} />
+                      <Tooltip content={<StratChartTip />} cursor={{ stroke: T.borderMid, strokeWidth: 1, strokeDasharray: '4 4' }} />
+                      <Area type="monotone" dataKey="total" stroke={T.cyan} strokeWidth={3} fill="url(#colorTotal)" activeDot={{ r: 6, fill: T.cyan, stroke: T.bg, strokeWidth: 2 }} />
+                      <Line type="monotone" dataKey="investi" stroke={T.textDim} strokeWidth={2} strokeDasharray="4 4" dot={false} />
+                    </AreaChart>
+                  </ResponsiveContainer>
                 </div>
               </div>
 
@@ -555,7 +659,7 @@ export default function NexusStocksPage() {
                        <Loader2 size={16} className="animate-spin" />
                        <span>Scan institutionnel en cours... {stratProgress}%</span>
                      </div>
-                     <span className="text-[9px] font-mono text-cyan-300 mt-1 relative z-10">Analyse technique de {currentScanTicker}</span>
+                     <span className="text-[9px] font-mono text-cyan-300 mt-1 relative z-10">{currentScanTicker}</span>
                      <div className="absolute bottom-0 left-0 h-1 bg-white/30 transition-all duration-300" style={{ width: `${stratProgress}%` }} />
                    </div>
                  ) : (
@@ -563,12 +667,21 @@ export default function NexusStocksPage() {
                  )}
               </button>
 
-              {/* Generated Plan with Pie Charts */}
+              {/* Generated Plan with Pie Charts & Export button */}
               {!isGeneratingStrat && stratPlan.length > 0 && (
                  <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6 mt-10">
                     <div className="flex items-center justify-between">
                       <h3 className="text-xl font-black" style={{ color: T.text }}>Votre allocation recommandée</h3>
-                      <span className="text-xs font-bold px-3 py-1.5 rounded-xl flex items-center gap-2" style={{ background: T.greenBg, color: T.green }}><Check size={14}/> {stratPlan.length} actifs sélectionnés</span>
+                      <div className="flex gap-2">
+                        {stratDivYield > 0 && (
+                          <span className="text-xs font-bold px-3 py-1.5 rounded-xl flex items-center gap-2" style={{ background: T.amberBg, color: T.amber }}><DollarSign size={14}/> Div. moyen: {stratDivYield.toFixed(2)}%</span>
+                        )}
+                        <span className="text-xs font-bold px-3 py-1.5 rounded-xl flex items-center gap-2" style={{ background: T.greenBg, color: T.green }}><Check size={14}/> {stratPlan.length} actifs</span>
+                        
+                        <button onClick={handleExportStrategy} className="text-xs font-bold px-4 py-1.5 rounded-xl flex items-center gap-2 hover:scale-105 transition-transform" style={{ background: T.cardSolid, color: T.textSub, border: `1px solid ${T.border}` }}>
+                          <Download size={14} /> Exporter ma stratégie PDF
+                        </button>
+                      </div>
                     </div>
 
                     {/* PIE CHARTS */}
@@ -625,7 +738,7 @@ export default function NexusStocksPage() {
                     {/* ASSET GRID */}
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                        {stratPlan.map((item, i) => (
-                          <div key={i} onClick={() => pickStock(item.stock)} className="relative p-6 rounded-3xl flex flex-col justify-between group transition-all hover:scale-[1.02] cursor-pointer shadow-lg" style={premiumCard}>
+                          <div key={i} className="relative p-6 rounded-3xl flex flex-col justify-between group shadow-lg" style={premiumCard}>
                              <div className="flex justify-between items-start mb-6">
                                <div>
                                  <div className="flex items-center gap-3 mb-2">
@@ -639,7 +752,7 @@ export default function NexusStocksPage() {
                                  </div>
                                </div>
                                <div className="text-right">
-                                 <p className="text-[10px] font-bold" style={{color: T.textSub}}>ALLOCATION</p>
+                                 <p className="text-[10px] font-bold" style={{color: T.textSub}}>POIDS</p>
                                  <p className="text-lg font-black font-mono" style={{color: T.cyan}}>{(item.weight * 100).toFixed(0)}%</p>
                                </div>
                              </div>
@@ -647,18 +760,22 @@ export default function NexusStocksPage() {
                              <div className="flex items-end justify-between border-t pt-4" style={{ borderColor: T.borderMid }}>
                                <div>
                                  <p className="text-[9px] font-bold uppercase tracking-wider mb-1" style={{color: T.textDim}}>{item.stock.sector}</p>
-                                 <p className="text-[10px] font-medium flex items-center gap-1" style={{color: scoreColor(item.score)}}><Zap size={10}/> Score {item.score}</p>
+                                 <div className="flex items-center gap-2">
+                                    <p className="text-[10px] font-medium flex items-center gap-1" style={{color: scoreColor(item.score)}}><Zap size={10}/> Score {item.score}</p>
+                                    {(item.divYield ?? 0) > 0 && (
+                                       <p className="text-[10px] font-medium flex items-center gap-1" style={{color: T.amber}}><DollarSign size={10}/> Div: {item.divYield?.toFixed(1)}%</p>
+                                    )}
+                                 </div>
                                </div>
                                <div className="text-right">
-                                 <p className="text-[9px] font-bold uppercase tracking-wider mb-1" style={{color: T.textDim}}>Montant à investir</p>
+                                 <p className="text-[9px] font-bold uppercase tracking-wider mb-1" style={{color: T.textDim}}>Montant (Initial)</p>
                                  <p className="text-base font-black font-mono" style={{color: T.green}}>{item.amount.toFixed(0)} €</p>
                                </div>
                              </div>
 
-                             {/* Call to action invisible par défaut, visible au hover */}
-                             <div className="pointer-events-none absolute inset-0 bg-cyan-500/10 backdrop-blur-sm rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                               <span className="bg-cyan-500 text-black px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest shadow-lg">Analyser l'actif &rarr;</span>
-                             </div>
+                             <button onClick={() => pickStock(item.stock)} className="absolute inset-0 z-10 bg-cyan-500/10 backdrop-blur-sm rounded-3xl opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center cursor-pointer border border-cyan-500/20">
+                               <span className="bg-cyan-500 text-black px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest shadow-[0_0_20px_rgba(6,182,212,0.4)] hover:scale-105 transition-transform">Analyser l'actif &rarr;</span>
+                             </button>
                           </div>
                        ))}
                     </div>
@@ -854,7 +971,10 @@ export default function NexusStocksPage() {
                           </button>
                         ))}
                       </div>
-                      <button onClick={() => setShowExportMenu(!showExportMenu)} className="flex items-center gap-2 px-4 py-1.5 rounded-lg text-[10px] font-bold" style={{ background: T.elevated, border: `1px solid ${T.borderMid}`, color: T.text }}>
+                      <button onClick={() => {
+                        exportFullPDF(selected, meta, confluence, tech!, fundamentals, currentPosition);
+                        setShowExportMenu(false);
+                      }} className="flex items-center gap-2 px-4 py-1.5 rounded-lg text-[10px] font-bold hover:scale-105 transition-transform" style={{ background: T.elevated, border: `1px solid ${T.borderMid}`, color: T.text }}>
                         <Download size={12} /> Exporter PDF
                       </button>
                     </div>

@@ -12,6 +12,11 @@ interface PortfolioPosition { ticker: string; name: string; quantity: number; pr
 interface Meta { currency: string; curr: number; prev: number; change: number; pct: number; }
 interface TechResult { rsi: number[]; stochRsi: { k: number[]; d: number[] }; macd: { macd: number[]; signal: number[]; histogram: number[] }; bb: { upper: number[]; middle: number[]; lower: number[] }; ma20: number[]; ma50: number[]; ma200: number[]; obv: number[]; atr: number[]; ichimoku: { tenkan: number[]; kijun: number[]; senkouA: number[]; senkouB: number[] }; fibonacci: { levels: { label: string; price: number }[] }; supports: number[]; resistances: number[]; }
 
+interface StrategyData {
+  amount: number; dca: number; years: number; yield: number; risk: string; divYield: number;
+  plan: { stock: StockInfo; weight: number; amount: number; score: number; divYield?: number; entryMin?: number; entryMax?: number; }[];
+}
+
 // ═══════════════════════════════════════════════════════════════
 // COLORS
 // ═══════════════════════════════════════════════════════════════
@@ -36,11 +41,6 @@ function fmtPrice(v: number, cur = "EUR") { return `${v.toFixed(2)} ${cur}`; }
 function fmtMcap(v: number) { return v >= 1e12 ? `${(v / 1e12).toFixed(2)}T` : v >= 1e9 ? `${(v / 1e9).toFixed(1)}B` : `${(v / 1e6).toFixed(0)}M`; }
 function fmtPct(v: number) { return `${v >= 0 ? "+" : ""}${v.toFixed(2)}%`; }
 
-/**
- * Strip ALL non-ASCII characters from text for jsPDF compatibility.
- * jsPDF's default Helvetica font only supports basic Latin.
- * Replaces common Unicode arrows/emojis with text equivalents.
- */
 function safeText(text: string): string {
   return text
     .replace(/↑/g, "^")
@@ -49,17 +49,10 @@ function safeText(text: string): string {
     .replace(/←/g, "<-")
     .replace(/✓/g, "[OK]")
     .replace(/✗/g, "[X]")
-    // Remove any remaining non-latin1 characters (emojis, special symbols)
     // eslint-disable-next-line no-control-regex
     .replace(/[^\x00-\xFF]/g, "");
 }
 
-/**
- * Extract trade targets from confluence data.
- * The confluence engine now produces correctly-oriented targets
- * (above price for bullish, below for bearish) with minimum 1:2 R/R.
- * This function just packages them for the PDF layout.
- */
 function computeTargets(price: number, confluence: Confluence, _tech: TechResult) {
   return {
     stop: confluence.stopLoss,
@@ -71,35 +64,136 @@ function computeTargets(price: number, confluence: Confluence, _tech: TechResult
   };
 }
 
-// ═══════════════════════════════════════════════════════════════
-// NEXUS LOGO — vector "N" inside a rounded square
-// ═══════════════════════════════════════════════════════════════
-
 function drawNexusLogo(doc: jsPDF, x: number, y: number, size: number) {
   const s = size;
   const r = s * 0.18;
-
-  // White rounded square outline
   doc.setDrawColor(255, 255, 255);
   doc.setLineWidth(0.3);
   doc.roundedRect(x, y, s, s, r, r, "D");
-
-  // "N" letter — bold geometric strokes
   const pad = s * 0.28;
   const x1 = x + pad, x2 = x + s - pad;
   const yT = y + pad, yB = y + s - pad;
   const lw = s * 0.1;
-
   doc.setDrawColor(255, 255, 255);
   doc.setLineWidth(lw);
   doc.setLineCap("round" as any);
-
-  // Left vertical
   doc.line(x1, yB, x1, yT);
-  // Diagonal
   doc.line(x1, yT, x2, yB);
-  // Right vertical
   doc.line(x2, yB, x2, yT);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// NEW: STRATEGY PDF EXPORT
+// ═══════════════════════════════════════════════════════════════
+
+export function exportStrategyPDF(data: StrategyData) {
+  const doc = new jsPDF({ unit: "mm", format: "a4" });
+  const W = 210, M = 15, CW = W - M * 2;
+  let y = M;
+  const sc = (c: RGB) => doc.setTextColor(...c);
+  const sf = (c: RGB) => doc.setFillColor(...c);
+  const sd = (c: RGB) => doc.setDrawColor(...c);
+  const hline = () => { sd(C.border); doc.setLineWidth(0.2); doc.line(M, y, W - M, y); };
+
+  // Header
+  sf(C.blue); doc.rect(0, 0, W, 26, "F");
+  drawNexusLogo(doc, M, 3, 20);
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(16); doc.setFont("helvetica", "bold");
+  doc.text("NEXUS STOCKS", M + 24, 11);
+  doc.setFontSize(8); doc.setFont("helvetica", "normal");
+  doc.text("Rapport d'Allocation Strategique", M + 24, 17);
+  doc.text(new Date().toLocaleDateString("fr-FR"), M + 24, 22);
+
+  doc.setFont("helvetica", "bold"); doc.setFontSize(10);
+  doc.text(`Profil : ${safeText(data.risk.toUpperCase())}`, W - M, 11, { align: "right" });
+  y = 35;
+
+  // Parameters
+  sc(C.black); doc.setFontSize(14); doc.setFont("helvetica", "bold"); 
+  doc.text("1. Parametres de l'investissement", M, y); y += 8;
+  
+  sc(C.dark); doc.setFontSize(9); doc.setFont("helvetica", "normal");
+  doc.text(`Capital initial : ${data.amount.toLocaleString()} EUR`, M, y);
+  doc.text(`Apport mensuel (DCA) : ${data.dca.toLocaleString()} EUR`, M + 80, y);
+  y += 6;
+  doc.text(`Horizon de placement : ${data.years} ans`, M, y);
+  doc.text(`Rendement annuel cible : ${data.yield}%`, M + 80, y);
+  y += 12;
+
+  // Projection
+  const months = data.years * 12;
+  const r = data.yield / 100 / 12;
+  const futureVal = data.amount * Math.pow(1 + r, months) + data.dca * ((Math.pow(1 + r, months) - 1) / r);
+  const totalInvested = data.amount + (data.dca * months);
+
+  sf(C.greenBg); sd(C.green); doc.setLineWidth(0.4);
+  doc.roundedRect(M, y, CW, 20, 2, 2, "FD");
+  sc(C.green); doc.setFontSize(10); doc.setFont("helvetica", "bold");
+  doc.text("PROJECTION DU CAPITAL A TERME", M + 4, y + 6);
+  sc(C.black); doc.setFontSize(16);
+  doc.text(`${futureVal.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, " ")} EUR`, M + 4, y + 14);
+  
+  sc(C.dark); doc.setFontSize(8); doc.setFont("helvetica", "normal");
+  doc.text(`Total investi : ${totalInvested.toLocaleString()} EUR`, M + 80, y + 8);
+  sc(C.green); doc.setFont("helvetica", "bold");
+  doc.text(`Plus-value estimee : +${(futureVal - totalInvested).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, " ")} EUR`, M + 80, y + 14);
+  y += 30;
+
+  // Allocation
+  sc(C.black); doc.setFontSize(14); doc.setFont("helvetica", "bold");
+  doc.text("2. Allocation Recommandee", M, y); y += 6;
+  sc(C.dark); doc.setFontSize(9); doc.setFont("helvetica", "normal");
+  doc.text(`Rendement dividendes moyen du portefeuille : ${data.divYield.toFixed(2)}%`, M, y); y += 8;
+
+  // Table Header
+  sf(C.blueBg); doc.rect(M, y, CW, 8, "F");
+  sc(C.blue); doc.setFontSize(7.5); doc.setFont("helvetica", "bold");
+  doc.text("ACTIF", M + 2, y + 5);
+  doc.text("SECTEUR", M + 45, y + 5);
+  doc.text("POIDS", M + 85, y + 5);
+  doc.text("MONTANT", M + 105, y + 5);
+  doc.text("SCORE", M + 130, y + 5);
+  doc.text("ZONE D'ENTREE", M + 150, y + 5);
+  y += 10;
+
+  // Table body
+  let alt = false;
+  for (const p of data.plan) {
+    if (y > 275) { doc.addPage(); y = M; }
+    if (alt) { sf(C.bg); doc.rect(M, y - 3, CW, 8, "F"); }
+    alt = !alt;
+
+    sc(C.black); doc.setFontSize(8); doc.setFont("helvetica", "bold");
+    doc.text(safeText(p.stock.name), M + 2, y + 2);
+
+    sc(C.dark); doc.setFontSize(7); doc.setFont("helvetica", "normal");
+    doc.text(safeText(p.stock.sector), M + 45, y + 2);
+
+    sc(C.blue); doc.setFontSize(8); doc.setFont("helvetica", "bold");
+    doc.text(`${(p.weight * 100).toFixed(0)}%`, M + 85, y + 2);
+
+    sc(C.green);
+    doc.text(`${p.amount.toFixed(0)} EUR`, M + 105, y + 2);
+
+    const scoreC = p.score >= 65 ? C.green : p.score <= 35 ? C.red : C.amber;
+    sc(scoreC);
+    doc.text(p.score.toString(), M + 130, y + 2);
+
+    sc(C.dark); doc.setFont("helvetica", "normal");
+    const eMin = p.entryMin ? p.entryMin.toFixed(2) : "-";
+    const eMax = p.entryMax ? p.entryMax.toFixed(2) : "-";
+    doc.text(`${eMin} - ${eMax}`, M + 150, y + 2);
+
+    y += 8;
+  }
+
+  // Footer
+  sc(C.light); doc.setFontSize(6); doc.setFont("helvetica", "normal");
+  doc.text("Nexus Stocks - Ce document ne constitue pas un conseil en investissement.", M, 289);
+  doc.text(`Genere le ${new Date().toLocaleDateString("fr-FR")}`, W - M, 289, { align: "right" });
+
+  doc.save(`Nexus_Strategie_${data.risk}_${new Date().toISOString().split("T")[0]}.pdf`);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -504,7 +598,6 @@ export function exportFullPDF(
     }
   }
 
-  // ── SINGLE FOOTER on all pages (not double!) ──
   const totalPages = doc.getNumberOfPages();
   for (let i = 1; i <= totalPages; i++) {
     doc.setPage(i);
