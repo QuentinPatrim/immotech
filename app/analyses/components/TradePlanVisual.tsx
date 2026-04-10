@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { T, bubbleCard, FONT_MONO } from "../theme";
+import { T, FONT_MONO } from "../theme"; // ⚠️ On importe uniquement ce qui existe dans le nouveau thème
 
 interface TradePlanVisualProps {
   price: number;
@@ -13,70 +13,88 @@ interface TradePlanVisualProps {
   isBull: boolean;
 }
 
-function fmtPct(v: number) { return `${v >= 0 ? "+" : ""}${v.toFixed(1)}%`; }
-
 export default function TradePlanVisual({ price, stopLoss, entry, targets, currency, riskReward, isBull }: TradePlanVisualProps) {
-  const allP = [stopLoss, entry.min, entry.max, price, ...targets].filter(v => v > 0);
-  const pMin = Math.min(...allP) * 0.996, pMax = Math.max(...allP) * 1.004;
-  const range = pMax - pMin || 1;
-  const toPercent = (p: number) => ((p - pMin) / range) * 100;
+  // Calcul dynamique des échelles pour que tout rentre parfaitement dans le graphique
+  const allPrices = [price, stopLoss, entry.min, entry.max, ...targets].filter(p => p != null && !isNaN(p));
+  const minPrice = Math.min(...allPrices);
+  const maxPrice = Math.max(...allPrices);
+  const padding = (maxPrice - minPrice) * 0.15; // 15% de marge en haut et en bas
+  const chartMin = minPrice - padding;
+  const chartMax = maxPrice + padding;
+  const chartRange = chartMax - chartMin;
 
-  const levels = [
-    { label: "Stop Loss", price: stopLoss, color: T.red, pct: fmtPct(((stopLoss - price) / price) * 100) },
-    { label: "Entrée", price: (entry.min + entry.max) / 2, color: T.blueBright, pct: "" },
-    ...targets.map((t, i) => ({
-      label: `Objectif ${i + 1}`,
-      price: t,
-      color: i === 0 ? T.green : i === 1 ? T.blueBright : T.violet,
-      pct: fmtPct(((t - price) / price) * 100),
-    })),
-  ];
+  // Calcul de la position Y en pourcentage (0% = haut, 100% = bas)
+  const getY = (val: number) => `${100 - ((val - chartMin) / chartRange) * 100}%`;
+
+  const formatPct = (val: number, base: number) => {
+    const pct = ((val - base) / base) * 100;
+    return `${pct >= 0 ? "+" : ""}${pct.toFixed(1)}%`;
+  };
 
   return (
-    <div className="p-5 overflow-hidden" style={{ ...bubbleCard }}>
-      <div className="flex items-center justify-between mb-4">
-        <span className="text-[10px] font-black uppercase tracking-[0.15em]" style={{ color: T.textDim }}>Plan de trade</span>
-        <span className="text-[10px] font-mono font-bold px-3 py-1" style={{ borderRadius: 20, background: T.blueBg, color: T.blueBright, border: `1px solid rgba(99,102,241,0.12)` }}>
+    <div className="p-6 rounded-3xl flex flex-col h-full shadow-lg" style={{ background: T.cardSolid, border: `1px solid ${T.borderMid}` }}>
+      {/* Header */}
+      <div className="flex justify-between items-center mb-8">
+        <h3 className="text-xs font-black uppercase tracking-widest" style={{ color: T.textSub }}>Plan de trade</h3>
+        <span className="text-[10px] font-bold px-2 py-1 rounded-lg uppercase tracking-wider" style={{ background: T.elevated, color: T.cyan, border: `1px solid ${T.borderFocus}` }}>
           R:R 1:{riskReward.toFixed(1)}
         </span>
       </div>
-      <div className="relative h-52 ml-3 mr-12">
-        <div className="absolute left-7 top-0 bottom-0 w-px" style={{ background: T.border }} />
-        {isBull && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }} className="absolute rounded-sm"
-            style={{ bottom: `${toPercent(stopLoss)}%`, height: `${toPercent(entry.min) - toPercent(stopLoss)}%`, width: 14, left: 2,
-              background: `linear-gradient(to top, ${T.redBg}, transparent)`, borderLeft: `2px solid ${T.red}30` }} />
-        )}
-        {isBull && targets[0] && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }} className="absolute rounded-sm"
-            style={{ bottom: `${toPercent(entry.max)}%`, height: `${toPercent(targets[0]) - toPercent(entry.max)}%`, width: 14, left: 2,
-              background: `linear-gradient(to top, transparent, ${T.greenBg})`, borderLeft: `2px solid ${T.green}30` }} />
-        )}
-        <motion.div initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
-          className="absolute flex items-center gap-2" style={{ bottom: `${toPercent(price)}%`, left: 0, right: 0, transform: "translateY(50%)" }}>
-          <div className="h-px flex-1" style={{ background: T.textDim }} />
-          <div className="flex items-center gap-2 px-3 py-1.5" style={{ borderRadius: T.rXs, background: T.elevated, border: `1px solid ${T.borderMid}`, boxShadow: "0 4px 16px rgba(0,0,0,0.3)" }}>
-            <div className="w-1.5 h-1.5 rounded-full" style={{ background: T.green, boxShadow: `0 0 6px ${T.green}` }} />
-            <span className="text-[13px] font-black" style={{ color: T.text, fontFamily: FONT_MONO }}>{price.toFixed(2)}</span>
-            <span className="text-[9px]" style={{ color: T.textDim }}>{currency}</span>
+
+      {/* Zone de rendu visuel */}
+      <div className="relative flex-1 w-full min-h-[300px] text-[10px] font-mono">
+        {/* Ligne verticale (la "Timeline" centrale) */}
+        <div className="absolute left-[20%] top-0 bottom-0 w-px" style={{ background: T.borderMid }} />
+
+        {/* 1. Stop Loss */}
+        <div className="absolute w-full flex items-center transition-all duration-500" style={{ top: getY(stopLoss), transform: 'translateY(-50%)' }}>
+          <div className="w-[20%] h-px" style={{ background: T.red, opacity: 0.4 }} />
+          <div className="w-2.5 h-2.5 rounded-full -ml-[5px] z-10" style={{ background: T.red, boxShadow: `0 0 12px ${T.red}` }} />
+          <div className="flex-1 border-t border-dashed ml-3" style={{ borderColor: T.red, opacity: 0.2 }} />
+          <div className="text-right ml-3">
+            <p className="font-bold font-sans uppercase tracking-wider mb-0.5 text-[9px]" style={{ color: T.red }}>Stop Loss</p>
+            <p style={{ color: T.textDim }}>{stopLoss.toFixed(2)} <span className="text-[9px] font-bold ml-1">{formatPct(stopLoss, price)}</span></p>
+          </div>
+        </div>
+
+        {/* 2. Zone d'entrée (Entry Zone) */}
+        <div className="absolute w-full flex items-center transition-all duration-500" style={{ top: getY((entry.min + entry.max) / 2), transform: 'translateY(-50%)' }}>
+          <div className="w-[20%] h-8 opacity-30" style={{ background: isBull ? T.blue : T.amber, borderTop: `1px solid ${isBull ? T.blueBright : T.amber}`, borderBottom: `1px solid ${isBull ? T.blueBright : T.amber}` }} />
+          <div className="w-2 h-2 rounded-full -ml-1 z-10" style={{ background: isBull ? T.blueBright : T.amber }} />
+          <div className="flex-1 border-t border-dashed ml-3" style={{ borderColor: T.borderMid }} />
+          <div className="text-right ml-3">
+            <p className="font-bold font-sans uppercase tracking-wider mb-0.5 text-[9px]" style={{ color: isBull ? T.blueBright : T.amber }}>Entrée Opt.</p>
+            <p style={{ color: T.textDim }}>{entry.min.toFixed(2)} - {entry.max.toFixed(2)}</p>
+          </div>
+        </div>
+
+        {/* 3. Current Price (Prix actuel) */}
+        <motion.div initial={{ scale: 0.8 }} animate={{ scale: 1 }} className="absolute w-full flex items-center z-20 transition-all duration-500" style={{ top: getY(price), transform: 'translateY(-50%)' }}>
+          <div className="w-[20%]" />
+          <div className="w-4 h-4 rounded-full -ml-2 flex items-center justify-center" style={{ background: T.text, boxShadow: `0 0 20px ${T.text}` }}>
+            <div className="w-1.5 h-1.5 rounded-full bg-black animate-ping" />
+          </div>
+          <div className="flex-1 ml-4 relative">
+            <div className="absolute left-0 top-1/2 -translate-y-1/2 w-full h-px" style={{ background: T.text, opacity: 0.1 }} />
+            <span className="relative z-10 px-3 py-1.5 rounded-lg text-xs font-black shadow-lg" style={{ background: T.text, color: T.bg }}>
+              {price.toFixed(2)}
+            </span>
           </div>
         </motion.div>
-        {levels.map((lvl, i) => (
-          <motion.div key={lvl.label} initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.25 + i * 0.08 }}
-            className="absolute flex items-center gap-2" style={{ bottom: `${toPercent(lvl.price)}%`, left: 22, right: 0, transform: "translateY(50%)" }}>
-            <div className="flex-1 border-t border-dashed" style={{ borderColor: lvl.color + "18" }} />
-            <div className="text-right flex-shrink-0">
-              <span className="text-[9px] font-bold block" style={{ color: lvl.color }}>{lvl.label}</span>
-              <span className="text-[10px] font-mono block" style={{ color: T.textDim }}>
-                {lvl.price.toFixed(2)} {lvl.pct && <span style={{ color: lvl.color }}>{lvl.pct}</span>}
-              </span>
+
+        {/* 4. Targets (Objectifs) */}
+        {targets.map((t, i) => (
+          <div key={i} className="absolute w-full flex items-center transition-all duration-500" style={{ top: getY(t), transform: 'translateY(-50%)' }}>
+            <div className="w-[20%] h-px" style={{ background: T.green, opacity: 0.4 }} />
+            <div className="w-2.5 h-2.5 rounded-full -ml-[5px] z-10" style={{ background: T.green, boxShadow: `0 0 12px ${T.green}` }} />
+            <div className="flex-1 border-t border-dashed ml-3" style={{ borderColor: T.green, opacity: 0.2 }} />
+            <div className="text-right ml-3">
+              <p className="font-bold font-sans uppercase tracking-wider mb-0.5 text-[9px]" style={{ color: T.green }}>Objectif {i + 1}</p>
+              <p style={{ color: T.textDim }}>{t.toFixed(2)} <span className="text-[9px] font-bold ml-1">{formatPct(t, price)}</span></p>
             </div>
-          </motion.div>
+          </div>
         ))}
       </div>
-      <p className="text-[8px] mt-4 text-center" style={{ color: T.textMuted }}>
-        Objectifs théoriques — ne constitue pas un conseil en investissement
-      </p>
     </div>
   );
 }
