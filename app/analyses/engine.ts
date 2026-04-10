@@ -404,11 +404,11 @@ export function computeMomentumScore(t: TechResult, ohlcv: OHLCV[]): MomentumSco
 import type { Collection } from "./types";
 
 export const COLLECTIONS: Collection[] = [
-  { id: "dividendes", name: "Rois du dividende", emoji: "👑", description: "Blue chips avec rendements élevés et réguliers", tickers: ["AI.PA", "TTE.PA", "BNP.PA", "CS.PA", "ENGI.PA", "SAN.PA"], gradient: "linear-gradient(135deg, #f59e0b, #d97706)" },
-  { id: "ia", name: "Révolution IA", emoji: "🤖", description: "Les leaders de l'intelligence artificielle", tickers: ["NVDA", "MSFT", "GOOGL", "META", "ASML.AS", "SAP.DE"], gradient: "linear-gradient(135deg, #8b5cf6, #6366f1)" },
-  { id: "luxe", name: "Luxe français", emoji: "✨", description: "Le luxe made in France", tickers: ["MC.PA", "RMS.PA", "KER.PA", "OR.PA"], gradient: "linear-gradient(135deg, #ec4899, #f43f5e)" },
-  { id: "defense", name: "Défense & Aéro", emoji: "🛡️", description: "Sécurité et aérospatiale européenne", tickers: ["AIR.PA", "SAF.PA", "HO.PA"], gradient: "linear-gradient(135deg, #64748b, #475569)" },
-  { id: "vert", name: "Transition verte", emoji: "🌱", description: "Énergie et industrie durable", tickers: ["ENGI.PA", "SU.PA", "TTE.PA", "SHEL.L"], gradient: "linear-gradient(135deg, #10b981, #059669)" },
-  { id: "crypto", name: "Crypto majeurs", emoji: "₿", description: "Bitcoin et Ethereum", tickers: ["BTC-EUR", "ETH-EUR"], gradient: "linear-gradient(135deg, #f59e0b, #ea580c)" },
-  { id: "us_tech", name: "GAFAM+", emoji: "🇺🇸", description: "Les géants tech américains", tickers: ["AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA", "TSLA"], gradient: "linear-gradient(135deg, #3b82f6, #2563eb)" },
+  { id: "dividendes", name: "Action à dividende", emoji: "", description: "Blue chips avec rendements élevés et réguliers", tickers: ["AI.PA", "TTE.PA", "BNP.PA", "CS.PA", "ENGI.PA", "SAN.PA"], gradient: "linear-gradient(135deg, #f59e0b, #d97706)" },
+  { id: "ia", name: "Action IA", emoji: "", description: "Les leaders de l'intelligence artificielle", tickers: ["NVDA", "MSFT", "GOOGL", "META", "ASML.AS", "SAP.DE"], gradient: "linear-gradient(135deg, #8b5cf6, #6366f1)" },
+  { id: "luxe", name: "Luxe français", emoji: "", description: "Le luxe made in France", tickers: ["MC.PA", "RMS.PA", "KER.PA", "OR.PA"], gradient: "linear-gradient(135deg, #ec4899, #f43f5e)" },
+  { id: "defense", name: "Défense & Aéro", emoji: "", description: "Sécurité et aérospatiale européenne", tickers: ["AIR.PA", "SAF.PA", "HO.PA"], gradient: "linear-gradient(135deg, #64748b, #475569)" },
+  { id: "vert", name: "Transition verte", emoji: "", description: "Énergie et industrie durable", tickers: ["ENGI.PA", "SU.PA", "TTE.PA", "SHEL.L"], gradient: "linear-gradient(135deg, #10b981, #059669)" },
+  { id: "crypto", name: "Crypto majeurs", emoji: "", description: "Bitcoin et Ethereum", tickers: ["BTC-EUR", "ETH-EUR"], gradient: "linear-gradient(135deg, #f59e0b, #ea580c)" },
+  { id: "us_tech", name: "GAFAM+", emoji: "", description: "Les géants tech américains", tickers: ["AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA", "TSLA"], gradient: "linear-gradient(135deg, #3b82f6, #2563eb)" },
 ];

@@ -140,7 +140,7 @@ export default function NexusStocksPage() {
   // Navigation States
   const [showScanner, setShowScanner] = useState(false);
   const [showStrategy, setShowStrategy] = useState(false);
-  const [showPortfolio, setShowPortfolio] = useState(false); // NOUVEAU: Tableau de bord Portefeuille
+  const [showPortfolio, setShowPortfolio] = useState(false);
   
   // Scanner States
   const [scanResults, setScanResults] = useState<ScanResult[]>([]);
@@ -165,6 +165,11 @@ export default function NexusStocksPage() {
   // Portfolio Dashboard States
   const [portfolioLiveData, setPortfolioLiveData] = useState<{ticker: string, currentPrice: number, prevPrice: number, changePct: number}[]>([]);
   const [loadingPortfolio, setLoadingPortfolio] = useState(false);
+  
+  // NOUVEAU : BENCHMARK STATES
+  const [benchmark, setBenchmark] = useState<string>("^FCHI"); // Default: CAC 40
+  const [benchmarkChartData, setBenchmarkChartData] = useState<any[]>([]);
+  const [loadingBenchmark, setLoadingBenchmark] = useState(false);
 
   useEffect(() => { loadPortfolio().then(setPortfolio); }, []);
 
@@ -194,6 +199,68 @@ export default function NexusStocksPage() {
       loadLivePortfolio();
     }
   }, [showPortfolio, portfolio]);
+
+  // ── NOUVEAU: CHARGEMENT DE LA COMPARAISON BENCHMARK ──
+  useEffect(() => {
+    if (!showPortfolio || portfolio.length === 0) return;
+    
+    const loadComparison = async () => {
+      setLoadingBenchmark(true);
+      try {
+        // 1. Fetch l'indice de référence
+        const benchData = await fetchChart(benchmark, "6mo", "1d");
+        
+        // 2. Fetch l'historique de toutes les actions du portefeuille
+        const assetsData = await Promise.all(
+          portfolio.map(async (p) => {
+            try {
+               const data = await fetchChart(p.ticker, "6mo", "1d");
+               return { ticker: p.ticker, data, weight: (p.quantity * p.pru) }; // Poids estimé via investissement initial
+            } catch { return null; }
+          })
+        );
+        
+        const validAssets = assetsData.filter(a => a && a.data.length > 0);
+        const totalWeight = validAssets.reduce((sum, a) => sum + (a?.weight || 0), 0);
+
+        if (benchData.length > 0 && totalWeight > 0) {
+          const bFirst = benchData[0].close;
+          
+          // 3. Fusion et Normalisation en Base 100 (%)
+          const merged = benchData.map((b) => {
+             const dateLabel = new Date(b.time * 1000).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" });
+             const bReturn = ((b.close - bFirst) / bFirst) * 100;
+
+             let pReturn = 0;
+             let weightSum = 0;
+             
+             validAssets.forEach(a => {
+                const assetPoint = a!.data.find(d => Math.abs(d.time - b.time) < 86400); // Marge de 1 jour (weekends/jours fériés)
+                if (assetPoint && a!.data[0]) {
+                   const aFirst = a!.data[0].close;
+                   const aRet = ((assetPoint.close - aFirst) / aFirst) * 100;
+                   pReturn += aRet * (a!.weight / totalWeight);
+                   weightSum += (a!.weight / totalWeight);
+                }
+             });
+             
+             // Ajustement si un actif n'a pas coté ce jour-là
+             if (weightSum > 0) pReturn = pReturn / weightSum;
+
+             return { label: dateLabel, Portfolio: pReturn, Benchmark: bReturn };
+          });
+          
+          setBenchmarkChartData(merged);
+        }
+      } catch (e) {
+        console.error("Erreur de calcul du Benchmark", e);
+      } finally {
+        setLoadingBenchmark(false);
+      }
+    };
+    loadComparison();
+  }, [showPortfolio, portfolio, benchmark]);
+
 
   const analyze = useCallback(async (stock: StockInfo) => {
     setLoading(true); setError(null); setShowSugg(false); setFundamentals(null); setActiveSubTab("signals");
@@ -439,7 +506,6 @@ export default function NexusStocksPage() {
     }, 0);
   }, [portfolio, portfolioLiveData]);
 
-  // Données pour le Donut du Portefeuille (Répartition par actif)
   const portPieData = useMemo(() => {
     return portfolio.map(p => {
       const live = portfolioLiveData.find(l => l.ticker === p.ticker);
@@ -487,7 +553,6 @@ export default function NexusStocksPage() {
                  }
               }} />
               
-              {/* NOUVEAU BOUTON: MON PORTEFEUILLE */}
               <button onClick={() => { setShowPortfolio(true); setShowStrategy(false); setShowScanner(false); setSelected(null); }}
                 className="flex items-center gap-2 px-3 md:px-4 py-2.5 rounded-2xl text-[11px] font-bold transition-all"
                 style={{ background: showPortfolio ? T.blueBg : T.card, border: `1px solid ${showPortfolio ? T.borderFocus : T.border}`, color: showPortfolio ? T.cyan : T.textSub }}>
@@ -555,7 +620,7 @@ export default function NexusStocksPage() {
             </AnimatePresence>
           </div>
 
-          {/* ══ NOUVEAU: VUE PORTEFEUILLE (TRACKER) ══ */}
+          {/* ══ NOUVEAU: VUE PORTEFEUILLE (TRACKER + BENCHMARK) ══ */}
           {showPortfolio && !selected && !loading && (
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-8 pt-4 pb-10">
               <div className="flex items-center gap-5 mb-8">
@@ -599,6 +664,48 @@ export default function NexusStocksPage() {
                        <p className="text-2xl font-black font-mono" style={{color: portDailyPnl >= 0 ? T.green : T.red}}>
                          {loadingPortfolio ? "..." : `${portDailyPnl >= 0 ? "+" : ""}${portDailyPnl.toFixed(2)} €`}
                        </p>
+                    </div>
+                  </div>
+
+                  {/* NOUVEAU: BENCHMARK COMPARISON CHART */}
+                  <div className="p-6 rounded-3xl shadow-lg mt-6" style={premiumCard}>
+                    <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
+                      <div>
+                         <h4 className="text-sm font-black uppercase tracking-widest" style={{color: T.text}}>Performance vs Marché</h4>
+                         <p className="text-[10px]" style={{color: T.textDim}}>Comparaison historique (6 derniers mois) en Base 100</p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                         {loadingBenchmark && <Loader2 size={14} className="animate-spin text-cyan-500" />}
+                         <select value={benchmark} onChange={e => setBenchmark(e.target.value)} className="bg-black/20 text-xs font-bold px-3 py-2 rounded-xl outline-none cursor-pointer" style={{color: T.cyan, border: `1px solid ${T.borderMid}`}}>
+                           <option value="^FCHI" className="bg-[#0e0e1a]">CAC 40</option>
+                           <option value="^GSPC" className="bg-[#0e0e1a]">S&P 500</option>
+                           <option value="^NDX" className="bg-[#0e0e1a]">NASDAQ 100</option>
+                           <option value="BTC-EUR" className="bg-[#0e0e1a]">Bitcoin</option>
+                         </select>
+                      </div>
+                    </div>
+                    <div className="h-64 w-full">
+                      {benchmarkChartData.length > 0 ? (
+                         <ResponsiveContainer width="100%" height="100%">
+                           <ComposedChart data={benchmarkChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                              <CartesianGrid strokeDasharray="3 3" stroke={T.borderMid} vertical={false} />
+                              <XAxis dataKey="label" tick={{fontSize: 9, fill: T.textDim, fontFamily: FONT_MONO}} axisLine={false} tickLine={false} dy={10} minTickGap={30} />
+                              <YAxis tickFormatter={(val) => `${val >= 0 ? '+' : ''}${val.toFixed(0)}%`} tick={{fontSize: 9, fill: T.textDim, fontFamily: FONT_MONO}} axisLine={false} tickLine={false} dx={-10} />
+                              <Tooltip
+                                 contentStyle={{ background: T.card, border: `1px solid ${T.borderMid}`, borderRadius: '12px', fontSize: '10px', fontFamily: FONT_MONO }}
+                                 itemStyle={{ fontWeight: 'bold' }}
+                                 formatter={(value: any, name: any) => [`${Number(value).toFixed(2)}%`, name]}
+                              />
+                              <ReferenceLine y={0} stroke={T.borderMid} />
+                              <Line type="monotone" dataKey="Benchmark" stroke={T.amber} strokeWidth={2} dot={false} strokeDasharray="4 4" />
+                              <Line type="monotone" dataKey="Portfolio" stroke={T.cyan} strokeWidth={3} dot={false} activeDot={{ r: 6, fill: T.cyan, stroke: T.bg, strokeWidth: 2 }} />
+                           </ComposedChart>
+                         </ResponsiveContainer>
+                      ) : (
+                         <div className="w-full h-full flex items-center justify-center text-xs" style={{color: T.textDim}}>
+                            {loadingBenchmark ? "Analyse historique en cours..." : "Données insuffisantes pour la comparaison."}
+                         </div>
+                      )}
                     </div>
                   </div>
 
@@ -776,7 +883,6 @@ export default function NexusStocksPage() {
                 </div>
               </div>
 
-              {/* Form Controls - Passé en 5 colonnes */}
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
                 <div className="p-5 rounded-3xl transition-colors hover:bg-white/5" style={premiumCard}>
                    <label className="text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 mb-3" style={{color: T.textDim}}><DollarSign size={14}/> Capital initial (€)</label>
@@ -804,7 +910,6 @@ export default function NexusStocksPage() {
                 </div>
               </div>
 
-              {/* Simulation Chart & Result */}
               <div className="p-6 md:p-8 rounded-3xl flex flex-col gap-8 shadow-xl" style={{ background: T.elevated, border: `1px solid ${T.borderMid}` }}>
                 <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
                   <div>
@@ -820,7 +925,6 @@ export default function NexusStocksPage() {
                   </div>
                 </div>
 
-                {/* Graphique de projection AreaChart */}
                 <div className="h-64 w-full">
                   <ResponsiveContainer>
                     <AreaChart data={projectionData} margin={{ top: 10, right: 0, left: 0, bottom: 0 }}>
@@ -856,7 +960,6 @@ export default function NexusStocksPage() {
                  )}
               </button>
 
-              {/* Generated Plan with Pie Charts & Export button */}
               {!isGeneratingStrat && stratPlan.length > 0 && (
                  <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6 mt-10">
                     <div className="flex items-center justify-between">
@@ -866,14 +969,13 @@ export default function NexusStocksPage() {
                           <span className="text-xs font-bold px-3 py-1.5 rounded-xl flex items-center gap-2" style={{ background: T.amberBg, color: T.amber }}><DollarSign size={14}/> Div. moyen: {stratDivYield.toFixed(2)}%</span>
                         )}
                         <span className="text-xs font-bold px-3 py-1.5 rounded-xl flex items-center gap-2" style={{ background: T.greenBg, color: T.green }}><Check size={14}/> {stratPlan.length} actifs</span>
-                        {/* NOUVEAU : Bouton d'export PDF de stratégie */}
+                        
                         <button onClick={handleExportStrategy} className="text-xs font-bold px-4 py-1.5 rounded-xl flex items-center gap-2 hover:scale-105 transition-transform" style={{ background: T.cardSolid, color: T.textSub, border: `1px solid ${T.border}` }}>
                           <Download size={14} /> Exporter ma stratégie PDF
                         </button>
                       </div>
                     </div>
 
-                    {/* PIE CHARTS */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="p-6 rounded-3xl flex items-center gap-6" style={premiumCard}>
                         <div className="h-32 w-32 shrink-0">
@@ -924,7 +1026,6 @@ export default function NexusStocksPage() {
                       </div>
                     </div>
                     
-                    {/* ASSET GRID */}
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                        {stratPlan.map((item, i) => (
                           <div key={i} className="relative p-6 rounded-3xl flex flex-col justify-between group shadow-lg" style={premiumCard}>
@@ -941,7 +1042,7 @@ export default function NexusStocksPage() {
                                  </div>
                                </div>
                                <div className="text-right">
-                                 <p className="text-[10px] font-bold" style={{color: T.textSub}}>POIDS</p>
+                                 <p className="text-[10px] font-bold" style={{color: T.textSub}}>ALLOCATION</p>
                                  <p className="text-lg font-black font-mono" style={{color: T.cyan}}>{(item.weight * 100).toFixed(0)}%</p>
                                </div>
                              </div>
