@@ -613,7 +613,7 @@ export default function NexusStocksPage() {
                             <Pie data={portPieData} innerRadius={55} outerRadius={85} paddingAngle={4} dataKey="value" stroke="none">
                               {portPieData.map((entry, index) => <PieCell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />)}
                             </Pie>
-                            <Tooltip contentStyle={{ background: T.card, border: `1px solid ${T.borderMid}`, borderRadius: '12px', fontSize: '10px' }} itemStyle={{ color: T.text }} formatter={(val: number) => `${val.toFixed(2)} €`} />
+                            <Tooltip contentStyle={{ background: T.card, border: `1px solid ${T.borderMid}`, borderRadius: '12px', fontSize: '10px' }} itemStyle={{ color: T.text }} formatter={(val: any) => `${Number(val || 0).toFixed(2)} €`} />
                           </RechartsPieChart>
                         </ResponsiveContainer>
                       </div>
