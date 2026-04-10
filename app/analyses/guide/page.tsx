@@ -9,6 +9,18 @@ import {
   ChevronLeft, ArrowUpRight, ArrowDownRight, Minus, Zap,
   Target, Shield, Eye, BookOpen, ArrowLeft, Search, X,
 } from "lucide-react";
+import { T, glass, FONT_MONO, FONT_DISPLAY, FONT_BODY } from "../theme";
+
+// ═══════════════════════════════════════════════════════════════
+// NEW PREMIUM STYLES
+// ═══════════════════════════════════════════════════════════════
+
+const premiumCard = {
+  background: T.cardSolid,
+  border: `1px solid ${T.borderMid}`,
+  borderRadius: "1.5rem",
+  boxShadow: "0 10px 30px -10px rgba(0,0,0,0.5)"
+};
 
 // ═══════════════════════════════════════════════════════════════
 // GUIDE DATA
@@ -32,7 +44,7 @@ const SECTIONS: GuideSection[] = [
   {
     id: "confluence",
     category: "concept",
-    icon: <Layers size={20} />,
+    icon: <Layers size={18} />,
     title: "La Confluence",
     subtitle: "Le principe fondamental",
     analogy: "Imaginez un tribunal : un seul témoin ne suffit pas pour condamner. Mais si 5 témoins indépendants racontent la même histoire, la probabilité qu'ils disent vrai est très élevée. C'est exactement le principe de la confluence en trading.",
@@ -49,12 +61,12 @@ const SECTIONS: GuideSection[] = [
   {
     id: "price-action",
     category: "methode",
-    icon: <BarChart3 size={20} />,
+    icon: <BarChart3 size={18} />,
     title: "Le Price Action",
     subtitle: "Lire le graphique nu",
     analogy: "Le Price Action, c'est comme lire le langage corporel de quelqu'un. Sans écouter ses mots (les indicateurs), vous observez ses gestes (le prix) pour comprendre ses vraies intentions.",
-    whatItIs: "Le Price Action est l'étude du mouvement brut du prix, sans indicateurs. On analyse la forme des bougies (chandeliers japonais), les tendances (plus hauts/plus bas successifs), et les figures chartistes. C'est la couche d'analyse la plus directe car elle montre le résultat réel du combat entre acheteurs et vendeurs.",
-    howItWorks: "Chaque bougie raconte une histoire :\n\n• Le corps (rectangle) = la différence entre ouverture et clôture\n• Les mèches (lignes) = les extrêmes atteints puis rejetés\n• La couleur = vert si le prix a monté, rouge s'il a baissé\n\nUne longue mèche basse signifie que les vendeurs ont tenté de pousser le prix vers le bas, mais les acheteurs les ont repoussés avec force.",
+    whatItIs: "Le Price Action est l'étude du mouvement brut du prix, sans indicateurs. On analyse la forme des bougies (chandeliers japonais), les tendances (plus hauts/plus bas successifs), et les figures chartistes.",
+    howItWorks: "Chaque bougie raconte une histoire :\n\n• Le corps (rectangle) = la différence entre ouverture et clôture\n• Les mèches (lignes) = les extrêmes atteints puis rejetés\n• La couleur = vert si le prix a monté, rouge s'il a baissé",
     howToRead: [
       { signal: "Marteau (longue mèche basse)", meaning: "Les vendeurs s'épuisent — rebond probable", type: "buy" },
       { signal: "Doji (corps très petit)", meaning: "Indécision totale — attendre la prochaine bougie", type: "neutral" },
@@ -67,12 +79,12 @@ const SECTIONS: GuideSection[] = [
   {
     id: "supports-resistances",
     category: "methode",
-    icon: <Shield size={20} />,
+    icon: <Shield size={18} />,
     title: "Supports & Résistances",
     subtitle: "Les murs invisibles du marché",
-    analogy: "Imaginez une balle qui rebondit entre le sol (support) et le plafond (résistance). Le sol empêche la balle de tomber plus bas, le plafond l'empêche de monter plus haut. Quand la balle casse le plafond, l'ancien plafond devient le nouveau sol.",
-    whatItIs: "Les supports sont des niveaux de prix où les acheteurs interviennent massivement (le prix rebondit). Les résistances sont des niveaux où les vendeurs prennent le dessus (le prix bloque). Ces niveaux se forment parce que les traders ont une mémoire collective : ils se souviennent des prix importants.",
-    howItWorks: "On identifie ces niveaux en repérant les zones où le prix a rebondi ou bloqué plusieurs fois dans le passé. Plus un niveau a été testé et a tenu, plus il est solide. Notre algorithme détecte automatiquement les pivots (points hauts et bas locaux) puis les regroupe en zones.",
+    analogy: "Imaginez une balle qui rebondit entre le sol (support) et le plafond (résistance). Le sol empêche la balle de tomber plus bas, le plafond l'empêche de monter plus haut.",
+    whatItIs: "Les supports sont des niveaux de prix où les acheteurs interviennent massivement. Les résistances sont des niveaux où les vendeurs prennent le dessus.",
+    howItWorks: "On identifie ces niveaux en repérant les zones où le prix a rebondi ou bloqué plusieurs fois dans le passé. Plus un niveau a été testé et a tenu, plus il est solide.",
     howToRead: [
       { signal: "Prix arrive sur un support", meaning: "Zone de rebond probable — les acheteurs devraient défendre", type: "buy" },
       { signal: "Prix arrive sur une résistance", meaning: "Zone de rejet probable — les vendeurs devraient apparaître", type: "sell" },
@@ -85,106 +97,102 @@ const SECTIONS: GuideSection[] = [
   {
     id: "rsi",
     category: "indicateur",
-    icon: <Activity size={20} />,
-    title: "RSI (Relative Strength Index)",
+    icon: <Activity size={18} />,
+    title: "RSI",
     subtitle: "Le thermomètre du momentum",
-    analogy: "Le RSI est comme le thermomètre d'un malade. En dessous de 30, le patient a de la fièvre (trop de ventes, épuisement des vendeurs). Au-dessus de 70, il surchauffe (trop d'achats, euphorie). Entre les deux, tout est normal.",
-    whatItIs: "Le RSI mesure la vitesse et l'amplitude des mouvements de prix sur 14 périodes. Il oscille entre 0 et 100. Il ne prédit pas la direction du prix mais indique si le mouvement actuel est excessif — et donc susceptible de se corriger.",
-    howItWorks: "La formule compare les gains moyens aux pertes moyennes sur les 14 dernières bougies. Si les gains sont beaucoup plus importants que les pertes, le RSI sera élevé (surachat). Si les pertes dominent, le RSI sera bas (survente).",
+    analogy: "Le RSI est comme le thermomètre d'un malade. En dessous de 30, le patient a de la fièvre. Au-dessus de 70, il surchauffe. Entre les deux, tout est normal.",
+    whatItIs: "Le RSI mesure la vitesse et l'amplitude des mouvements de prix sur 14 périodes. Il oscille entre 0 et 100.",
+    howItWorks: "La formule compare les gains moyens aux pertes moyennes sur les 14 dernières bougies. Si les gains dominent, le RSI sera élevé (surachat).",
     howToRead: [
-      { signal: "RSI < 30", meaning: "Survente — les vendeurs s'épuisent. Rebond possible.", type: "buy" },
+      { signal: "RSI < 30", meaning: "Survente — rebond possible", type: "buy" },
       { signal: "RSI 30-70", meaning: "Zone neutre — pas de signal extrême", type: "neutral" },
-      { signal: "RSI > 70", meaning: "Surachat — les acheteurs s'essoufflent. Correction possible.", type: "sell" },
+      { signal: "RSI > 70", meaning: "Surachat — correction possible", type: "sell" },
       { signal: "Divergence haussière", meaning: "Le prix baisse mais le RSI remonte — retournement puissant", type: "buy" },
     ],
-    proTip: "Un RSI suracheté ne signifie PAS qu'il faut vendre immédiatement. Dans une tendance forte, le RSI peut rester au-dessus de 70 pendant des semaines. Utilisez-le comme complément, jamais seul.",
+    proTip: "Un RSI suracheté ne signifie PAS qu'il faut vendre immédiatement. Dans une tendance forte, le RSI peut rester au-dessus de 70 pendant des semaines.",
     visual: "rsi",
   },
   {
     id: "macd",
     category: "indicateur",
-    icon: <TrendingUp size={20} />,
+    icon: <TrendingUp size={18} />,
     title: "MACD",
     subtitle: "Le détecteur de retournement",
-    analogy: "Le MACD est comme deux coureurs à pied : un sprinteur (moyenne courte, 12 jours) et un marathonien (moyenne longue, 26 jours). Quand le sprinteur dépasse le marathonien, le marché accélère à la hausse. Quand il passe derrière, le marché ralentit.",
-    whatItIs: "Le MACD (Moving Average Convergence Divergence) est composé de trois éléments : la ligne MACD (différence entre deux moyennes mobiles), la ligne de signal (moyenne de la ligne MACD), et l'histogramme (la différence entre les deux).",
-    howItWorks: "Ligne MACD = EMA 12 jours − EMA 26 jours\nLigne Signal = EMA 9 jours de la ligne MACD\nHistogramme = MACD − Signal\n\nQuand les barres de l'histogramme passent de rouge à vert, le momentum change de direction.",
+    analogy: "Le MACD est comme deux coureurs : un sprinteur (12 jours) et un marathonien (26 jours). Quand le sprinteur dépasse le marathonien, le marché accélère.",
+    whatItIs: "Le MACD (Moving Average Convergence Divergence) est composé de trois éléments : la ligne MACD, la ligne de signal, et l'histogramme.",
+    howItWorks: "Ligne MACD = EMA 12 − EMA 26\nLigne Signal = EMA 9 de la ligne MACD\nHistogramme = MACD − Signal",
     howToRead: [
-      { signal: "MACD croise le signal par le haut", meaning: "Croisement haussier — le momentum s'inverse à la hausse", type: "buy" },
-      { signal: "MACD croise le signal par le bas", meaning: "Croisement baissier — le momentum s'inverse à la baisse", type: "sell" },
+      { signal: "MACD croise le signal par le haut", meaning: "Croisement haussier — momentum inversé à la hausse", type: "buy" },
+      { signal: "MACD croise le signal par le bas", meaning: "Croisement baissier — momentum inversé à la baisse", type: "sell" },
       { signal: "Histogramme croissant (vert)", meaning: "Le momentum haussier accélère", type: "buy" },
-      { signal: "Histogramme décroissant (rouge)", meaning: "Le momentum baissier accélère", type: "sell" },
     ],
-    proTip: "Les croisements MACD sont plus fiables quand ils se produisent loin de la ligne zéro. Un croisement haussier très en dessous de zéro est souvent un signal de retournement majeur.",
+    proTip: "Les croisements MACD sont plus fiables quand ils se produisent loin de la ligne zéro.",
     visual: "macd",
   },
   {
     id: "bollinger",
     category: "indicateur",
-    icon: <Target size={20} />,
+    icon: <Target size={18} />,
     title: "Bandes de Bollinger",
     subtitle: "Le mesureur de volatilité",
-    analogy: "Les Bandes de Bollinger sont comme un élastique autour du prix. Plus l'élastique est tendu (bandes serrées), plus l'explosion qui suivra sera forte. Quand le prix touche un bord de l'élastique, il a tendance à revenir vers le centre.",
-    whatItIs: "Les Bandes de Bollinger sont composées de trois lignes : une moyenne mobile simple au centre (20 jours), et deux bandes à ±2 écarts-types. 95% du prix devrait se trouver entre les deux bandes.",
-    howItWorks: "Bande supérieure = SMA 20 + (2 × écart-type)\nBande inférieure = SMA 20 − (2 × écart-type)\n\nQuand la volatilité augmente, les bandes s'écartent. Quand elle diminue, elles se resserrent (squeeze). Un squeeze précède souvent un mouvement violent.",
+    analogy: "Les Bandes de Bollinger sont comme un élastique autour du prix. Plus l'élastique est tendu (bandes serrées), plus l'explosion sera forte.",
+    whatItIs: "Les Bandes de Bollinger sont composées de trois lignes : une moyenne mobile simple au centre (20 jours), et deux bandes à ±2 écarts-types.",
+    howItWorks: "Bande supérieure = SMA 20 + (2 × écart-type)\nBande inférieure = SMA 20 − (2 × écart-type)\n\nQuand la volatilité augmente, les bandes s'écartent.",
     howToRead: [
       { signal: "Prix touche la bande basse", meaning: "Statistiquement bas — rebond vers la moyenne probable", type: "buy" },
-      { signal: "Prix touche la bande haute", meaning: "Statistiquement élevé — retour vers la moyenne probable", type: "sell" },
+      { signal: "Prix touche la bande haute", meaning: "Statistiquement élevé — retour probable", type: "sell" },
       { signal: "Squeeze (bandes resserrées)", meaning: "Volatilité comprimée — explosion imminente", type: "neutral" },
     ],
-    proTip: "Un squeeze Bollinger est l'un des signaux les plus puissants. Quand les bandes se resserrent au maximum, le prochain mouvement sera violent. La direction dépendra des autres couches de confluence.",
+    proTip: "Un squeeze Bollinger est l'un des signaux les plus puissants. Le prochain mouvement sera violent.",
     visual: "bollinger",
   },
   {
     id: "moyennes-mobiles",
     category: "indicateur",
-    icon: <Minus size={20} />,
-    title: "Moyennes Mobiles (MA)",
+    icon: <Minus size={18} />,
+    title: "Moyennes Mobiles",
     subtitle: "Le filtre de tendance",
-    analogy: "Une moyenne mobile, c'est comme un GPS qui lisse votre trajectoire. Au lieu de voir chaque virage (volatilité quotidienne), vous voyez la direction générale de votre voyage.",
-    whatItIs: "Une moyenne mobile calcule le prix moyen sur les N dernières bougies. On utilise la MA20 (court terme), MA50 (moyen terme) et MA200 (long terme).",
+    analogy: "Une moyenne mobile, c'est comme un GPS qui lisse votre trajectoire. Au lieu de voir chaque virage, vous voyez la direction générale.",
+    whatItIs: "Une moyenne mobile calcule le prix moyen sur les N dernières bougies. On utilise la MA20, MA50 et MA200.",
     howItWorks: "MA20 = moyenne des 20 dernières clôtures\nMA50 = moyenne des 50 dernières clôtures\n\nSi le prix est au-dessus de ses moyennes mobiles, la tendance est haussière.",
     howToRead: [
-      { signal: "Prix > MA20 > MA50", meaning: "Tendance haussière forte — les acheteurs dominent", type: "buy" },
-      { signal: "Prix < MA20 < MA50", meaning: "Tendance baissière forte — les vendeurs dominent", type: "sell" },
+      { signal: "Prix > MA20 > MA50", meaning: "Tendance haussière forte", type: "buy" },
+      { signal: "Prix < MA20 < MA50", meaning: "Tendance baissière forte", type: "sell" },
       { signal: "Golden Cross (MA50 croise MA200 ↑)", meaning: "Signal haussier majeur à long terme", type: "buy" },
-      { signal: "Death Cross (MA50 croise MA200 ↓)", meaning: "Signal baissier majeur à long terme", type: "sell" },
     ],
-    proTip: "Les moyennes mobiles fonctionnent mal en range. Elles sont faites pour les marchés en tendance. Si le prix zigzague autour des MAs, concentrez-vous sur les supports/résistances.",
+    proTip: "Les moyennes mobiles fonctionnent mal en range. Elles sont faites pour les marchés en tendance.",
     visual: "ma",
   },
   {
     id: "ichimoku",
     category: "indicateur",
-    icon: <Layers size={20} />,
+    icon: <Layers size={18} />,
     title: "Ichimoku Kinko Hyo",
     subtitle: "Le système tout-en-un japonais",
-    analogy: "L'Ichimoku est comme une carte météo. Le nuage représente la zone de temps incertain. Au-dessus du nuage, le ciel est dégagé (haussier). En dessous, c'est l'orage (baissier). Dans le nuage, c'est le brouillard (incertain).",
-    whatItIs: "Développé par le journaliste japonais Goichi Hosoda, l'Ichimoku montre en un coup d'œil la tendance, le momentum, les supports/résistances, et les signaux. Le nuage (entre Senkou A et B) est la zone clé.",
+    analogy: "L'Ichimoku est comme une carte météo. Au-dessus du nuage, le ciel est dégagé. En dessous, c'est l'orage. Dans le nuage, c'est le brouillard.",
+    whatItIs: "Développé par le journaliste japonais Goichi Hosoda, l'Ichimoku montre en un coup d'œil la tendance, le momentum, les supports/résistances.",
     howItWorks: "• Tenkan-sen (9 périodes) = ligne de conversion rapide\n• Kijun-sen (26 périodes) = ligne de base lente\n• Senkou A = moyenne de Tenkan et Kijun\n• Senkou B = midpoint sur 52 périodes\n• Le nuage = zone entre Senkou A et B",
     howToRead: [
       { signal: "Prix au-dessus du nuage", meaning: "Tendance haussière confirmée", type: "buy" },
       { signal: "Prix dans le nuage", meaning: "Zone d'incertitude — ne pas trader", type: "neutral" },
       { signal: "Prix sous le nuage", meaning: "Tendance baissière confirmée", type: "sell" },
-      { signal: "Tenkan croise Kijun ↑", meaning: "Signal d'achat (TK Cross)", type: "buy" },
     ],
-    proTip: "L'Ichimoku est conçu pour les marchés en tendance. En range, il génère des faux signaux. Utilisez-le comme confirmateur, pas comme déclencheur unique.",
+    proTip: "L'Ichimoku est conçu pour les marchés en tendance. En range, il génère des faux signaux.",
     visual: "ichimoku",
   },
   {
     id: "volume-obv",
     category: "indicateur",
-    icon: <BarChart3 size={20} />,
+    icon: <BarChart3 size={18} />,
     title: "Volume & OBV",
     subtitle: "La conviction du marché",
-    analogy: "Le volume, c'est comme le nombre de personnes qui votent. Un mouvement de prix avec un volume élevé est comme une élection avec 90% de participation — le résultat est légitime. Avec un faible volume, il ne veut rien dire.",
-    whatItIs: "Le volume mesure le nombre d'actions échangées. L'OBV cumule le volume en l'additionnant quand le prix monte et en le soustrayant quand il baisse. Il révèle si de l'argent entre ou sort discrètement d'un actif.",
-    howItWorks: "OBV = somme cumulée (volume × direction du prix)\n\nSi le prix baisse mais l'OBV monte, des gros acheteurs accumulent discrètement. C'est un signal puissant d'accumulation institutionnelle.",
+    analogy: "Le volume, c'est comme le nombre de personnes qui votent. Un mouvement avec un volume élevé est légitime. Avec un faible volume, il ne veut rien dire.",
+    whatItIs: "Le volume mesure le nombre d'actions échangées. L'OBV cumule le volume en l'additionnant quand le prix monte et en le soustrayant quand il baisse.",
+    howItWorks: "OBV = somme cumulée (volume × direction du prix)\n\nSi le prix baisse mais l'OBV monte, des gros acheteurs accumulent discrètement.",
     howToRead: [
       { signal: "Volume 1.5× la moyenne + hausse", meaning: "Conviction forte des acheteurs", type: "buy" },
-      { signal: "Volume faible + hausse", meaning: "Mouvement peu crédible — risque de faux breakout", type: "neutral" },
+      { signal: "Volume faible + hausse", meaning: "Mouvement peu crédible — faux breakout", type: "neutral" },
       { signal: "OBV monte + prix baisse", meaning: "Accumulation discrète — retournement probable", type: "buy" },
-      { signal: "OBV baisse + prix monte", meaning: "Distribution discrète — retournement probable", type: "sell" },
     ],
     proTip: "Le volume est le seul indicateur qui ne peut pas mentir. Le prix peut être manipulé, mais le volume montre toujours la vraie conviction.",
     visual: "volume",
@@ -192,297 +200,222 @@ const SECTIONS: GuideSection[] = [
   {
     id: "fibonacci",
     category: "indicateur",
-    icon: <Zap size={20} />,
+    icon: <Zap size={18} />,
     title: "Fibonacci Retracement",
     subtitle: "Les niveaux naturels du marché",
-    analogy: "Après avoir gravi une montagne, il est naturel de redescendre un peu avant de repartir. Fibonacci mesure « de combien » le prix redescend. Les niveaux 38.2%, 50% et 61.8% sont les paliers où le prix reprend le plus souvent son souffle.",
-    whatItIs: "Le retracement de Fibonacci est basé sur la suite mathématique de Fibonacci. Le ratio 61.8% (le « nombre d'or ») se retrouve dans la nature et dans les marchés. Les niveaux indiquent où un mouvement est susceptible de se corriger avant de reprendre.",
-    howItWorks: "On trace du plus bas au plus haut de la période. Les niveaux clés :\n\n• 23.6% — correction faible (tendance très forte)\n• 38.2% — correction modérée\n• 50% — correction médiane\n• 61.8% — correction profonde (le golden ratio)",
+    analogy: "Après avoir gravi une montagne, il est naturel de redescendre un peu. Fibonacci mesure « de combien » le prix corrige.",
+    whatItIs: "Le retracement de Fibonacci est basé sur la suite mathématique de Fibonacci. Le ratio 61.8% (le « nombre d'or ») se retrouve dans la nature et dans les marchés.",
+    howItWorks: "On trace du plus bas au plus haut de la période. Les niveaux clés :\n\n• 23.6% — correction faible\n• 38.2% — correction modérée\n• 50% — correction médiane\n• 61.8% — correction profonde (golden ratio)",
     howToRead: [
       { signal: "Rebond sur le 38.2%", meaning: "Correction faible — reprise rapide probable", type: "buy" },
       { signal: "Prix atteint le 61.8%", meaning: "Correction profonde — zone de décision", type: "neutral" },
       { signal: "Prix casse le 61.8%", meaning: "La tendance est probablement terminée", type: "sell" },
     ],
-    proTip: "Les niveaux Fibonacci sont encore plus puissants quand ils coïncident avec un support/résistance ou une MA. Cette double confluence augmente considérablement la probabilité de réaction.",
+    proTip: "Les niveaux Fibonacci sont encore plus puissants quand ils coïncident avec un support/résistance ou une MA.",
     visual: "fibonacci",
   },
   {
     id: "atr",
     category: "indicateur",
-    icon: <Eye size={20} />,
-    title: "ATR (Average True Range)",
+    icon: <Eye size={18} />,
+    title: "ATR",
     subtitle: "Le baromètre de la volatilité",
-    analogy: "L'ATR est comme le compteur de turbulences d'un avion. Il ne dit pas si l'avion monte ou descend, mais à quel point le vol est agité. Plus l'ATR est élevé, plus vous devez élargir votre stop-loss.",
-    whatItIs: "L'ATR mesure la volatilité moyenne sur 14 bougies. Un ATR de 2.50€ sur une action à 100€ signifie que le prix bouge de ±2.5% par jour en moyenne.",
-    howItWorks: "ATR = Moyenne sur 14 jours du True Range\nTrue Range = max(High−Low, |High−Close₋₁|, |Low−Close₋₁|)\n\nOn l'utilise pour dimensionner les stop-loss et les objectifs.",
+    analogy: "L'ATR est comme le compteur de turbulences d'un avion. Il ne dit pas si l'avion monte ou descend, mais à quel point le vol est agité.",
+    whatItIs: "L'ATR mesure la volatilité moyenne sur 14 bougies. Un ATR de 2.50€ sur une action à 100€ signifie que le prix bouge de ±2.5% par jour.",
+    howItWorks: "ATR = Moyenne sur 14 jours du True Range\nTrue Range = max(High−Low, |High−Close₋₁|, |Low−Close₋₁|)",
     howToRead: [
       { signal: "ATR élevé (> 3% du prix)", meaning: "Forte volatilité — élargir les stops", type: "neutral" },
       { signal: "ATR faible (< 1% du prix)", meaning: "Calme avant la tempête — breakout possible", type: "neutral" },
       { signal: "ATR en hausse soudaine", meaning: "Le marché se réveille — mouvement en cours", type: "neutral" },
     ],
-    proTip: "Règle d'or : placez votre stop-loss à au moins 1.5× l'ATR. Un stop trop serré sera déclenché par le bruit normal du marché.",
+    proTip: "Règle d'or : placez votre stop-loss à au moins 1.5× l'ATR.",
     visual: "atr",
   },
 ];
 
 // ═══════════════════════════════════════════════════════════════
-// SVG MINI ILLUSTRATIONS — toutes implémentées
+// SVG MINI ILLUSTRATIONS — dark theme
 // ═══════════════════════════════════════════════════════════════
 
 function MiniViz({ type }: { type: string }) {
-  const w = 320, h = 130;
+  const w = 320, h = 120;
   const c = { width: w, height: h, viewBox: `0 0 ${w} ${h}` };
+  const bg = T.bgSub; // Changé pour coller au nouveau fond
 
-  // ── Confluence: layered signals converging ──
   if (type === "confluence") return (
     <svg {...c}>
-      <rect width={w} height={h} rx={16} fill="#f0fdf4" />
-      {/* Layer bars */}
+      <rect width={w} height={h} rx={14} fill={bg} />
       {[
-        { label: "Price Action", pct: 0.78, color: "#2563eb", y: 18 },
-        { label: "Indicateurs",  pct: 0.65, color: "#7c3aed", y: 38 },
-        { label: "Volume",       pct: 0.82, color: "#059669", y: 58 },
-        { label: "Structure",    pct: 0.70, color: "#d97706", y: 78 },
+        { label: "Price Action", pct: 0.78, color: T.blue, y: 16 },
+        { label: "Indicateurs",  pct: 0.65, color: T.violet, y: 34 },
+        { label: "Volume",       pct: 0.82, color: T.green, y: 52 },
+        { label: "Structure",    pct: 0.70, color: T.amber, y: 70 },
       ].map(({ label, pct, color, y: ly }) => (
         <g key={label}>
-          <text x={8} y={ly + 8} fontSize={7.5} fill="#5a5a72" fontWeight={600}>{label}</text>
-          <rect x={95} y={ly} width={190} height={10} rx={5} fill="#e5e7eb" />
-          <rect x={95} y={ly} width={190 * pct} height={10} rx={5} fill={color} opacity={0.85} />
-          <text x={292} y={ly + 8} fontSize={7} fill={color} fontWeight={700}>{Math.round(pct * 100)}%</text>
+          <text x={8} y={ly + 8} fontSize={7} fill={T.textDim} fontWeight={500}>{label}</text>
+          <rect x={90} y={ly} width={180} height={9} rx={4.5} fill={T.border} />
+          <rect x={90} y={ly} width={180 * pct} height={9} rx={4.5} fill={color} opacity={0.7} />
+          <text x={276} y={ly + 8} fontSize={7} fill={color} fontWeight={700}>{Math.round(pct * 100)}%</text>
         </g>
       ))}
-      {/* Score badge */}
-      <rect x={118} y={98} width={84} height={22} rx={11} fill="#059669" />
-      <text x={160} y={113} textAnchor="middle" fontSize={12} fill="white" fontWeight={800}>Score : 74</text>
+      <rect x={118} y={92} width={84} height={20} rx={10} fill={T.green} opacity={0.9} />
+      <text x={160} y={106} textAnchor="middle" fontSize={11} fill="#fff" fontWeight={800}>Score : 74</text>
     </svg>
   );
 
-  // ── RSI ──
   if (type === "rsi") return (
     <svg {...c}>
-      <rect width={w} height={h} rx={16} fill="#eff6ff" />
-      <rect x={20} y={18} width={280} height={8} rx={4} fill="#fecaca" opacity={0.6} />
-      <rect x={20} y={56} width={280} height={38} rx={4} fill="#f0fdf4" opacity={0.5} />
-      <rect x={20} y={104} width={280} height={8} rx={4} fill="#dcfce7" opacity={0.6} />
-      <text x={8} y={25} fontSize={7} fill="#dc2626" fontWeight={600}>70</text>
-      <text x={8} y={63} fontSize={7} fill="#6b7280">50</text>
-      <text x={8} y={116} fontSize={7} fill="#059669" fontWeight={600}>30</text>
-      <line x1={20} y1={22} x2={300} y2={22} stroke="#dc262620" strokeWidth={1} />
-      <line x1={20} y1={60} x2={300} y2={60} stroke="#6b728030" strokeWidth={1} strokeDasharray="4 3" />
-      <line x1={20} y1={108} x2={300} y2={108} stroke="#05966920" strokeWidth={1} />
-      <polyline
-        points="20,75 52,70 84,55 116,30 148,22 172,28 196,48 220,65 244,80 268,102 292,112"
-        fill="none" stroke="#2563eb" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
-      />
-      <circle cx={148} cy={22} r={5} fill="none" stroke="#dc2626" strokeWidth={2} />
-      <text x={118} y={18} fontSize={8} fill="#dc2626" fontWeight={600}>Surachat</text>
-      <circle cx={292} cy={112} r={5} fill="#059669" />
-      <text x={262} y={126} fontSize={8} fill="#059669" fontWeight={600}>Survente</text>
+      <rect width={w} height={h} rx={14} fill={bg} />
+      <line x1={20} y1={20} x2={300} y2={20} stroke={`${T.red}20`} strokeWidth={0.5} />
+      <line x1={20} y1={55} x2={300} y2={55} stroke={`${T.textMuted}`} strokeWidth={0.5} strokeDasharray="4 3" />
+      <line x1={20} y1={95} x2={300} y2={95} stroke={`${T.green}20`} strokeWidth={0.5} />
+      <text x={6} y={24} fontSize={7} fill={T.red} fontWeight={500}>70</text>
+      <text x={6} y={99} fontSize={7} fill={T.green} fontWeight={500}>30</text>
+      <polyline points="20,68 52,64 84,50 116,28 148,20 172,26 196,44 220,60 244,72 268,88 292,96" fill="none" stroke={T.blue} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx={148} cy={20} r={4} fill="none" stroke={T.red} strokeWidth={1.5} />
+      <text x={120} y={16} fontSize={7} fill={T.red} fontWeight={600}>Surachat</text>
+      <circle cx={292} cy={96} r={4} fill={T.green} />
+      <text x={262} y={112} fontSize={7} fill={T.green} fontWeight={600}>Survente</text>
     </svg>
   );
 
-  // ── MACD ──
   if (type === "macd") return (
     <svg {...c}>
-      <rect width={w} height={h} rx={16} fill="#eff6ff" />
-      <line x1={20} y1={65} x2={300} y2={65} stroke="#2563eb10" />
+      <rect width={w} height={h} rx={14} fill={bg} />
+      <line x1={20} y1={60} x2={300} y2={60} stroke={T.border} />
       {[25,42,59,76,93,110,127,144,161,178,195,212,229,246,263,280].map((x, i) => {
-        const v = Math.sin(i * 0.4 - 1) * 28;
-        return <rect key={i} x={x} y={v > 0 ? 65 - v : 65} width={10} height={Math.abs(v)} rx={3} fill={v > 0 ? "#05966950" : "#dc262650"} />;
+        const v = Math.sin(i * 0.4 - 1) * 24;
+        return <rect key={i} x={x} y={v > 0 ? 60 - v : 60} width={10} height={Math.abs(v)} rx={3} fill={v > 0 ? `${T.green}50` : `${T.red}50`} />;
       })}
-      <polyline points="25,75 59,80 93,70 127,48 161,38 195,42 229,58 263,68 297,62" fill="none" stroke="#2563eb" strokeWidth={2} strokeLinecap="round" />
-      <polyline points="25,70 59,72 93,66 127,52 161,44 195,46 229,55 263,62 297,60" fill="none" stroke="#f59e0b" strokeWidth={1.5} strokeDasharray="4 3" />
-      <circle cx={161} cy={38} r={5} fill="#2563eb" />
-      <text x={130} y={28} fill="#2563eb" fontSize={9} fontWeight={600}>Croisement ↑</text>
+      <polyline points="25,70 59,74 93,66 127,46 161,36 195,40 229,54 263,64 297,58" fill="none" stroke={T.blue} strokeWidth={1.5} strokeLinecap="round" />
+      <polyline points="25,66 59,68 93,62 127,50 161,42 195,44 229,52 263,58 297,56" fill="none" stroke={T.amber} strokeWidth={1} strokeDasharray="4 3" />
+      <circle cx={161} cy={36} r={4} fill={T.blue} />
+      <text x={132} y={28} fill={T.blue} fontSize={8} fontWeight={600}>Croisement ↑</text>
     </svg>
   );
 
-  // ── Bollinger ──
   if (type === "bollinger") return (
     <svg {...c}>
-      <rect width={w} height={h} rx={16} fill="#faf5ff" />
-      <path d="M20,30 Q90,18 160,28 T300,22" fill="none" stroke="#7c3aed30" strokeWidth={1.5} strokeDasharray="4 4" />
-      <path d="M20,100 Q90,112 160,102 T300,108" fill="none" stroke="#7c3aed30" strokeWidth={1.5} strokeDasharray="4 4" />
-      <path d="M20,30 Q90,18 160,28 T300,22 L300,108 Q240,102 160,102 T20,100 Z" fill="#7c3aed06" />
-      <path d="M20,65 Q90,60 160,65 T300,62" fill="none" stroke="#7c3aed18" strokeWidth={1} />
-      <polyline points="20,58 50,52 80,68 110,82 140,98 165,90 195,68 225,52 255,40 285,48" fill="none" stroke="#1a1a2e" strokeWidth={2} strokeLinecap="round" />
-      {/* Squeeze zone annotation */}
-      <rect x={60} y={50} width={50} height={35} rx={4} fill="none" stroke="#7c3aed" strokeWidth={1} strokeDasharray="3 2" opacity={0.5} />
-      <text x={64} y={46} fontSize={7} fill="#7c3aed" fontWeight={600}>Squeeze</text>
-      <circle cx={140} cy={98} r={6} fill="none" stroke="#059669" strokeWidth={2} />
-      <text x={100} y={120} fill="#059669" fontSize={9} fontWeight={600}>Rebond bande basse</text>
+      <rect width={w} height={h} rx={14} fill={bg} />
+      <path d="M20,25 Q90,16 160,24 T300,18" fill="none" stroke={`${T.violet}30`} strokeWidth={1} strokeDasharray="4 4" />
+      <path d="M20,90 Q90,100 160,92 T300,96" fill="none" stroke={`${T.violet}30`} strokeWidth={1} strokeDasharray="4 4" />
+      <path d="M20,25 Q90,16 160,24 T300,18 L300,96 Q240,92 160,92 T20,90 Z" fill={`${T.violet}06`} />
+      <polyline points="20,52 50,46 80,60 110,74 140,88 165,80 195,62 225,46 255,35 285,42" fill="none" stroke={T.text} strokeWidth={1.5} strokeLinecap="round" />
+      <circle cx={140} cy={88} r={5} fill="none" stroke={T.green} strokeWidth={1.5} />
+      <text x={100} y={112} fill={T.green} fontSize={8} fontWeight={600}>Rebond bande basse</text>
     </svg>
   );
 
-  // ── Candles ──
   if (type === "candle") return (
     <svg {...c}>
-      <rect width={w} height={h} rx={16} fill="#ecfdf5" />
-      <g transform="translate(30, 0)">
-        <line x1={25} y1={15} x2={25} y2={100} stroke="#059669" strokeWidth={1.5} />
-        <rect x={14} y={35} width={22} height={40} rx={4} fill="#059669" />
-        <text x={14} y={118} fill="#1a1a2e" fontSize={9} fontWeight={600}>Haussière</text>
+      <rect width={w} height={h} rx={14} fill={bg} />
+      <g transform="translate(25, 0)">
+        <line x1={22} y1={12} x2={22} y2={88} stroke={T.green} strokeWidth={1.5} />
+        <rect x={12} y={30} width={20} height={35} rx={3} fill={T.green} />
+        <text x={10} y={108} fill={T.textSub} fontSize={8} fontWeight={600}>Haussière</text>
       </g>
-      <g transform="translate(110, 0)">
-        <line x1={25} y1={15} x2={25} y2={100} stroke="#dc2626" strokeWidth={1.5} />
-        <rect x={14} y={28} width={22} height={40} rx={4} fill="#dc2626" />
-        <text x={14} y={118} fill="#1a1a2e" fontSize={9} fontWeight={600}>Baissière</text>
+      <g transform="translate(100, 0)">
+        <line x1={22} y1={12} x2={22} y2={88} stroke={T.red} strokeWidth={1.5} />
+        <rect x={12} y={24} width={20} height={35} rx={3} fill={T.red} />
+        <text x={10} y={108} fill={T.textSub} fontSize={8} fontWeight={600}>Baissière</text>
       </g>
-      <g transform="translate(190, 0)">
-        <line x1={25} y1={25} x2={25} y2={100} stroke="#059669" strokeWidth={1.5} />
-        <rect x={16} y={25} width={18} height={14} rx={4} fill="#059669" />
-        <text x={14} y={118} fill="#1a1a2e" fontSize={9} fontWeight={600}>Marteau</text>
+      <g transform="translate(175, 0)">
+        <line x1={22} y1={22} x2={22} y2={88} stroke={T.green} strokeWidth={1.5} />
+        <rect x={14} y={22} width={16} height={12} rx={3} fill={T.green} />
+        <text x={10} y={108} fill={T.textSub} fontSize={8} fontWeight={600}>Marteau</text>
       </g>
-      <g transform="translate(260, 0)">
-        <line x1={20} y1={25} x2={20} y2={95} stroke="#d97706" strokeWidth={1.5} />
-        <rect x={13} y={57} width={14} height={4} rx={2} fill="#d97706" />
-        <text x={13} y={118} fill="#1a1a2e" fontSize={9} fontWeight={600}>Doji</text>
+      <g transform="translate(245, 0)">
+        <line x1={18} y1={22} x2={18} y2={82} stroke={T.amber} strokeWidth={1.5} />
+        <rect x={12} y={50} width={12} height={4} rx={2} fill={T.amber} />
+        <text x={10} y={108} fill={T.textSub} fontSize={8} fontWeight={600}>Doji</text>
       </g>
     </svg>
   );
 
-  // ── Supports & Résistances ──
   if (type === "sr") return (
     <svg {...c}>
-      <rect width={w} height={h} rx={16} fill="#fefce8" />
-      {/* Resistance zone */}
-      <rect x={20} y={22} width={280} height={8} rx={2} fill="#fecaca" opacity={0.7} />
-      <text x={24} y={20} fontSize={7.5} fill="#dc2626" fontWeight={700}>RÉSISTANCE</text>
-      {/* Support zone */}
-      <rect x={20} y={98} width={280} height={8} rx={2} fill="#dcfce7" opacity={0.7} />
-      <text x={24} y={120} fontSize={7.5} fill="#059669" fontWeight={700}>SUPPORT</text>
-      {/* Bouncing price line */}
-      <polyline
-        points="20,96 50,78 80,60 100,42 120,30 135,26 148,30 162,50 180,78 200,96 220,100 240,90 260,70 275,42 290,28"
-        fill="none" stroke="#1a1a2e" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
-      />
-      {/* Rejection arrows */}
-      <text x={138} y={45} fontSize={12} fill="#dc2626">↓</text>
-      <text x={195} y={88} fontSize={12} fill="#059669">↑</text>
+      <rect width={w} height={h} rx={14} fill={bg} />
+      <rect x={20} y={18} width={280} height={6} rx={3} fill={`${T.red}15`} />
+      <text x={24} y={16} fontSize={7} fill={T.red} fontWeight={700}>RÉSISTANCE</text>
+      <rect x={20} y={90} width={280} height={6} rx={3} fill={`${T.green}15`} />
+      <text x={24} y={108} fontSize={7} fill={T.green} fontWeight={700}>SUPPORT</text>
+      <polyline points="20,88 50,72 80,56 100,38 120,26 135,22 148,26 162,46 180,72 200,88 220,92 240,82 260,64 275,38 290,24" fill="none" stroke={T.text} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 
-  // ── Moyennes Mobiles ──
   if (type === "ma") return (
     <svg {...c}>
-      <rect width={w} height={h} rx={16} fill="#f0fdf4" />
-      {/* MA200 */}
-      <polyline points="20,90 80,85 140,80 200,74 260,68 300,65" fill="none" stroke="#d97706" strokeWidth={1.5} strokeDasharray="5 3" />
-      <text x={250} y={60} fontSize={7} fill="#d97706" fontWeight={600}>MA200</text>
-      {/* MA50 */}
-      <polyline points="20,82 80,75 140,65 200,55 260,48 300,44" fill="none" stroke="#7c3aed" strokeWidth={1.5} strokeDasharray="3 2" />
-      <text x={250} y={40} fontSize={7} fill="#7c3aed" fontWeight={600}>MA50</text>
-      {/* MA20 */}
-      <polyline points="20,75 60,62 100,50 140,42 180,36 220,32 260,28 300,26" fill="none" stroke="#2563eb" strokeWidth={1.5} />
-      <text x={250} y={23} fontSize={7} fill="#2563eb" fontWeight={600}>MA20</text>
-      {/* Price */}
-      <polyline points="20,80 50,65 80,50 110,40 140,35 170,28 200,24 230,20 260,18 290,16" fill="none" stroke="#059669" strokeWidth={2} strokeLinecap="round" />
-      {/* Golden cross annotation */}
-      <circle cx={130} cy={58} r={7} fill="none" stroke="#f59e0b" strokeWidth={1.5} />
-      <text x={104} y={78} fontSize={7.5} fill="#f59e0b" fontWeight={700}>Golden Cross</text>
+      <rect width={w} height={h} rx={14} fill={bg} />
+      <polyline points="20,82 80,76 140,72 200,66 260,60 300,58" fill="none" stroke={T.amber} strokeWidth={1} strokeDasharray="5 3" />
+      <polyline points="20,74 80,68 140,58 200,48 260,42 300,38" fill="none" stroke={T.violet} strokeWidth={1} strokeDasharray="3 2" />
+      <polyline points="20,68 60,56 100,44 140,36 180,30 220,26 260,22 300,20" fill="none" stroke={T.blue} strokeWidth={1.2} />
+      <polyline points="20,72 50,58 80,44 110,34 140,28 170,22 200,18 230,15 260,13 290,11" fill="none" stroke={T.green} strokeWidth={1.5} strokeLinecap="round" />
+      <circle cx={130} cy={52} r={6} fill="none" stroke={T.amber} strokeWidth={1.2} />
+      <text x={106} y={70} fontSize={7} fill={T.amber} fontWeight={700}>Golden Cross</text>
     </svg>
   );
 
-  // ── Ichimoku ──
   if (type === "ichimoku") return (
     <svg {...c}>
-      <rect width={w} height={h} rx={16} fill="#f0f9ff" />
-      {/* Kumo cloud */}
-      <path d="M20,55 Q80,45 140,50 T260,40 L260,80 Q200,90 140,85 T20,90 Z" fill="#05966915" stroke="#05966930" strokeWidth={0.5} />
-      {/* Senkou A */}
-      <path d="M20,55 Q80,45 140,50 T260,40" fill="none" stroke="#059669" strokeWidth={1} strokeDasharray="3 2" />
-      {/* Senkou B */}
-      <path d="M20,90 Q80,88 140,85 T260,80" fill="none" stroke="#dc2626" strokeWidth={1} strokeDasharray="3 2" />
-      {/* Kijun */}
-      <polyline points="20,75 80,72 140,68 200,62 260,58 300,54" fill="none" stroke="#dc2626" strokeWidth={1.5} />
-      <text x={264} y={52} fontSize={6.5} fill="#dc2626">Kijun</text>
-      {/* Tenkan */}
-      <polyline points="20,65 60,58 100,50 140,44 180,38 220,33 260,28 300,24" fill="none" stroke="#2563eb" strokeWidth={1.5} />
-      <text x={264} y={22} fontSize={6.5} fill="#2563eb">Tenkan</text>
-      {/* Price — above cloud */}
-      <polyline points="100,30 130,22 160,16 190,12 220,10 250,8 280,6" fill="none" stroke="#059669" strokeWidth={2} strokeLinecap="round" />
-      <text x={22} y={35} fontSize={8} fill="#059669" fontWeight={700}>Prix au-dessus du nuage ↑</text>
+      <rect width={w} height={h} rx={14} fill={bg} />
+      <path d="M20,50 Q80,40 140,45 T260,36 L260,72 Q200,80 140,76 T20,80 Z" fill={`${T.green}08`} stroke={`${T.green}20`} strokeWidth={0.5} />
+      <polyline points="20,68 80,64 140,60 200,54 260,50 300,46" fill="none" stroke={T.red} strokeWidth={1} />
+      <polyline points="20,58 60,50 100,42 140,38 180,32 220,28 260,22 300,18" fill="none" stroke={T.blue} strokeWidth={1.2} />
+      <polyline points="100,26 130,18 160,12 190,8 220,6 250,5 280,4" fill="none" stroke={T.green} strokeWidth={1.5} strokeLinecap="round" />
+      <text x={22} y={30} fontSize={7} fill={T.green} fontWeight={700}>Au-dessus du nuage ↑</text>
     </svg>
   );
 
-  // ── Volume & OBV ──
   if (type === "volume") return (
     <svg {...c}>
-      <rect width={w} height={h} rx={16} fill="#f0fdf4" />
-      {/* Volume bars */}
+      <rect width={w} height={h} rx={14} fill={bg} />
       {[20,38,56,74,92,110,128,146,164,182,200,218,236,254,272].map((x, i) => {
-        const h2 = [20,14,28,18,12,35,16,42,22,30,16,50,24,18,38][i];
+        const h2 = [18,12,24,16,10,30,14,36,20,26,14,42,22,16,32][i];
         const isUp = [1,0,1,1,0,1,0,1,1,0,0,1,1,0,1][i];
-        return <rect key={i} x={x} y={88 - h2} width={14} height={h2} rx={2} fill={isUp ? "#05966960" : "#dc262650"} />;
+        return <rect key={i} x={x} y={80 - h2} width={12} height={h2} rx={2} fill={isUp ? `${T.green}45` : `${T.red}35`} />;
       })}
-      {/* OBV line */}
-      <polyline
-        points="20,105 38,102 56,98 74,95 92,99 110,90 128,95 146,82 164,76 182,80 200,84 218,68 236,62 254,66 272,55"
-        fill="none" stroke="#2563eb" strokeWidth={2} strokeLinecap="round"
-      />
-      <text x={22} y={120} fontSize={7} fill="#6b7280">Volume</text>
-      <text x={220} y={52} fontSize={7} fill="#2563eb" fontWeight={600}>OBV ↑ (accumulation)</text>
+      <polyline points="20,95 38,92 56,88 74,85 92,89 110,82 128,86 146,74 164,68 182,72 200,76 218,62 236,56 254,60 272,50" fill="none" stroke={T.blue} strokeWidth={1.5} strokeLinecap="round" />
+      <text x={220} y={48} fontSize={7} fill={T.blue} fontWeight={600}>OBV ↑</text>
     </svg>
   );
 
-  // ── Fibonacci ──
   if (type === "fibonacci") return (
     <svg {...c}>
-      <rect width={w} height={h} rx={16} fill="#fff7ed" />
-      {/* Levels */}
+      <rect width={w} height={h} rx={14} fill={bg} />
       {[
-        { pct: 0,    label: "0%",    y: 14, color: "#6b7280" },
-        { pct: 0.236,label: "23.6%", y: 35, color: "#2563eb" },
-        { pct: 0.382,label: "38.2%", y: 52, color: "#7c3aed" },
-        { pct: 0.5,  label: "50%",   y: 66, color: "#d97706" },
-        { pct: 0.618,label: "61.8%", y: 80, color: "#dc2626", bold: true },
-        { pct: 1,    label: "100%",  y: 108,color: "#6b7280" },
+        { label: "0%", y: 12, color: T.textDim },
+        { label: "23.6%", y: 32, color: T.blue },
+        { label: "38.2%", y: 46, color: T.violet },
+        { label: "61.8%", y: 72, color: T.red, bold: true },
+        { label: "100%", y: 100, color: T.textDim },
       ].map(({ label, y: ly, color, bold }) => (
         <g key={label}>
-          <line x1={45} y1={ly} x2={300} y2={ly} stroke={color} strokeWidth={bold ? 1.5 : 0.8} strokeDasharray={bold ? "none" : "4 3"} opacity={0.6} />
-          <text x={4} y={ly + 3.5} fontSize={7} fill={color} fontWeight={bold ? 800 : 500}>{label}</text>
+          <line x1={40} y1={ly} x2={290} y2={ly} stroke={color} strokeWidth={bold ? 1 : 0.5} strokeDasharray={bold ? "none" : "4 3"} opacity={0.5} />
+          <text x={4} y={ly + 3} fontSize={7} fill={color} fontWeight={bold ? 800 : 500}>{label}</text>
         </g>
       ))}
-      {/* Price retracement */}
-      <polyline
-        points="50,14 80,10 110,8 140,12 165,22 180,38 190,52 195,66 192,72 188,78 185,82 190,70 200,55 215,40 235,25 260,15 285,10"
-        fill="none" stroke="#1a1a2e" strokeWidth={2} strokeLinecap="round"
-      />
-      <circle cx={190} cy={80} r={5} fill="none" stroke="#dc2626" strokeWidth={1.5} />
-      <text x={195} y={85} fontSize={7.5} fill="#dc2626" fontWeight={600}>Golden ratio</text>
+      <polyline points="50,12 80,8 110,6 140,10 165,20 180,34 190,46 195,60 192,66 188,72 185,76 190,64 200,48 215,36 235,22 260,12 285,8" fill="none" stroke={T.text} strokeWidth={1.5} strokeLinecap="round" />
+      <circle cx={188} cy={72} r={4} fill="none" stroke={T.red} strokeWidth={1.2} />
+      <text x={194} y={78} fontSize={7} fill={T.red} fontWeight={600}>Golden ratio</text>
     </svg>
   );
 
-  // ── ATR ──
   if (type === "atr") return (
     <svg {...c}>
-      <rect width={w} height={h} rx={16} fill="#fdf4ff" />
-      {/* Candle range bars representing volatility */}
+      <rect width={w} height={h} rx={14} fill={bg} />
       {[20,40,60,80,100,120,140,160,180,200,220,240,260,280].map((x, i) => {
-        const ranges = [18,16,20,15,12,10,8,9,7,20,28,35,30,25];
-        const h2 = ranges[i];
-        const midY = 65;
-        return (
-          <g key={i}>
-            <line x1={x + 7} y1={midY - h2} x2={x + 7} y2={midY + h2} stroke="#7c3aed" strokeWidth={2} strokeLinecap="round" opacity={0.6 + i * 0.02} />
-          </g>
-        );
+        const r = [16,14,18,13,10,8,6,7,5,18,24,30,26,22][i];
+        return <line key={i} x1={x + 6} y1={58 - r} x2={x + 6} y2={58 + r} stroke={T.violet} strokeWidth={1.5} strokeLinecap="round" opacity={0.5 + i * 0.03} />;
       })}
-      {/* ATR line */}
-      <polyline
-        points="27,50 47,48 67,52 87,46 107,42 127,36 147,34 167,36 187,34 207,50 227,62 247,68 267,64 287,58"
-        fill="none" stroke="#7c3aed" strokeWidth={2} strokeLinecap="round"
-      />
-      <text x={22} y={120} fontSize={7} fill="#7c3aed" fontWeight={600}>ATR — volatilité quotidienne</text>
-      <text x={210} y={50} fontSize={7.5} fill="#dc2626" fontWeight={600}>Volatilité ↑</text>
+      <polyline points="26,44 46,42 66,46 86,40 106,36 126,30 146,28 166,30 186,28 206,44 226,54 246,60 266,56 286,50" fill="none" stroke={T.violet} strokeWidth={1.5} strokeLinecap="round" />
+      <text x={210} y={44} fontSize={7} fill={T.red} fontWeight={600}>Volatilité ↑</text>
     </svg>
   );
 
-  // Fallback
   return (
     <svg {...c}>
-      <rect width={w} height={h} rx={16} fill="#f5f4f1" />
-      <text x={w / 2} y={h / 2 + 4} textAnchor="middle" fill="#c4c2cc" fontSize={12} fontWeight={500}>{type}</text>
+      <rect width={w} height={h} rx={14} fill={bg} />
+      <text x={w / 2} y={h / 2 + 4} textAnchor="middle" fill={T.textMuted} fontSize={11}>{type}</text>
     </svg>
   );
 }
@@ -492,7 +425,7 @@ function MiniViz({ type }: { type: string }) {
 // ═══════════════════════════════════════════════════════════════
 
 const categoryLabel: Record<string, string> = { methode: "Méthode", indicateur: "Indicateur", concept: "Concept" };
-const categoryColor: Record<string, string> = { methode: "#2563eb", indicateur: "#7c3aed", concept: "#059669" };
+const categoryColor: Record<string, string> = { methode: T.cyan, indicateur: T.violet, concept: T.green };
 
 export default function GuidePage() {
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -503,95 +436,78 @@ export default function GuidePage() {
     const base = SECTIONS.filter(s => filter === "all" || s.category === filter);
     if (!query.trim()) return base;
     const q = query.toLowerCase();
-    return base.filter(s =>
-      s.title.toLowerCase().includes(q) ||
-      s.subtitle.toLowerCase().includes(q) ||
-      s.whatItIs.toLowerCase().includes(q)
-    );
+    return base.filter(s => s.title.toLowerCase().includes(q) || s.subtitle.toLowerCase().includes(q) || s.whatItIs.toLowerCase().includes(q));
   }, [filter, query]);
 
   const active = SECTIONS.find(s => s.id === activeId);
-
-  // Progress tracking — how many sections the user has visited
   const activeIndex = activeId ? SECTIONS.findIndex(s => s.id === activeId) : -1;
 
   return (
-    <div className="min-h-screen" style={{ background: "#faf9f7", color: "#1a1a2e", fontFamily: "'Inter', system-ui, sans-serif" }}>
+    <div className="min-h-screen relative overflow-hidden" style={{ background: T.bg, color: T.text, fontFamily: FONT_BODY }}>
+      {/* ── AMBIENT GLOWS (Premium Background) ── */}
+      <div className="fixed top-[10%] right-[10%] w-[40%] h-[40%] rounded-full blur-[140px] pointer-events-none opacity-20 mix-blend-screen" style={{ background: "radial-gradient(circle, rgba(59,130,246,0.4) 0%, rgba(0,0,0,0) 70%)" }} />
+      <div className="fixed bottom-[-10%] left-[-10%] w-[50%] h-[50%] rounded-full blur-[150px] pointer-events-none opacity-20 mix-blend-screen" style={{ background: "radial-gradient(circle, rgba(6,182,212,0.3) 0%, rgba(0,0,0,0) 70%)" }} />
+
       <Sidebar />
-      <main className="md:ml-64 px-5 pt-8 pb-20 md:px-10">
-        <div className="max-w-3xl mx-auto">
+      <main className="md:ml-64 px-5 pt-8 pb-24 md:px-10 relative z-10 min-h-screen flex flex-col">
+        <div className="max-w-4xl mx-auto w-full">
 
           {/* Back */}
-          <Link href="/analyses" className="inline-flex items-center gap-2 text-sm font-medium mb-8 transition-colors hover:opacity-70" style={{ color: "#2563eb" }}>
-            <ArrowLeft size={16} /> Retour à l&apos;analyse
+          <Link href="/analyses" className="inline-flex items-center gap-2 text-xs font-bold mb-8 transition-opacity hover:opacity-70" style={{ color: T.cyan }}>
+            <ArrowLeft size={14} /> Retour au radar financier
           </Link>
 
           {/* Header */}
-          <div className="mb-8">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="h-11 w-11 rounded-xl flex items-center justify-center" style={{ background: "#dbeafe" }}>
-                <BookOpen size={20} style={{ color: "#2563eb" }} />
+          <div className="mb-10">
+            <div className="flex items-center gap-4 mb-3">
+              <div className="h-12 w-12 flex items-center justify-center rounded-2xl shadow-lg shadow-cyan-500/20" style={{ background: T.gradPrimary }}>
+                <BookOpen size={20} className="text-white" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold tracking-tight">Comprendre l&apos;analyse technique</h1>
-                <p className="text-sm" style={{ color: "#9a98a8" }}>Guide interactif — {SECTIONS.length} fiches · Nexus Stocks</p>
+                <h1 className="text-2xl font-black tracking-tight" style={{ fontFamily: FONT_DISPLAY }}>
+                  La base de connaissances
+                </h1>
+                <p className="text-[11px] uppercase tracking-widest font-bold mt-1" style={{ color: T.textDim }}>{SECTIONS.length} modules d'intelligence de marché</p>
               </div>
             </div>
-            <p className="text-[15px] leading-relaxed" style={{ color: "#5a5a72" }}>
-              Chaque indicateur est un outil. Seul, il est imprécis. Combinés intelligemment (confluence), ils deviennent puissants.
+            <p className="text-sm font-medium leading-relaxed max-w-2xl" style={{ color: T.textSub }}>
+              Chaque indicateur est un outil. Seul, il est imprécis. Combinés intelligemment (confluence), ils deviennent de puissantes armes d'analyse.
             </p>
           </div>
 
-          {/* Search bar */}
-          <div className="relative mb-5">
-            <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "#9a98a8" }} />
-            <input
-              type="text"
-              placeholder="Rechercher un indicateur..."
-              value={query}
-              onChange={e => { setQuery(e.target.value); setActiveId(null); }}
-              className="w-full pl-9 pr-9 py-2.5 rounded-xl text-sm outline-none transition-all"
-              style={{ background: "#f0eeeb", color: "#1a1a2e", border: "1.5px solid transparent" }}
-              onFocus={e => (e.currentTarget.style.borderColor = "#2563eb")}
-              onBlur={e => (e.currentTarget.style.borderColor = "transparent")}
-            />
-            {query && (
-              <button onClick={() => setQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2 hover:opacity-60 transition-opacity">
-                <X size={14} style={{ color: "#9a98a8" }} />
-              </button>
-            )}
+          {/* Search */}
+          <div className="relative mb-8">
+            <div className="flex items-center gap-3 px-5 py-4 rounded-3xl shadow-xl transition-all" style={{ background: T.cardSolid, border: `1px solid ${T.borderMid}` }}>
+              <Search size={16} style={{ color: T.textSub }} />
+              <input type="text" placeholder="Rechercher un concept, un indicateur..." value={query}
+                onChange={e => { setQuery(e.target.value); setActiveId(null); }}
+                className="flex-1 bg-transparent text-sm font-medium outline-none placeholder:text-gray-600" style={{ color: T.text }} />
+              {query && <button onClick={() => setQuery("")} className="hover:bg-white/10 p-1.5 rounded-full transition-colors"><X size={14} style={{ color: T.textDim }} /></button>}
+            </div>
           </div>
 
           {/* Filters */}
-          <div className="flex gap-2 mb-6 flex-wrap">
-            {([["all", "Tout"], ["concept", "Concepts"], ["methode", "Méthodes"], ["indicateur", "Indicateurs"]] as const).map(([k, l]) => (
+          <div className="flex gap-2 mb-8 flex-wrap">
+            {([["all", "Tout l'univers"], ["concept", "Concepts"], ["methode", "Méthodes"], ["indicateur", "Indicateurs"]] as const).map(([k, l]) => (
               <button key={k} onClick={() => { setFilter(k); setActiveId(null); setQuery(""); }}
-                className="px-4 py-2.5 rounded-xl text-sm font-semibold transition-all"
-                style={filter === k ? { background: "#1a1a2e", color: "#fff" } : { background: "#f5f4f1", color: "#5a5a72" }}>
+                className="px-5 py-2.5 text-[11px] font-bold transition-all duration-300 rounded-full"
+                style={{ background: filter === k ? T.blueBg : "transparent", color: filter === k ? T.cyan : T.textDim, border: `1px solid ${filter === k ? T.borderFocus : T.border}` }}>
                 {l}
               </button>
             ))}
           </div>
 
-          {/* Progress bar (only in detail view) */}
+          {/* Progress */}
           {active && (
-            <div className="mb-6">
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-[11px] font-semibold" style={{ color: "#9a98a8" }}>
-                  Fiche {activeIndex + 1} / {SECTIONS.length}
-                </span>
-                <span className="text-[11px]" style={{ color: "#9a98a8" }}>
-                  {Math.round(((activeIndex + 1) / SECTIONS.length) * 100)}% du guide
-                </span>
+            <div className="mb-8">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[10px] uppercase tracking-wider font-bold" style={{ color: T.textDim }}>Module {activeIndex + 1} / {SECTIONS.length}</span>
+                <span className="text-[10px] font-mono font-bold" style={{ color: T.cyan }}>{Math.round(((activeIndex + 1) / SECTIONS.length) * 100)}%</span>
               </div>
-              <div className="h-1.5 w-full rounded-full overflow-hidden" style={{ background: "#eae8e4" }}>
-                <motion.div
-                  className="h-full rounded-full"
-                  style={{ background: "#2563eb" }}
-                  initial={{ width: 0 }}
-                  animate={{ width: `${((activeIndex + 1) / SECTIONS.length) * 100}%` }}
-                  transition={{ duration: 0.4, ease: "easeOut" }}
-                />
+              <div className="h-1.5 w-full rounded-full overflow-hidden" style={{ background: T.borderMid }}>
+                <motion.div className="h-full rounded-full" style={{ background: T.gradPrimary }}
+                  initial={{ width: 0 }} animate={{ width: `${((activeIndex + 1) / SECTIONS.length) * 100}%` }}
+                  transition={{ duration: 0.5, ease: "easeOut" }} />
               </div>
             </div>
           )}
@@ -599,35 +515,44 @@ export default function GuidePage() {
           {/* Content */}
           <AnimatePresence mode="wait">
             {!active ? (
-              <motion.div key="grid" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              <motion.div key="grid" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
                 {filtered.length === 0 ? (
-                  <div className="text-center py-16" style={{ color: "#9a98a8" }}>
-                    <p className="text-sm">Aucun résultat pour &quot;{query}&quot;</p>
-                    <button onClick={() => setQuery("")} className="mt-3 text-sm font-semibold" style={{ color: "#2563eb" }}>
-                      Effacer la recherche
-                    </button>
+                  <div className="text-center py-24">
+                    <p className="text-sm font-medium" style={{ color: T.textDim }}>Aucun résultat pour &quot;{query}&quot;</p>
+                    <button onClick={() => setQuery("")} className="mt-3 px-4 py-2 rounded-xl text-xs font-bold transition-colors hover:bg-white/5" style={{ color: T.cyan, border: `1px solid ${T.borderFocus}` }}>Effacer la recherche</button>
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {filtered.map((s, i) => (
                       <motion.button key={s.id} onClick={() => setActiveId(s.id)}
-                        initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }}
-                        className="text-left rounded-2xl border p-6 transition-all duration-200 hover:shadow-lg hover:shadow-black/[0.04] group"
-                        style={{ background: "#fff", borderColor: "#eae8e4" }}>
-                        <div className="flex items-start justify-between mb-3">
-                          <div className="flex items-center gap-3">
-                            <div className="h-10 w-10 rounded-xl flex items-center justify-center" style={{ background: categoryColor[s.category] + "12", color: categoryColor[s.category] }}>
+                        initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
+                        className="text-left p-6 transition-all duration-300 group hover:-translate-y-1 relative overflow-hidden"
+                        style={{ ...premiumCard }}>
+                        
+                        <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none transform translate-x-4 -translate-y-4 group-hover:scale-110 transition-transform">
+                          <div style={{ color: categoryColor[s.category] }}>{s.icon}</div>
+                        </div>
+
+                        <div className="flex items-start justify-between mb-4 relative z-10">
+                          <div className="flex items-center gap-4">
+                            <div className="h-12 w-12 flex items-center justify-center rounded-xl"
+                              style={{ background: categoryColor[s.category] + "15", color: categoryColor[s.category], border: `1px solid ${categoryColor[s.category]}30` }}>
                               {s.icon}
                             </div>
                             <div>
-                              <h3 className="text-[15px] font-semibold">{s.title}</h3>
-                              <p className="text-xs" style={{ color: "#9a98a8" }}>{s.subtitle}</p>
+                              <h3 className="text-base font-bold tracking-wide" style={{ color: T.text }}>{s.title}</h3>
+                              <p className="text-[11px] font-medium mt-0.5" style={{ color: T.textSub }}>{s.subtitle}</p>
                             </div>
                           </div>
-                          <ChevronRight size={16} className="mt-1 opacity-0 group-hover:opacity-50 transition-opacity" />
+                          <div className="w-8 h-8 rounded-full flex items-center justify-center bg-white/5 group-hover:bg-white/10 transition-colors">
+                            <ChevronRight size={14} className="opacity-50 group-hover:opacity-100 transition-opacity" style={{ color: T.text }} />
+                          </div>
                         </div>
-                        <p className="text-[13px] leading-relaxed line-clamp-2" style={{ color: "#5a5a72" }}>{s.analogy.slice(0, 130)}…</p>
-                        <span className="inline-block mt-3 text-[10px] font-semibold px-2.5 py-1 rounded-lg" style={{ background: categoryColor[s.category] + "10", color: categoryColor[s.category] }}>
+                        <p className="text-xs leading-relaxed line-clamp-2 font-medium relative z-10" style={{ color: T.textDim }}>
+                          {s.analogy.slice(0, 120)}…
+                        </p>
+                        <span className="inline-block mt-4 text-[9px] font-bold uppercase tracking-wider px-3 py-1.5 rounded-lg relative z-10"
+                          style={{ background: categoryColor[s.category] + "15", color: categoryColor[s.category], border: `1px solid ${categoryColor[s.category]}20` }}>
                           {categoryLabel[s.category]}
                         </span>
                       </motion.button>
@@ -636,60 +561,69 @@ export default function GuidePage() {
                 )}
               </motion.div>
             ) : (
-              <motion.div key="detail" initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -16 }}
-                className="space-y-7">
+              <motion.div key="detail" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}
+                className="space-y-6">
 
-                <button onClick={() => setActiveId(null)} className="flex items-center gap-2 text-sm font-semibold hover:opacity-70 transition-opacity" style={{ color: "#2563eb" }}>
-                  <ChevronLeft size={16} /> Retour au guide
+                <button onClick={() => setActiveId(null)} className="flex items-center gap-2 text-xs font-bold hover:opacity-70 transition-opacity mb-4" style={{ color: T.cyan }}>
+                  <ChevronLeft size={16} /> Revenir à l'index
                 </button>
 
-                <div className="flex items-start gap-4">
-                  <div className="h-14 w-14 rounded-2xl flex items-center justify-center shrink-0" style={{ background: categoryColor[active.category] + "12", color: categoryColor[active.category] }}>
+                {/* Header */}
+                <div className="flex items-start gap-5 p-6 rounded-3xl relative overflow-hidden" style={{ ...premiumCard, borderLeft: `4px solid ${categoryColor[active.category]}` }}>
+                  <div className="absolute inset-0 opacity-10 pointer-events-none" style={{ background: `radial-gradient(circle at right, ${categoryColor[active.category]}, transparent 60%)` }} />
+                  <div className="h-16 w-16 flex items-center justify-center shrink-0 rounded-2xl relative z-10"
+                    style={{ background: categoryColor[active.category] + "15", color: categoryColor[active.category], border: `1px solid ${categoryColor[active.category]}30` }}>
                     {active.icon}
                   </div>
-                  <div>
-                    <span className="inline-block text-[10px] font-semibold px-2.5 py-1 rounded-lg mb-2" style={{ background: categoryColor[active.category] + "10", color: categoryColor[active.category] }}>
+                  <div className="relative z-10">
+                    <span className="inline-block text-[9px] font-bold uppercase tracking-widest px-2.5 py-1 mb-2 rounded-lg"
+                      style={{ background: categoryColor[active.category] + "15", color: categoryColor[active.category] }}>
                       {categoryLabel[active.category]}
                     </span>
-                    <h2 className="text-2xl font-bold tracking-tight">{active.title}</h2>
-                    <p className="text-base" style={{ color: "#5a5a72" }}>{active.subtitle}</p>
+                    <h2 className="text-3xl font-black tracking-tight mb-1" style={{ fontFamily: FONT_DISPLAY }}>{active.title}</h2>
+                    <p className="text-sm font-medium" style={{ color: T.textSub }}>{active.subtitle}</p>
                   </div>
                 </div>
 
                 {/* Analogy */}
-                <div className="rounded-2xl p-6 border-l-4" style={{ background: "#eff6ff", borderColor: "#2563eb" }}>
-                  <p className="text-[11px] font-semibold uppercase tracking-widest mb-2" style={{ color: "#2563eb" }}>En une image</p>
-                  <p className="text-[15px] leading-relaxed">{active.analogy}</p>
+                <div className="p-6 rounded-3xl" style={{ ...premiumCard }}>
+                  <p className="text-[10px] font-black uppercase tracking-[0.15em] mb-3 flex items-center gap-2" style={{ color: T.cyan }}><Eye size={14} /> En une image</p>
+                  <p className="text-sm font-medium leading-relaxed" style={{ color: T.textSub }}>{active.analogy}</p>
                 </div>
 
-                {/* Mini viz */}
-                <div className="flex justify-center py-2 rounded-2xl overflow-hidden" style={{ background: "#f5f4f1" }}>
+                {/* SVG */}
+                <div className="flex justify-center p-6 rounded-3xl overflow-hidden" style={{ ...premiumCard }}>
                   <MiniViz type={active.visual} />
                 </div>
 
-                <div className="rounded-2xl border p-6" style={{ background: "#fff", borderColor: "#eae8e4" }}>
-                  <h3 className="text-sm font-semibold mb-3">Qu&apos;est-ce que c&apos;est ?</h3>
-                  <p className="text-[14px] leading-relaxed" style={{ color: "#5a5a72" }}>{active.whatItIs}</p>
+                {/* What it is */}
+                <div className="p-6 rounded-3xl" style={{ ...premiumCard }}>
+                  <h3 className="text-sm font-black tracking-wide mb-3 flex items-center gap-2" style={{ color: T.text }}><Target size={16} style={{ color: T.blue }} /> Qu&apos;est-ce que c&apos;est ?</h3>
+                  <p className="text-xs font-medium leading-relaxed" style={{ color: T.textSub }}>{active.whatItIs}</p>
                 </div>
 
-                <div className="rounded-2xl border p-6" style={{ background: "#fff", borderColor: "#eae8e4" }}>
-                  <h3 className="text-sm font-semibold mb-3">Comment ça fonctionne ?</h3>
-                  <p className="text-[14px] leading-relaxed whitespace-pre-line" style={{ color: "#5a5a72" }}>{active.howItWorks}</p>
+                {/* How it works */}
+                <div className="p-6 rounded-3xl" style={{ ...premiumCard }}>
+                  <h3 className="text-sm font-black tracking-wide mb-3 flex items-center gap-2" style={{ color: T.text }}><Activity size={16} style={{ color: T.violet }} /> Comment ça fonctionne ?</h3>
+                  <p className="text-xs leading-relaxed whitespace-pre-line p-4 rounded-2xl" style={{ background: T.elevated, color: T.textDim, fontFamily: FONT_MONO, border: `1px solid ${T.borderMid}` }}>
+                    {active.howItWorks}
+                  </p>
                 </div>
 
-                <div className="rounded-2xl border p-6" style={{ background: "#fff", borderColor: "#eae8e4" }}>
-                  <h3 className="text-sm font-semibold mb-4">Comment le lire ?</h3>
-                  <div className="space-y-1">
+                {/* How to read */}
+                <div className="p-6 rounded-3xl" style={{ ...premiumCard }}>
+                  <h3 className="text-sm font-black tracking-wide mb-5 flex items-center gap-2" style={{ color: T.text }}><BarChart3 size={16} style={{ color: T.green }} /> Comment le lire ?</h3>
+                  <div className="space-y-2">
                     {active.howToRead.map((h, i) => (
-                      <div key={i} className="flex items-start gap-3 py-3 border-b last:border-0" style={{ borderColor: "#f0eeeb" }}>
-                        <div className="mt-0.5 shrink-0">
-                          {h.type === "buy" && <ArrowUpRight size={16} style={{ color: "#059669" }} />}
-                          {h.type === "sell" && <ArrowDownRight size={16} style={{ color: "#dc2626" }} />}
-                          {h.type === "neutral" && <Minus size={16} style={{ color: "#d97706" }} />}
+                      <div key={i} className="flex items-start gap-4 p-4 rounded-2xl transition-colors hover:bg-white/5" style={{ background: T.elevated, border: `1px solid ${T.border}` }}>
+                        <div className="mt-0.5 shrink-0 w-8 h-8 flex items-center justify-center rounded-xl" style={{ background: h.type === "buy" ? T.greenBg : h.type === "sell" ? T.redBg : T.amberBg }}>
+                          {h.type === "buy" && <ArrowUpRight size={16} style={{ color: T.green }} />}
+                          {h.type === "sell" && <ArrowDownRight size={16} style={{ color: T.red }} />}
+                          {h.type === "neutral" && <Minus size={16} style={{ color: T.amber }} />}
                         </div>
                         <div>
-                          <p className="text-[13px] font-semibold">{h.signal}</p>
-                          <p className="text-[13px]" style={{ color: "#5a5a72" }}>{h.meaning}</p>
+                          <p className="text-sm font-bold mb-1" style={{ color: T.text }}>{h.signal}</p>
+                          <p className="text-[11px] font-medium" style={{ color: T.textSub }}>{h.meaning}</p>
                         </div>
                       </div>
                     ))}
@@ -697,13 +631,14 @@ export default function GuidePage() {
                 </div>
 
                 {/* Pro tip */}
-                <div className="rounded-2xl p-6 border-l-4" style={{ background: "#fffbeb", borderColor: "#d97706" }}>
-                  <p className="text-[11px] font-semibold uppercase tracking-widest mb-2" style={{ color: "#d97706" }}>Conseil de pro</p>
-                  <p className="text-[14px] leading-relaxed">{active.proTip}</p>
+                <div className="p-6 rounded-3xl relative overflow-hidden" style={{ ...premiumCard, border: `1px solid ${T.amber}30` }}>
+                  <div className="absolute inset-0 opacity-5 pointer-events-none" style={{ background: `radial-gradient(circle at left, ${T.amber}, transparent 50%)` }} />
+                  <p className="text-[10px] font-black uppercase tracking-[0.15em] mb-3 relative z-10 flex items-center gap-2" style={{ color: T.amber }}><Zap size={14} /> Conseil de pro</p>
+                  <p className="text-sm font-medium leading-relaxed relative z-10" style={{ color: T.text }}>{active.proTip}</p>
                 </div>
 
                 {/* Prev / Next */}
-                <div className="flex justify-between pt-4 border-t" style={{ borderColor: "#eae8e4" }}>
+                <div className="flex justify-between pt-6">
                   {(() => {
                     const idx = SECTIONS.findIndex(s => s.id === activeId);
                     const prev = idx > 0 ? SECTIONS[idx - 1] : null;
@@ -711,12 +646,12 @@ export default function GuidePage() {
                     return (
                       <>
                         {prev ? (
-                          <button onClick={() => setActiveId(prev.id)} className="flex items-center gap-2 text-sm font-semibold" style={{ color: "#5a5a72" }}>
+                          <button onClick={() => setActiveId(prev.id)} className="flex items-center gap-2 px-5 py-3 rounded-2xl text-[11px] font-bold transition-all hover:bg-white/5" style={{ color: T.textSub, border: `1px solid ${T.borderMid}` }}>
                             <ChevronLeft size={16} /> {prev.title}
                           </button>
                         ) : <div />}
                         {next && (
-                          <button onClick={() => setActiveId(next.id)} className="flex items-center gap-2 text-sm font-semibold" style={{ color: "#2563eb" }}>
+                          <button onClick={() => setActiveId(next.id)} className="flex items-center gap-2 px-5 py-3 rounded-2xl text-[11px] font-bold transition-all" style={{ background: T.cyan + "15", color: T.cyan, border: `1px solid ${T.borderFocus}` }}>
                             {next.title} <ChevronRight size={16} />
                           </button>
                         )}

@@ -1,23 +1,20 @@
-import type { Metadata, Viewport } from "next"; // Ajout de Viewport
-import { Inter } from "next/font/google"; // Si tu utilises Inter, sinon garde tes imports
+import type { Metadata, Viewport } from "next";
+import { Inter } from "next/font/google";
 import "./globals.css";
-import SplashScreen from "@/components/SplashScreen";
-import Sidebar from "@/components/Sidebar";
 
-const inter = Inter({ subsets: ["latin"] }); // Optionnel selon ta config
+const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "Nexus Invest",
   description: "Gestion de Patrimoine",
 };
 
-// 👇 C'EST CE BLOC QUI RÉGLE LE PROBLÈME DE LA BARRE VERTE
 export const viewport: Viewport = {
   themeColor: "#050505",
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
-  userScalable: false, // Empêche le zoom qui casse souvent le layout sur mobile
+  userScalable: false,
 };
 
 export default function RootLayout({
@@ -27,12 +24,17 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="fr" className="dark">
-      <body className="bg-[#050505] text-white overflow-x-hidden"> {/* overflow-x-hidden est une sécurité en plus */}
+      <head>
+        <link
+          href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
+          rel="stylesheet"
+        />
+      </head>
+      <body className={`${inter.className} bg-[#050505] text-white overflow-x-hidden`}>
         <div className="flex">
-           {/* Sidebar simplifiée pour l'exemple, garde ta logique de loading si besoin */}
-           <div className="flex-1">
-               {children}
-           </div>
+          <div className="flex-1">
+            {children}
+          </div>
         </div>
       </body>
     </html>
