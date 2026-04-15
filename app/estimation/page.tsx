@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation"; // Pour le lien vers la plaquette
 import { motion, AnimatePresence } from "framer-motion";
 import { 
     Home, MapPin, Image as ImageIcon, TrendingUp, CheckCircle, 
@@ -40,6 +41,10 @@ interface EstimationData {
     hasRentalEstimation: boolean; monthlyRent: number; 
     taxeFonciere: number; isCopropriete: boolean; coproFees: number;
     amenities: string[];
+    // Nouveaux champs pour le mode loué
+    isRented: boolean;
+    lowPriceRented: number;
+    highPriceRented: number;
 }
 
 const ALL_AMENITIES = [
@@ -66,10 +71,14 @@ const DEFAULT_DATA: EstimationData = {
     hasRentalEstimation: false, monthlyRent: 0,
     taxeFonciere: 0, isCopropriete: false, coproFees: 0,
     amenities: [],
+    isRented: false,
+    lowPriceRented: 0,
+    highPriceRented: 0,
 };
 
 const DPE_COLORS: Record<string, string> = { "A": "#00A06D", "B": "#52B153", "C": "#A5CC74", "D": "#F3E724", "E": "#F0B328", "F": "#EB8235", "G": "#D7221F" };
 
+// --- HELPERS ---
 const getPriceSizeClass = (price: number) => {
     const len = formatPrice(price).length;
     if (len >= 10) return "text-2xl";
@@ -77,7 +86,26 @@ const getPriceSizeClass = (price: number) => {
     return "text-4xl";
 };
 
+const getPriceSizeClassSplit = (price: number) => {
+    const len = formatPrice(price).length;
+    if (len >= 10) return "text-xl";
+    if (len >= 8) return "text-2xl";
+    return "text-3xl";
+};
+
+const getDisplayFloor = (f: string) => {
+    if (!f) return "";
+    const lower = f.toLowerCase().trim();
+    if (lower === "rdc" || lower === "rez-de-chaussée" || lower === "rez de chaussée") return "RDC";
+    if (/^\d+$/.test(lower)) return lower === "1" ? "1er étage" : `${lower}ème étage`;
+    if (!lower.includes("étage") && !lower.includes("etage") && !lower.includes("rdc")) {
+        return `Étage ${f}`;
+    }
+    return f;
+};
+
 export default function EstimationManager() {
+    const router = useRouter();
     const [view, setView] = useState<"LIST" | "EDIT" | "PRINT">("LIST");
     const [step, setStep] = useState(1);
     const [loading, setLoading] = useState(true);
@@ -129,7 +157,26 @@ export default function EstimationManager() {
         fetchEstimations();
     };
 
-    const openEstimation = (estim: any) => { setCurrentId(estim.id); setData({ ...DEFAULT_DATA, ...estim.data_json, amenities: estim.data_json?.amenities ?? [], floor: estim.data_json?.floor ?? "", buildYear: estim.data_json?.buildYear ?? 0, hasElevator: estim.data_json?.hasElevator ?? false, extraPhotos: estim.data_json?.extraPhotos ?? [], plotSurface: estim.data_json?.plotSurface ?? 0, gardenSurface: estim.data_json?.gardenSurface ?? 0 }); setStep(1); setView("EDIT"); };
+    const openEstimation = (estim: any) => { 
+        setCurrentId(estim.id); 
+        setData({ 
+            ...DEFAULT_DATA, 
+            ...estim.data_json, 
+            amenities: estim.data_json?.amenities ?? [], 
+            floor: estim.data_json?.floor ?? "", 
+            buildYear: estim.data_json?.buildYear ?? 0, 
+            hasElevator: estim.data_json?.hasElevator ?? false, 
+            extraPhotos: estim.data_json?.extraPhotos ?? [], 
+            plotSurface: estim.data_json?.plotSurface ?? 0, 
+            gardenSurface: estim.data_json?.gardenSurface ?? 0,
+            isRented: estim.data_json?.isRented ?? false,
+            lowPriceRented: estim.data_json?.lowPriceRented ?? 0,
+            highPriceRented: estim.data_json?.highPriceRented ?? 0
+        }); 
+        setStep(1); 
+        setView("EDIT"); 
+    };
+
     const createNew = () => { setCurrentId(null); setData(DEFAULT_DATA); setStep(1); setView("EDIT"); };
 
     // ─── Upload vers Supabase Storage (compression auto avant envoi) ───
@@ -270,7 +317,7 @@ export default function EstimationManager() {
                                         <Button variant="ghost" onClick={() => openEstimation(est)} className="flex-1 rounded-xl h-9 text-sm font-semibold hover:bg-white/5 text-zinc-300 hover:text-white">
                                             Ouvrir
                                         </Button>
-                                        <Button variant="ghost" onClick={() => { setCurrentId(est.id); setData({ ...DEFAULT_DATA, ...est.data_json, amenities: est.data_json?.amenities ?? [], extraPhotos: est.data_json?.extraPhotos ?? [] }); setView("PRINT"); }} 
+                                        <Button variant="ghost" onClick={() => { setCurrentId(est.id); setData({ ...DEFAULT_DATA, ...est.data_json, amenities: est.data_json?.amenities ?? [], extraPhotos: est.data_json?.extraPhotos ?? [], isRented: est.data_json?.isRented ?? false, lowPriceRented: est.data_json?.lowPriceRented ?? 0, highPriceRented: est.data_json?.highPriceRented ?? 0 }); setView("PRINT"); }} 
                                             className="flex-1 rounded-xl h-9 text-sm font-semibold hover:bg-white/5 text-zinc-300 hover:text-white">
                                             PDF
                                         </Button>
@@ -307,7 +354,7 @@ export default function EstimationManager() {
 
                 {/* Nav Bar */}
                 <div className="fixed top-4 left-1/2 -translate-x-1/2 w-[95%] max-w-4xl z-50 flex justify-between items-center px-6 py-3 rounded-full border shadow-2xl dash-font"
-                    style={{ backgroundColor: 'rgba(17,17,20,0.85)', backdropFilter: 'blur(20px)', borderColor: COLORS.darkBorder }}>
+                    style={{ backgroundColor: 'rgba(17,17,20,0.85)', backdropFilter: 'blur(24px)', borderColor: COLORS.darkBorder }}>
                     <Button variant="ghost" onClick={() => setView("LIST")} className="text-zinc-400 hover:text-white rounded-full gap-2 text-sm">
                         <ArrowLeft size={16}/> Quitter
                     </Button>
@@ -370,7 +417,7 @@ export default function EstimationManager() {
                                         <div className="grid grid-cols-3 gap-4">
                                             <div className="space-y-2">
                                                 <label className="text-xs font-semibold text-zinc-500 uppercase tracking-widest">Étage</label>
-                                                <Input value={data.floor||""} onChange={e => setData({...data, floor: e.target.value})} className={inputClass} placeholder="Ex: 3ème, RDC…"/>
+                                                <Input value={data.floor||""} onChange={e => setData({...data, floor: e.target.value})} className={inputClass} placeholder="Ex: 3, RDC…"/>
                                             </div>
                                             <div className="space-y-2">
                                                 <label className="text-xs font-semibold text-zinc-500 uppercase tracking-widest">Année de construction</label>
@@ -384,9 +431,16 @@ export default function EstimationManager() {
                                             </div>
                                         </div>
 
+                                        <div className="col-span-2">
+                                            <div className="flex items-center justify-between bg-black/30 px-5 h-14 rounded-2xl border" style={{ borderColor: COLORS.darkBorder }}>
+                                                <label className="text-sm font-semibold text-white">Le bien est-il vendu loué (occupé) ?</label>
+                                                <Switch checked={data.isRented ?? false} onCheckedChange={(checked) => setData({...data, isRented: checked})}/>
+                                            </div>
+                                        </div>
+
                                         {/* Champs Maison uniquement */}
                                         {data.propertyType === "Maison" && (
-                                            <div className="grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2">
+                                            <div className="grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2 col-span-2">
                                                 <div className="space-y-2">
                                                     <label className="text-xs font-semibold uppercase tracking-widest" style={{ color: COLORS.secondary }}>🌿 Surface de la Parcelle (m²)</label>
                                                     <Input type="number" value={data.plotSurface||""} onChange={e => setData({...data, plotSurface: Number(e.target.value)})} className={inputClass} placeholder="Ex: 450"/>
@@ -684,15 +738,34 @@ export default function EstimationManager() {
                                         ))}
                                     </div>
 
-                                    <div className="p-6 rounded-2xl grid grid-cols-2 gap-5 border" style={{ background: `linear-gradient(135deg, ${COLORS.primary}18, ${COLORS.secondary}10)`, borderColor: `${COLORS.primary}35` }}>
-                                        <div className="space-y-2">
-                                            <label className="text-xs font-semibold uppercase tracking-widest" style={{ color: COLORS.secondary }}>Fourchette Basse (€)</label>
-                                            <Input type="number" value={data.lowPrice||""} onChange={e => setData({...data, lowPrice: Number(e.target.value)})} className="bg-black/50 border-white/8 h-16 rounded-2xl text-2xl font-black text-white"/>
+                                    <div className="p-6 rounded-2xl border" style={{ background: `linear-gradient(135deg, ${COLORS.primary}18, ${COLORS.secondary}10)`, borderColor: `${COLORS.primary}35` }}>
+                                        <h3 className="text-sm font-bold uppercase tracking-widest mb-4" style={{ color: COLORS.secondary }}>Valeur {data.isRented ? "Libre de toute occupation" : "Vénale Estimée"}</h3>
+                                        <div className="grid grid-cols-2 gap-5">
+                                            <div className="space-y-2">
+                                                <label className="text-xs font-semibold uppercase tracking-widest" style={{ color: COLORS.secondary }}>Fourchette Basse (€)</label>
+                                                <Input type="number" value={data.lowPrice||""} onChange={e => setData({...data, lowPrice: Number(e.target.value)})} className="bg-black/50 border-white/8 h-16 rounded-2xl text-2xl font-black text-white"/>
+                                            </div>
+                                            <div className="space-y-2">
+                                                <label className="text-xs font-semibold uppercase tracking-widest" style={{ color: COLORS.secondary }}>Fourchette Haute (€)</label>
+                                                <Input type="number" value={data.highPrice||""} onChange={e => setData({...data, highPrice: Number(e.target.value)})} className="bg-black/50 border-white/8 h-16 rounded-2xl text-2xl font-black text-white"/>
+                                            </div>
                                         </div>
-                                        <div className="space-y-2">
-                                            <label className="text-xs font-semibold uppercase tracking-widest" style={{ color: COLORS.secondary }}>Fourchette Haute (€)</label>
-                                            <Input type="number" value={data.highPrice||""} onChange={e => setData({...data, highPrice: Number(e.target.value)})} className="bg-black/50 border-white/8 h-16 rounded-2xl text-2xl font-black text-white"/>
-                                        </div>
+
+                                        {data.isRented && (
+                                            <>
+                                                <h3 className="text-sm font-bold uppercase tracking-widest mt-6 mb-4" style={{ color: COLORS.gold }}>Valeur Vendu Occupé (Loué)</h3>
+                                                <div className="grid grid-cols-2 gap-5">
+                                                    <div className="space-y-2">
+                                                        <label className="text-xs font-semibold uppercase tracking-widest" style={{ color: COLORS.gold }}>Fourchette Basse Loué (€)</label>
+                                                        <Input type="number" value={data.lowPriceRented||""} onChange={e => setData({...data, lowPriceRented: Number(e.target.value)})} className="bg-black/50 border-white/8 h-16 rounded-2xl text-2xl font-black text-white"/>
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <label className="text-xs font-semibold uppercase tracking-widest" style={{ color: COLORS.gold }}>Fourchette Haute Loué (€)</label>
+                                                        <Input type="number" value={data.highPriceRented||""} onChange={e => setData({...data, highPriceRented: Number(e.target.value)})} className="bg-black/50 border-white/8 h-16 rounded-2xl text-2xl font-black text-white"/>
+                                                    </div>
+                                                </div>
+                                            </>
+                                        )}
                                     </div>
 
                                     <div className="p-5 rounded-2xl border" style={{ backgroundColor: 'rgba(0,0,0,0.3)', borderColor: COLORS.darkBorder }}>
@@ -818,7 +891,6 @@ export default function EstimationManager() {
                 .pdf-font { font-family: 'DM Sans', -apple-system, sans-serif; }
                 .pdf-display { font-family: 'Playfair Display', Georgia, serif; }
 
-                /* Fine watermark diagonal text - print only */
                 @media print {
                     .page-watermark::after {
                         content: 'PATRIM';
@@ -846,6 +918,14 @@ export default function EstimationManager() {
                     <List size={15}/> Dossiers
                 </Button>
                 <div className="w-px h-5 bg-white/10"></div>
+                <Button 
+                    variant="ghost" 
+                    onClick={() => router.push(`/plaquette/${currentId}`)} 
+                    className="text-zinc-300 hover:text-[#d35f52] rounded-full gap-2 text-sm font-bold"
+                >
+                    <Sparkles size={15} className="text-[#d35f52]"/> Plaquette Com
+                </Button>
+                <div className="w-px h-5 bg-white/10"></div>
                 <Button onClick={() => window.print()} className="rounded-full px-7 h-10 font-bold text-sm text-white gap-2 shadow-lg transition-all hover:scale-105"
                     style={{ background: `linear-gradient(135deg, ${COLORS.primary}, ${COLORS.secondary})`, boxShadow: `0 8px 24px -8px rgba(138,14,1,0.5)` }}>
                     <Printer size={15}/> Imprimer / PDF
@@ -858,7 +938,6 @@ export default function EstimationManager() {
                 {/* PAGE 1 : COUVERTURE                                               */}
                 {/* ================================================================= */}
                 <div className="print-page w-[297mm] h-[210mm] mx-auto bg-white flex overflow-hidden mb-8 shadow-2xl rounded-none relative">
-                    {/* Demi gauche — Photo */}
                     <div className="w-[55%] h-full relative">
                         {data.mainPhoto 
                             ? <img src={data.mainPhoto} className="w-full h-full object-cover"/>
@@ -869,31 +948,26 @@ export default function EstimationManager() {
                         <div className="absolute right-0 top-0 h-full w-1" style={{ background: `linear-gradient(to bottom, ${COLORS.primary}, ${COLORS.secondary})` }}></div>
                     </div>
 
-                    {/* Demi droite — Contenu */}
                     <div className="dark-cover-half w-[45%] h-full text-white flex flex-col justify-between relative" style={{ backgroundColor: '#0a0a0c', padding: '2.8rem 3rem 2.8rem 3rem' }}>
                         <div className="absolute inset-0 opacity-[0.02]" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '24px 24px' }}></div>
                         
-                        {/* BLOC LOGO + mentions légales */}
                         <div className="relative z-10 flex justify-between items-start gap-4">
                             <div className="flex flex-col gap-2">
                                 <div className="bg-white rounded-2xl p-3 shadow-xl print-no-blur inline-flex items-center justify-center" style={{ minWidth: '110px' }}>
                                     <img src="/logo-patrim.png" alt="PATRIM" className="h-10 object-contain"/>
                                 </div>
-                                {/* Mentions légales sous le logo */}
                                 <div className="space-y-0.5 pl-0.5">
                                     <p className="text-[8px] text-zinc-600 font-semibold leading-relaxed">SAS PATRIM</p>
                                     <p className="text-[7.5px] text-zinc-700 leading-relaxed">Carte pro n° CPI31012016000013177</p>
                                     <p className="text-[7.5px] text-zinc-700 leading-relaxed">RCS Toulouse B 403 231 145</p>
                                 </div>
                             </div>
-                            {/* Date */}
                             <div className="text-right">
                                 <p className="text-[8px] text-zinc-600 uppercase tracking-widest font-semibold mb-1">Document réalisé le</p>
                                 <p className="text-[13px] font-bold text-white leading-tight">{new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
                             </div>
                         </div>
 
-                        {/* BLOC TITRE */}
                         <div className="relative z-10 space-y-3">
                             <div className="flex items-center gap-2 mb-2">
                                 <div className="h-px flex-1" style={{ background: `linear-gradient(to right, ${COLORS.primary}, transparent)` }}></div>
@@ -903,7 +977,6 @@ export default function EstimationManager() {
                                 Avis <br/>
                                 <span style={{ color: '#ffffff' }}>de valeur</span>
                             </h1>
-                            {/* Demandant(s) */}
                             <div className="border-t border-white/10 pt-3 mt-3">
                                 <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-semibold mb-1">A la demande de</p>
                                 <p className="text-[17px] font-bold text-white leading-snug">{data.clientName || "—"}</p>
@@ -916,7 +989,6 @@ export default function EstimationManager() {
                             </div>
                         </div>
 
-                        {/* BLOC BIEN ESTIMÉ */}
                         <div className="relative z-10 border-l-[3px] pl-5" style={{ borderColor: COLORS.primary }}>
                             <p className="text-[10px] uppercase tracking-widest text-zinc-500 mb-1.5 font-bold">Le Bien Estimé</p>
                             <p className="text-[15px] font-bold text-white leading-tight">{data.propertyAddress || "Adresse non renseignée"}</p>
@@ -924,12 +996,11 @@ export default function EstimationManager() {
                                 <span className="text-[10px] font-semibold px-2.5 py-1 rounded-full border text-zinc-300" style={{ borderColor: 'rgba(255,255,255,0.15)' }}>{data.propertyType}</span>
                                 {data.surface > 0 && <span className="text-[10px] font-semibold px-2.5 py-1 rounded-full border text-zinc-300" style={{ borderColor: 'rgba(255,255,255,0.15)' }}>{data.surface} m²</span>}
                                 {data.rooms > 0 && <span className="text-[10px] font-semibold px-2.5 py-1 rounded-full border text-zinc-300" style={{ borderColor: 'rgba(255,255,255,0.15)' }}>{data.rooms} pièces</span>}
-                                {data.floor && <span className="text-[10px] font-semibold px-2.5 py-1 rounded-full border text-zinc-300" style={{ borderColor: 'rgba(255,255,255,0.15)' }}>{data.floor}</span>}
+                                {data.floor && <span className="text-[10px] font-semibold px-2.5 py-1 rounded-full border text-zinc-300" style={{ borderColor: 'rgba(255,255,255,0.15)' }}>{getDisplayFloor(data.floor)}</span>}
                             </div>
                         </div>
                     </div>
 
-                    {/* Bande agence — infos réelles */}
                     <div className="absolute bottom-0 left-0 right-0 h-[38px] flex items-center px-8 gap-5 z-30"
                         style={{ background: `linear-gradient(90deg, ${COLORS.primary} 0%, ${COLORS.secondary} 100%)` }}>
                         <span className="text-white text-[9.5px] font-bold uppercase tracking-widest">Agence Patrim</span>
@@ -947,7 +1018,6 @@ export default function EstimationManager() {
                 {/* PAGE 2 : CARACTÉRISTIQUES                                         */}
                 {/* ================================================================= */}
                 <div className="print-page page-watermark w-[297mm] h-[210mm] mx-auto bg-[#f5f5f7] p-9 flex flex-col mb-8 shadow-2xl relative">
-                    {/* Header */}
                     <div className="flex justify-between items-center mb-4 pb-3.5 border-b border-zinc-200 shrink-0">
                         <div className="flex items-center gap-3">
                             <div className="w-6 h-6 rounded-lg flex items-center justify-center" style={{ background: `linear-gradient(135deg, ${COLORS.primary}, ${COLORS.secondary})` }}>
@@ -962,11 +1032,7 @@ export default function EstimationManager() {
                     </div>
 
                     <div className="flex gap-4 flex-1 min-h-0">
-
-                        {/* ── COLONNE GAUCHE (55%) : Surface, Pièces, DPE dominant, Prestations ── */}
                         <div className="flex flex-col gap-3.5 min-h-0" style={{ width: '56%' }}>
-
-                            {/* Ligne 1 — Surface + Pièces + Infos clés */}
                             <div className="grid grid-cols-3 gap-3.5 shrink-0" style={{ height: '90px' }}>
                                 <div className="premium-card bg-white rounded-[18px] flex flex-col justify-center items-center text-center shadow-sm border border-zinc-200 relative overflow-hidden">
                                     <div className="absolute inset-x-0 top-0 h-[3px]" style={{ background: `linear-gradient(90deg, ${COLORS.primary}, ${COLORS.secondary})` }}></div>
@@ -984,7 +1050,6 @@ export default function EstimationManager() {
                                         <span className="text-lg font-bold text-zinc-400 mb-1">pces</span>
                                     </div>
                                 </div>
-                                {/* Infos clés — étage/année/ascenseur OU parcelle/jardin selon type */}
                                 <div className="premium-card bg-white rounded-[18px] px-4 py-3 shadow-sm border border-zinc-200 flex flex-col justify-center gap-1.5 relative overflow-hidden">
                                     <div className="absolute inset-x-0 top-0 h-[3px]" style={{ background: `linear-gradient(90deg, #a3a3b3, #d4d4d8)` }}></div>
                                     {data.propertyType === "Maison" ? (
@@ -1013,7 +1078,7 @@ export default function EstimationManager() {
                                             {data.floor && (
                                                 <div className="flex justify-between items-center">
                                                     <span className="text-[9px] uppercase font-bold text-zinc-400 tracking-wider">Étage</span>
-                                                    <span className="text-[11px] font-black text-zinc-700">{data.floor}</span>
+                                                    <span className="text-[11px] font-black text-zinc-700">{getDisplayFloor(data.floor)}</span>
                                                 </div>
                                             )}
                                             {data.buildYear > 0 && (
@@ -1033,10 +1098,7 @@ export default function EstimationManager() {
                                 </div>
                             </div>
 
-                            {/* Lignes 2 & 3 — DPE et Prestations en 50/50 */}
                             <div className="grid grid-rows-2 gap-3.5 flex-1 min-h-0">
-
-                                {/* DPE + GES */}
                                 <div className="premium-card bg-white rounded-[18px] p-5 shadow-sm border border-zinc-200 flex flex-col min-h-0">
                                     <p className="text-[10px] uppercase font-bold tracking-widest text-zinc-400 mb-3 flex items-center gap-1.5 shrink-0"><Leaf size={12}/> Performance Énergétique</p>
                                     <div className="grid grid-cols-2 gap-6 flex-1 items-center">
@@ -1052,8 +1114,6 @@ export default function EstimationManager() {
                                         </div>
                                     </div>
                                 </div>
-
-                                {/* Prestations */}
                                 <div className="premium-card bg-white rounded-[18px] px-5 py-4 shadow-sm border border-zinc-200 shrink-0">
                                     <p className="text-[10px] uppercase font-bold tracking-widest text-zinc-400 mb-2">Prestations & Descriptif</p>
                                     <div className="text-[11.5px] leading-snug text-zinc-700 font-medium whitespace-pre-wrap">{data.features || "Non renseigné."}</div>
@@ -1061,20 +1121,15 @@ export default function EstimationManager() {
                             </div>
                         </div>
 
-                        {/* ── COLONNE DROITE (45%) : Charges (horizontal) + Photos ── */}
                         <div className="flex flex-col gap-3.5 min-h-0" style={{ width: '44%' }}>
-
-                            {/* Charges — présentation horizontale */}
                             <div className="premium-card bg-white rounded-[18px] p-5 shadow-sm border border-zinc-200 shrink-0">
                                 <p className="text-[10px] uppercase font-bold tracking-widest text-zinc-400 mb-4 flex items-center gap-1.5"><Banknote size={12}/> Charges & Coûts Annuels</p>
                                 <div className="flex gap-3">
-                                    {/* Taxe foncière */}
                                     <div className="flex-1 inner-card bg-zinc-50 border border-zinc-100 rounded-[14px] px-4 py-3.5 text-center">
                                         <p className="text-[9px] text-zinc-400 font-semibold uppercase tracking-wider mb-1.5">Taxe Foncière</p>
                                         <p className="font-black text-xl pdf-display text-zinc-800 leading-none">{formatPrice(data.taxeFonciere)}</p>
                                         <p className="text-[10px] font-semibold text-zinc-500 mt-1">€ / an</p>
                                     </div>
-                                    {/* Statut / Charges copro */}
                                     {data.isCopropriete ? (
                                         <div className="flex-1 inner-card border rounded-[14px] px-4 py-3.5 text-center relative overflow-hidden"
                                             style={{ backgroundColor: `${COLORS.primary}06`, borderColor: `${COLORS.primary}20` }}>
@@ -1092,7 +1147,6 @@ export default function EstimationManager() {
                                 </div>
                             </div>
 
-                            {/* Photos secondaires — prennent tout le reste */}
                             {data.secondaryPhotos.length > 0 ? (
                                 <div className="flex flex-col gap-3.5 flex-1 min-h-0">
                                     {data.secondaryPhotos.map((url, i) => (
@@ -1120,27 +1174,21 @@ export default function EstimationManager() {
                                     )}
                                 </div>
                             ) : (
-                                // Sans photos : encart type de bien + équipements — centré verticalement
                                 <div className="flex-1 premium-card bg-white rounded-[18px] p-6 shadow-sm border border-zinc-200 flex flex-col justify-center items-center min-h-0">
                                     <div className="flex flex-col justify-center items-center text-center">
-                                        {/* Icône plus grande */}
                                         <div className="w-16 h-16 rounded-[20px] flex items-center justify-center mb-4 shrink-0"
                                             style={{ background: `linear-gradient(135deg, ${COLORS.primary}15, ${COLORS.secondary}10)`, border: `1.5px solid ${COLORS.primary}25` }}>
                                             <Home size={30} style={{ color: COLORS.secondary }}/>
                                         </div>
-                                        {/* Type de bien — très grand */}
                                         <p className="text-3xl font-black pdf-display text-zinc-800 mb-2">{data.propertyType}</p>
-                                        {/* Surface + pièces — bien lisible */}
                                         <p className="text-[13px] uppercase font-bold text-zinc-400 tracking-widest mb-3">{data.surface} m² — {data.rooms} pièces</p>
-                                        {/* Pills DPE / GES */}
                                         <div className="flex items-center gap-2.5 justify-center flex-wrap">
                                             <span className="text-[11px] font-bold px-3.5 py-1.5 rounded-full border text-zinc-600" style={{ borderColor: 'rgba(0,0,0,0.1)', backgroundColor: '#f5f5f7' }}>DPE {data.dpe}</span>
                                             <span className="text-[11px] font-bold px-3.5 py-1.5 rounded-full border text-zinc-600" style={{ borderColor: 'rgba(0,0,0,0.1)', backgroundColor: '#f5f5f7' }}>GES {data.ges}</span>
                                             {data.buildYear > 0 && <span className="text-[11px] font-bold px-3.5 py-1.5 rounded-full border text-zinc-600" style={{ borderColor: 'rgba(0,0,0,0.1)', backgroundColor: '#f5f5f7' }}>Construit en {data.buildYear}</span>}
-                                            {data.floor && <span className="text-[11px] font-bold px-3.5 py-1.5 rounded-full border text-zinc-600" style={{ borderColor: 'rgba(0,0,0,0.1)', backgroundColor: '#f5f5f7' }}>{data.floor}</span>}
+                                            {data.floor && <span className="text-[11px] font-bold px-3.5 py-1.5 rounded-full border text-zinc-600" style={{ borderColor: 'rgba(0,0,0,0.1)', backgroundColor: '#f5f5f7' }}>{getDisplayFloor(data.floor)}</span>}
                                         </div>
                                     </div>
-                                    {/* Équipements */}
                                     {(data.amenities ?? []).length > 0 && (
                                         <div className="border-t border-zinc-100 pt-4 mt-5 w-full">
                                             <p className="text-[10px] uppercase font-bold tracking-widest text-zinc-400 mb-3 text-center">Équipements & Annexes</p>
@@ -1165,11 +1213,10 @@ export default function EstimationManager() {
                 </div>
 
                 {/* ================================================================= */}
-                {/* PAGE 3 : MARCHÉ (conditionnelle)                                  */}
+                {/* PAGE 3 : MARCHÉ                                                  */}
                 {/* ================================================================= */}
                 {(data.soldComparables.length > 0 || data.forSaleComparables.length > 0) && (
                     <div className="print-page page-watermark w-[297mm] h-[210mm] mx-auto bg-[#f5f5f7] p-10 flex flex-col mb-8 shadow-2xl relative">
-                        {/* Header — logo et numéro groupés à droite */}
                         <div className="flex justify-between items-center mb-5 pb-4 border-b border-zinc-200 shrink-0">
                             <div className="flex items-center gap-3">
                                 <div className="w-6 h-6 rounded-lg flex items-center justify-center" style={{ background: `linear-gradient(135deg, ${COLORS.secondary}, #f0a090)` }}>
@@ -1183,53 +1230,40 @@ export default function EstimationManager() {
                             </div>
                         </div>
 
-                                {/* Graphique */}
                         {(data.lowPrice > 0 && allComps.length > 0) && (
                             <div className="premium-card bg-white rounded-[20px] p-7 mb-4 shadow-sm border border-zinc-200 shrink-0" style={{ minHeight: '90px' }}>
                                 <h4 className="text-[11px] uppercase tracking-widest font-bold mb-7 text-zinc-400 flex items-center gap-2"><BarChart3 size={14}/> Positionnement Prix / m²</h4>
                                 <div className="relative w-full" style={{ height: '64px' }}>
-                                    {/* Rail */}
                                     <div className="absolute left-0 w-full h-[4px] bg-zinc-100 rounded-full" style={{ top: '32px' }}></div>
-                                    {/* Zone estimation */}
                                     <div className="absolute h-[4px] rounded-full opacity-20" style={{ backgroundColor: COLORS.primary, top: '32px', left: `${getPositionPercent(data.lowPrice / (data.surface || 1))}%`, width: `${Math.max(0, getPositionPercent(data.highPrice / (data.surface || 1)) - getPositionPercent(data.lowPrice / (data.surface || 1)))}%` }}></div>
                                     <div className="absolute h-[4px] rounded-full z-10" style={{ background: `linear-gradient(90deg, ${COLORS.primary}, ${COLORS.secondary})`, top: '32px', left: `${getPositionPercent(data.lowPrice / (data.surface || 1))}%`, width: `${Math.max(0, getPositionPercent(data.highPrice / (data.surface || 1)) - getPositionPercent(data.lowPrice / (data.surface || 1)))}%` }}></div>
-                                    {/* Point estimation */}
                                     <div className="absolute -translate-x-1/2 w-7 h-7 rounded-full border-[3px] border-white z-20 shadow-lg" style={{ top: '18px', left: `${getPositionPercent(estimatedPriceSqm)}%`, background: `linear-gradient(135deg, ${COLORS.primary}, ${COLORS.secondary})` }}>
                                         <div className="absolute -top-9 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-bold text-center leading-tight" style={{ color: COLORS.primary }}>
                                             <span className="block font-semibold">Notre estimation</span>
                                             <span className="block font-black text-[12px]">{Math.round(estimatedPriceSqm)} €/m²</span>
                                         </div>
                                     </div>
-                                    {/* Points comparables — labels alternés haut/bas avec détection de chevauchement */}
                                     {(() => {
-                                        // Calcul des positions et tri
                                         const points = allComps.map((c, i) => ({
                                             c, i,
                                             pct: getPositionPercent(c.price / (c.surface || 1)),
                                             sqm: Math.round(c.price / (c.surface || 1)),
                                         })).sort((a, b) => a.pct - b.pct);
-
-                                        // Attribution haut/bas : on alterne, mais si deux points
-                                        // consécutifs sont trop proches (< 8% écart), on force l'opposé
                                         const sides: ('top' | 'bottom')[] = [];
                                         points.forEach((pt, idx) => {
                                             if (idx === 0) { sides.push('bottom'); return; }
                                             const prev = points[idx - 1];
                                             const prevSide = sides[idx - 1];
                                             const tooClose = (pt.pct - prev.pct) < 8;
-                                            // Si trop proche, mettre du côté opposé au précédent
                                             sides.push(tooClose ? (prevSide === 'bottom' ? 'top' : 'bottom') : (prevSide === 'bottom' ? 'top' : 'bottom'));
                                         });
-
                                         return points.map((pt, idx) => {
                                             const side = sides[idx];
                                             return (
                                                 <div key={pt.i} className="absolute -translate-x-1/2 w-3.5 h-3.5 rounded-full border-2 border-white z-10"
                                                     style={{ top: '26px', left: `${pt.pct}%`, backgroundColor: '#a3a3b3' }}>
                                                     <div className={`absolute left-1/2 -translate-x-1/2 whitespace-nowrap text-[9px] text-zinc-600 font-bold`}
-                                                        style={side === 'bottom'
-                                                            ? { top: '16px' }
-                                                            : { bottom: '16px' }}>
+                                                        style={side === 'bottom' ? { top: '16px' } : { bottom: '16px' }}>
                                                         {pt.sqm} €/m²
                                                     </div>
                                                 </div>
@@ -1240,7 +1274,6 @@ export default function EstimationManager() {
                             </div>
                         )}
 
-                        {/* Grilles comparables — hauteur des lignes adaptive au nombre */}
                         {(() => {
                             const soldCount = data.soldComparables.length;
                             const saleCount = data.forSaleComparables.length;
@@ -1250,16 +1283,13 @@ export default function EstimationManager() {
                             const priceClass = maxRows <= 2 ? 'text-xl' : maxRows === 3 ? 'text-lg' : 'text-base';
                             const addrClass = maxRows <= 2 ? 'text-[13px]' : maxRows === 3 ? 'text-[12px]' : 'text-[11px]';
                             const metaClass = maxRows <= 2 ? 'text-[11px]' : 'text-[10px]';
-
                             const renderRow = (comp: Comparable, accentColor: string) => {
                                 const compSqm = comp.price / (comp.surface || 1);
                                 const refSqm = estimatedPriceSqm > 0 ? estimatedPriceSqm : (pricesPerSqm.length > 0 ? pricesPerSqm.reduce((a,b) => a+b,0)/pricesPerSqm.length : 0);
                                 const delta = refSqm > 0 && compSqm > 0 ? Math.round(((compSqm - refSqm)/refSqm)*100) : null;
                                 return (
                                     <div key={comp.id} className="inner-card flex items-center bg-zinc-50 rounded-2xl border border-zinc-100 gap-4 px-4 shrink-0" style={{ height: rowH }}>
-                                        {comp.photoUrl
-                                            ? <img src={comp.photoUrl} className={`${photoSize} object-cover rounded-xl shrink-0`}/>
-                                            : <div className={`${photoSize} bg-zinc-200 rounded-xl shrink-0 flex items-center justify-center`}><Home size={maxRows <= 2 ? 18 : 14} className="text-zinc-400"/></div>}
+                                        {comp.photoUrl ? <img src={comp.photoUrl} className={`${photoSize} object-cover rounded-xl shrink-0`}/> : <div className={`${photoSize} bg-zinc-200 rounded-xl shrink-0 flex items-center justify-center`}><Home size={maxRows <= 2 ? 18 : 14} className="text-zinc-400"/></div>}
                                         <div className="flex-1 min-w-0">
                                             <p className={`font-bold ${addrClass} text-zinc-800 truncate`}>{comp.address}</p>
                                             <p className={`text-zinc-400 ${metaClass} font-medium mt-0.5`}>{comp.surface} m²</p>
@@ -1274,7 +1304,6 @@ export default function EstimationManager() {
                                     </div>
                                 );
                             };
-
                             return (
                                 <div className="flex gap-5 flex-1 min-h-0">
                                     <div className="w-1/2 premium-card bg-white rounded-[20px] p-5 shadow-sm border border-zinc-200 flex flex-col gap-2.5">
@@ -1299,7 +1328,6 @@ export default function EstimationManager() {
                 {/* PAGE 4 : CONCLUSION & VALORISATION                                */}
                 {/* ================================================================= */}
                 <div className="print-page page-watermark w-[297mm] h-[210mm] mx-auto bg-[#f5f5f7] p-9 flex flex-col mb-8 shadow-2xl relative">
-                    {/* Header */}
                     <div className="flex justify-between items-center mb-4 pb-3 border-b border-zinc-200 shrink-0">
                         <div className="flex items-center gap-3">
                             <div className="w-6 h-6 rounded-lg flex items-center justify-center" style={{ background: `linear-gradient(135deg, ${COLORS.primary}, ${COLORS.secondary})` }}>
@@ -1315,7 +1343,7 @@ export default function EstimationManager() {
                     {(data.lowPrice > 0 && data.highPrice > 0) && (
                         <div className="grid grid-cols-3 gap-3 mb-3.5 shrink-0">
                             <div className="inner-card bg-white rounded-[14px] px-4 py-3 border border-zinc-200 flex flex-col justify-center">
-                                <p className="text-[9px] uppercase font-bold text-zinc-400 tracking-wider mb-1">Prix central estimé</p>
+                                <p className="text-[9px] uppercase font-bold text-zinc-400 tracking-wider mb-1">Prix central estimé {data.isRented ? "(Libre)" : ""}</p>
                                 <p className="text-xl font-black pdf-display text-zinc-800 leading-none">{formatPrice(Math.round((data.lowPrice + data.highPrice) / 2))} <span className="text-sm font-bold text-zinc-500">€</span></p>
                             </div>
                             <div className="inner-card bg-white rounded-[14px] px-4 py-3 border border-zinc-200 flex flex-col justify-center">
@@ -1329,15 +1357,9 @@ export default function EstimationManager() {
                         </div>
                     )}
 
-                    {/* Corps principal */}
                     <div className="flex gap-5 flex-1 min-h-0">
-
-                        {/* COLONNE GAUCHE — Points forts/faibles (dominants) + Analyse réduite */}
                         <div className="w-[47%] flex flex-col gap-3 min-h-0">
-
-                            {/* Points forts & faibles — occupent ~70% de la colonne */}
                             <div className="grid grid-cols-2 gap-3" style={{ flex: '0 0 auto', minHeight: '120px' }}>
-                                {/* Points forts */}
                                 <div className="premium-card bg-white rounded-[16px] p-4 shadow-sm border border-zinc-200">
                                     <div className="flex items-center gap-2 mb-3">
                                         <div className="w-6 h-6 rounded-lg flex items-center justify-center bg-emerald-50 border border-emerald-100 shrink-0">
@@ -1358,8 +1380,6 @@ export default function EstimationManager() {
                                         <p className="text-[11px] text-zinc-400 italic">Non renseigné</p>
                                     )}
                                 </div>
-
-                                {/* Points faibles */}
                                 <div className="premium-card bg-white rounded-[16px] p-4 shadow-sm border border-zinc-200">
                                     <div className="flex items-center gap-2 mb-3">
                                         <div className="w-6 h-6 rounded-lg flex items-center justify-center bg-rose-50 border border-rose-100 shrink-0">
@@ -1381,8 +1401,6 @@ export default function EstimationManager() {
                                     )}
                                 </div>
                             </div>
-
-                            {/* Analyse de l'Expertise — hauteur auto selon le contenu */}
                             <div className="premium-card bg-white rounded-[16px] px-4 py-3 shadow-sm border border-zinc-200 shrink-0">
                                 <p className="text-[9px] uppercase font-bold tracking-widest text-zinc-400 mb-1.5 flex items-center gap-1.5">
                                     <Star size={10}/> Analyse de l'Expertise
@@ -1391,42 +1409,94 @@ export default function EstimationManager() {
                             </div>
                         </div>
 
-                        {/* COLONNE DROITE — Prix + Locatif */}
                         <div className="w-[53%] flex flex-col gap-3 min-h-0">
-                            {/* Grande carte prix */}
-                            <div className="flex-1 premium-card bg-white rounded-[18px] shadow-sm border border-zinc-200 flex flex-col justify-center relative overflow-hidden min-h-0">
-                                <div className="absolute inset-x-0 top-0 h-[4px]" style={{ background: `linear-gradient(90deg, ${COLORS.primary}, ${COLORS.secondary})` }}></div>
-                                <div className="p-7">
-                                    <p className="text-[10px] uppercase font-bold tracking-widest text-zinc-400 text-center mb-6">Estimation de la Valeur Vénale</p>
-                                    <div className="flex items-stretch justify-center gap-0 w-full">
-                                        <div className="text-right flex-1 pr-5">
-                                            <p className="text-zinc-400 text-[9px] font-bold uppercase mb-2 tracking-wider">Fourchette Basse</p>
-                                            <div className="flex items-baseline justify-end gap-1 whitespace-nowrap">
-                                                <span className={`font-black text-zinc-800 tracking-tighter pdf-display ${getPriceSizeClass(data.lowPrice)}`}>{formatPrice(data.lowPrice)}</span>
-                                                <span className="text-xl font-black text-zinc-700">€</span>
-                                            </div>
-                                            <div className="mt-2.5 flex justify-end">
-                                                <span className="text-[10px] text-zinc-500 font-semibold font-mono bg-zinc-100 px-3 py-1 rounded-full border border-zinc-200">{Math.round(data.lowPrice / (data.surface || 1))} €/m²</span>
+                            {data.isRented ? (
+                                <div className="flex-1 flex flex-col gap-3 min-h-0">
+                                    <div className="flex-1 premium-card bg-white rounded-[16px] shadow-sm border border-zinc-200 flex flex-col justify-center relative overflow-hidden">
+                                        <div className="absolute inset-x-0 top-0 h-[3px]" style={{ background: `linear-gradient(90deg, ${COLORS.primary}, ${COLORS.secondary})` }}></div>
+                                        <div className="px-4 py-3">
+                                            <p className="text-[9px] uppercase font-bold tracking-widest text-zinc-400 text-center mb-3">Valeur Vénale Libre</p>
+                                            <div className="flex items-stretch justify-center gap-0 w-full">
+                                                <div className="text-right flex-1 pr-4">
+                                                    <p className="text-zinc-400 text-[8px] font-bold uppercase mb-1 tracking-wider">Basse</p>
+                                                    <div className="flex items-baseline justify-end gap-1 whitespace-nowrap">
+                                                        <span className={`font-black text-zinc-800 tracking-tighter pdf-display ${getPriceSizeClassSplit(data.lowPrice)}`}>{formatPrice(data.lowPrice)}</span>
+                                                        <span className="text-sm font-black text-zinc-700">€</span>
+                                                    </div>
+                                                </div>
+                                                <div className="flex flex-col items-center justify-center shrink-0 px-2">
+                                                    <div className="w-[1.5px] h-full rounded-full" style={{ background: `linear-gradient(to bottom, transparent, ${COLORS.secondary}, transparent)` }}></div>
+                                                </div>
+                                                <div className="text-left flex-1 pl-4">
+                                                    <p className="text-zinc-400 text-[8px] font-bold uppercase mb-1 tracking-wider">Haute</p>
+                                                    <div className="flex items-baseline justify-start gap-1 whitespace-nowrap">
+                                                        <span className={`font-black tracking-tighter pdf-display ${getPriceSizeClassSplit(data.highPrice)}`} style={{ color: COLORS.secondary }}>{formatPrice(data.highPrice)}</span>
+                                                        <span className="text-sm font-black" style={{ color: COLORS.secondary }}>€</span>
+                                                    </div>
+                                                </div>
                                             </div>
                                         </div>
-                                        <div className="flex flex-col items-center justify-center shrink-0 px-1">
-                                            <div className="w-[1.5px] flex-1 rounded-full" style={{ background: `linear-gradient(to bottom, transparent, ${COLORS.secondary}, transparent)` }}></div>
-                                        </div>
-                                        <div className="text-left flex-1 pl-5">
-                                            <p className="text-zinc-400 text-[9px] font-bold uppercase mb-2 tracking-wider">Fourchette Haute</p>
-                                            <div className="flex items-baseline justify-start gap-1 whitespace-nowrap">
-                                                <span className={`font-black tracking-tighter pdf-display ${getPriceSizeClass(data.highPrice)}`} style={{ color: COLORS.secondary }}>{formatPrice(data.highPrice)}</span>
-                                                <span className="text-xl font-black" style={{ color: COLORS.secondary }}>€</span>
-                                            </div>
-                                            <div className="mt-2.5">
-                                                <span className="text-[10px] text-zinc-500 font-semibold font-mono bg-zinc-100 px-3 py-1 rounded-full border border-zinc-200">{Math.round(data.highPrice / (data.surface || 1))} €/m²</span>
+                                    </div>
+                                    <div className="flex-1 premium-card bg-white rounded-[16px] shadow-sm border border-zinc-200 flex flex-col justify-center relative overflow-hidden">
+                                        <div className="absolute inset-x-0 top-0 h-[3px]" style={{ background: `linear-gradient(90deg, ${COLORS.gold}, #e8b86d)` }}></div>
+                                        <div className="px-4 py-3">
+                                            <p className="text-[9px] uppercase font-bold tracking-widest text-zinc-400 text-center mb-3">Valeur Vénale Loué</p>
+                                            <div className="flex items-stretch justify-center gap-0 w-full">
+                                                <div className="text-right flex-1 pr-4">
+                                                    <p className="text-zinc-400 text-[8px] font-bold uppercase mb-1 tracking-wider">Basse</p>
+                                                    <div className="flex items-baseline justify-end gap-1 whitespace-nowrap">
+                                                        <span className={`font-black text-zinc-800 tracking-tighter pdf-display ${getPriceSizeClassSplit(data.lowPriceRented)}`}>{formatPrice(data.lowPriceRented)}</span>
+                                                        <span className="text-sm font-black text-zinc-700">€</span>
+                                                    </div>
+                                                </div>
+                                                <div className="flex flex-col items-center justify-center shrink-0 px-2">
+                                                    <div className="w-[1.5px] h-full rounded-full" style={{ background: `linear-gradient(to bottom, transparent, ${COLORS.gold}, transparent)` }}></div>
+                                                </div>
+                                                <div className="text-left flex-1 pl-4">
+                                                    <p className="text-zinc-400 text-[8px] font-bold uppercase mb-1 tracking-wider">Haute</p>
+                                                    <div className="flex items-baseline justify-start gap-1 whitespace-nowrap">
+                                                        <span className={`font-black tracking-tighter pdf-display ${getPriceSizeClassSplit(data.highPriceRented)}`} style={{ color: COLORS.gold }}>{formatPrice(data.highPriceRented)}</span>
+                                                        <span className="text-sm font-black" style={{ color: COLORS.gold }}>€</span>
+                                                    </div>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
                                 </div>
-                            </div>
+                            ) : (
+                                <div className="flex-1 premium-card bg-white rounded-[18px] shadow-sm border border-zinc-200 flex flex-col justify-center relative overflow-hidden min-h-0">
+                                    <div className="absolute inset-x-0 top-0 h-[4px]" style={{ background: `linear-gradient(90deg, ${COLORS.primary}, ${COLORS.secondary})` }}></div>
+                                    <div className="p-7">
+                                        <p className="text-[10px] uppercase font-bold tracking-widest text-zinc-400 text-center mb-6">Estimation de la Valeur Vénale</p>
+                                        <div className="flex items-stretch justify-center gap-0 w-full">
+                                            <div className="text-right flex-1 pr-5">
+                                                <p className="text-zinc-400 text-[9px] font-bold uppercase mb-2 tracking-wider">Fourchette Basse</p>
+                                                <div className="flex items-baseline justify-end gap-1 whitespace-nowrap">
+                                                    <span className={`font-black text-zinc-800 tracking-tighter pdf-display ${getPriceSizeClass(data.lowPrice)}`}>{formatPrice(data.lowPrice)}</span>
+                                                    <span className="text-xl font-black text-zinc-700">€</span>
+                                                </div>
+                                                <div className="mt-2.5 flex justify-end">
+                                                    <span className="text-[10px] text-zinc-500 font-semibold font-mono bg-zinc-100 px-3 py-1 rounded-full border border-zinc-200">{Math.round(data.lowPrice / (data.surface || 1))} €/m²</span>
+                                                </div>
+                                            </div>
+                                            <div className="flex flex-col items-center justify-center shrink-0 px-1">
+                                                <div className="w-[1.5px] flex-1 rounded-full" style={{ background: `linear-gradient(to bottom, transparent, ${COLORS.secondary}, transparent)` }}></div>
+                                            </div>
+                                            <div className="text-left flex-1 pl-5">
+                                                <p className="text-zinc-400 text-[9px] font-bold uppercase mb-2 tracking-wider">Fourchette Haute</p>
+                                                <div className="flex items-baseline justify-start gap-1 whitespace-nowrap">
+                                                    <span className={`font-black tracking-tighter pdf-display ${getPriceSizeClass(data.highPrice)}`} style={{ color: COLORS.secondary }}>{formatPrice(data.highPrice)}</span>
+                                                    <span className="text-xl font-black" style={{ color: COLORS.secondary }}>€</span>
+                                                </div>
+                                                <div className="mt-2.5">
+                                                    <span className="text-[10px] text-zinc-500 font-semibold font-mono bg-zinc-100 px-3 py-1 rounded-full border border-zinc-200">{Math.round(data.highPrice / (data.surface || 1))} €/m²</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
 
-                            {/* Carte location */}
                             {data.hasRentalEstimation && data.monthlyRent > 0 && (
                                 <div className="premium-card bg-white rounded-[16px] shadow-sm border border-zinc-200 grid grid-cols-3 relative overflow-hidden shrink-0" style={{ height: '76px' }}>
                                     <div className="absolute inset-x-0 top-0 h-[3px]" style={{ background: `linear-gradient(90deg, ${COLORS.gold}, #e8b86d)` }}></div>
@@ -1459,20 +1529,15 @@ export default function EstimationManager() {
                         </div>
                     </div>
 
-                    {/* Mentions légales */}
                     <div className="mt-3 pt-3 border-t border-zinc-200 shrink-0">
                         <p className="text-[6.5px] leading-relaxed text-zinc-400 text-justify" style={{ lineHeight: '1.6' }}>
-                            Sous réserve que l'étude des diagnostics techniques et du carnet numérique, ou des examens approfondis (certificat d'urbanisme, titre de propriété, surface, règlement de copropriété) ne fassent pas apparaître de servitude particulière, d'engagement contractuel ou l'existence d'éléments pouvant compromettre la santé du bâti et ou de ses occupants, ayant une incidence, en plus ou en moins, sur la détermination du loyer de votre bien. Cet avis de valeur ne peut être assimilé à une expertise, laquelle doit être établie par un expert immobilier en possession de tous les paramètres et documents nécessaires à ce travail. Seul un rapport d'expertise peut servir à la mise en place d'un partage, d'une donation, d'une déclaration fiscale, d'une déclaration de succession, d'une liquidation de communauté, d'une garantie hypothécaire ou à un dossier contentieux ou judiciaire.
+                            Sous réserve que l'étude des diagnostics techniques et du carnet numérique...
                         </p>
                     </div>
                 </div>
 
-                {/* ================================================================= */}
-                {/* PAGE 5 : DOSSIER PHOTO (conditionnelle)                          */}
-                {/* ================================================================= */}
                 {(data.extraPhotos ?? []).length > 0 && (
                     <div className="print-page page-watermark w-[297mm] h-[210mm] mx-auto bg-[#f5f5f7] p-9 flex flex-col mb-8 shadow-2xl relative">
-                        {/* Header */}
                         <div className="flex justify-between items-center mb-5 pb-3.5 border-b border-zinc-200 shrink-0">
                             <div className="flex items-center gap-3">
                                 <div className="w-6 h-6 rounded-lg flex items-center justify-center" style={{ background: `linear-gradient(135deg, ${COLORS.primary}, ${COLORS.secondary})` }}>
@@ -1487,34 +1552,23 @@ export default function EstimationManager() {
                                 </span>
                             </div>
                         </div>
-
-                        {/* Sous-titre discret */}
                         <p className="text-[9px] uppercase font-bold tracking-widest text-zinc-400 mb-4 shrink-0">
                             {data.propertyAddress} — {(data.extraPhotos ?? []).length} vue{(data.extraPhotos ?? []).length > 1 ? 's' : ''}
                         </p>
-
-                        {/* Grille photos — s'adapte selon le nombre */}
                         <div className="flex-1 min-h-0">
                             {(() => {
                                 const photos = data.extraPhotos ?? [];
                                 const count = photos.length;
-                                // Choix de la grille selon le nombre de photos
-                                const gridClass = count <= 2 ? 'grid-cols-2' :
-                                                  count <= 4 ? 'grid-cols-2' :
-                                                  count <= 6 ? 'grid-cols-3' : 'grid-cols-4';
-                                const rowClass = count <= 2 ? 'grid-rows-1' :
-                                                 count <= 4 ? 'grid-rows-2' :
-                                                 count <= 6 ? 'grid-rows-2' : 'grid-rows-2';
+                                const gridClass = count <= 2 ? 'grid-cols-2' : count <= 4 ? 'grid-cols-2' : count <= 6 ? 'grid-cols-3' : 'grid-cols-4';
+                                const rowClass = count <= 2 ? 'grid-rows-1' : 'grid-rows-2';
                                 return (
                                     <div className={`grid ${gridClass} ${rowClass} gap-3 h-full`}>
                                         {photos.map((url, i) => (
                                             <div key={i} className="rounded-[16px] overflow-hidden shadow-sm border border-zinc-200 relative">
                                                 <img src={url} className="w-full h-full object-cover"/>
-                                                {/* Numéro de photo discret */}
                                                 <div className="absolute bottom-2 right-2 w-6 h-6 rounded-full bg-black/50 flex items-center justify-center">
                                                     <span className="text-white text-[9px] font-bold">{i + 1}</span>
                                                 </div>
-                                                <div className="absolute inset-0 rounded-[16px]" style={{ boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.06)' }}></div>
                                             </div>
                                         ))}
                                     </div>
@@ -1523,7 +1577,6 @@ export default function EstimationManager() {
                         </div>
                     </div>
                 )}
-
             </div>
         </>
     );

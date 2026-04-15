@@ -10,12 +10,13 @@ import {
   Plus, Briefcase, ScanLine, Check, Download, FileText,
   Zap, Heart, Scale, Gauge, Sparkles, ArrowUpRight, Maximize2,
   ChevronRight, AlignLeft, Target, PieChart, TrendingUp as TrendingUpIcon,
-  PiggyBank, LayoutDashboard
+  PiggyBank, LayoutDashboard, Flame
 } from "lucide-react";
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
   ReferenceLine, Cell, CartesianGrid, BarChart as RBarChart, Area, AreaChart,
-  PieChart as RechartsPieChart, Pie, Cell as PieCell
+  PieChart as RechartsPieChart, Pie, Cell as PieCell,
+  Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis // NOUVEAU: Imports pour le Radar 3D
 } from "recharts";
 
 import { T, glass, scoreColor, scoreGlow, scoreBg, scoreLabel, FONT_MONO, FONT_DISPLAY, FONT_BODY } from "./theme";
@@ -29,7 +30,7 @@ import SignalRow from "./components/SignalRow";
 import TradePlanVisual from "./components/TradePlanVisual";
 import InvestorProfileManager from "./components/InvestorProfile";
 
-import { NexusLogo } from "@/components/NexusLogo";
+import { NexusLogo } from "@/components/NexusLogo"; // CORRIGÉ: Bon chemin pour le logo
 
 // ═══════════════════════════════════════════════════════════════
 // STYLES & CONFIG
@@ -141,6 +142,7 @@ export default function NexusStocksPage() {
   const [showScanner, setShowScanner] = useState(false);
   const [showStrategy, setShowStrategy] = useState(false);
   const [showPortfolio, setShowPortfolio] = useState(false);
+  const [showMovers, setShowMovers] = useState(false);
   
   // Scanner States
   const [scanResults, setScanResults] = useState<ScanResult[]>([]);
@@ -165,11 +167,13 @@ export default function NexusStocksPage() {
   // Portfolio Dashboard States
   const [portfolioLiveData, setPortfolioLiveData] = useState<{ticker: string, currentPrice: number, prevPrice: number, changePct: number}[]>([]);
   const [loadingPortfolio, setLoadingPortfolio] = useState(false);
-  
-  // NOUVEAU : BENCHMARK STATES
-  const [benchmark, setBenchmark] = useState<string>("^FCHI"); // Default: CAC 40
+  const [benchmark, setBenchmark] = useState<string>("^FCHI");
   const [benchmarkChartData, setBenchmarkChartData] = useState<any[]>([]);
   const [loadingBenchmark, setLoadingBenchmark] = useState(false);
+
+  // Movers States
+  const [movers, setMovers] = useState<{gainers: {stock: StockInfo, meta: Meta}[], losers: {stock: StockInfo, meta: Meta}[]}>({gainers: [], losers: []});
+  const [loadingMovers, setLoadingMovers] = useState(false);
 
   useEffect(() => { loadPortfolio().then(setPortfolio); }, []);
 
@@ -200,22 +204,19 @@ export default function NexusStocksPage() {
     }
   }, [showPortfolio, portfolio]);
 
-  // ── NOUVEAU: CHARGEMENT DE LA COMPARAISON BENCHMARK ──
+  // ── CHARGEMENT DE LA COMPARAISON BENCHMARK ──
   useEffect(() => {
     if (!showPortfolio || portfolio.length === 0) return;
     
     const loadComparison = async () => {
       setLoadingBenchmark(true);
       try {
-        // 1. Fetch l'indice de référence
         const benchData = await fetchChart(benchmark, "6mo", "1d");
-        
-        // 2. Fetch l'historique de toutes les actions du portefeuille
         const assetsData = await Promise.all(
           portfolio.map(async (p) => {
             try {
                const data = await fetchChart(p.ticker, "6mo", "1d");
-               return { ticker: p.ticker, data, weight: (p.quantity * p.pru) }; // Poids estimé via investissement initial
+               return { ticker: p.ticker, data, weight: (p.quantity * p.pru) };
             } catch { return null; }
           })
         );
@@ -225,17 +226,14 @@ export default function NexusStocksPage() {
 
         if (benchData.length > 0 && totalWeight > 0) {
           const bFirst = benchData[0].close;
-          
-          // 3. Fusion et Normalisation en Base 100 (%)
           const merged = benchData.map((b) => {
              const dateLabel = new Date(b.time * 1000).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" });
              const bReturn = ((b.close - bFirst) / bFirst) * 100;
-
              let pReturn = 0;
              let weightSum = 0;
              
              validAssets.forEach(a => {
-                const assetPoint = a!.data.find(d => Math.abs(d.time - b.time) < 86400); // Marge de 1 jour (weekends/jours fériés)
+                const assetPoint = a!.data.find(d => Math.abs(d.time - b.time) < 86400); 
                 if (assetPoint && a!.data[0]) {
                    const aFirst = a!.data[0].close;
                    const aRet = ((assetPoint.close - aFirst) / aFirst) * 100;
@@ -244,12 +242,9 @@ export default function NexusStocksPage() {
                 }
              });
              
-             // Ajustement si un actif n'a pas coté ce jour-là
              if (weightSum > 0) pReturn = pReturn / weightSum;
-
              return { label: dateLabel, Portfolio: pReturn, Benchmark: bReturn };
           });
-          
           setBenchmarkChartData(merged);
         }
       } catch (e) {
@@ -261,10 +256,33 @@ export default function NexusStocksPage() {
     loadComparison();
   }, [showPortfolio, portfolio, benchmark]);
 
+  // ── CHARGEMENT DU PALMARÈS (TOP MOVERS) ──
+  useEffect(() => {
+    if (showMovers && movers.gainers.length === 0) {
+      const fetchMoversData = async () => {
+        setLoadingMovers(true);
+        const promises = STOCKS.slice(0, 25).map(async (s) => {
+          const m = await fetchMeta(s.ticker);
+          return m ? { stock: s, meta: m } : null;
+        });
+        
+        const results = await Promise.all(promises);
+        const valid = results.filter((r): r is {stock: StockInfo, meta: Meta} => r !== null);
+        valid.sort((a, b) => b.meta.pct - a.meta.pct);
+        
+        setMovers({
+          gainers: valid.slice(0, 4),
+          losers: valid.slice(-4).reverse()
+        });
+        setLoadingMovers(false);
+      };
+      fetchMoversData();
+    }
+  }, [showMovers, movers.gainers.length]);
 
   const analyze = useCallback(async (stock: StockInfo) => {
     setLoading(true); setError(null); setShowSugg(false); setFundamentals(null); setActiveSubTab("signals");
-    setShowScanner(false); setShowStrategy(false); setShowPortfolio(false);
+    setShowScanner(false); setShowStrategy(false); setShowPortfolio(false); setShowMovers(false);
     try {
       const [data6mo, m] = await Promise.all([fetchChart(stock.ticker, ANALYSIS_PERIOD.v, ANALYSIS_PERIOD.i), fetchMeta(stock.ticker)]);
       const currentPrice = m?.curr || (data6mo.length > 0 ? data6mo[data6mo.length - 1].close : 100);
@@ -301,7 +319,7 @@ export default function NexusStocksPage() {
     setSelected(null); setQuery(""); setAnalysisData([]); setViewData([]); 
     setTech(null); setConfluence(null); setMeta(null); setError(null); 
     setFundamentals(null); setHealthScore(null); setValuationScore(null); 
-    setMomentumScore(null); setShowScanner(false); setShowStrategy(false); setShowPortfolio(false);
+    setMomentumScore(null); setShowScanner(false); setShowStrategy(false); setShowPortfolio(false); setShowMovers(false);
   };
   
   const toggleOverlay = (o: Overlay) => setOverlays(p => p.includes(o) ? p.filter(x => x !== o) : [...p, o]);
@@ -323,7 +341,8 @@ export default function NexusStocksPage() {
     const tickers = uni?.tickers || col?.tickers || [];
     if (!tickers.length) return;
     
-    setScanning(true); setScanResults([]); setScanProgress(0); setShowScanner(true); setShowStrategy(false); setShowPortfolio(false); setSelected(null);
+    setScanning(true); setScanResults([]); setScanProgress(0); 
+    setShowScanner(true); setShowStrategy(false); setShowPortfolio(false); setShowMovers(false); setSelected(null);
     
     const results: ScanResult[] = [];
     for (let i = 0; i < tickers.length; i++) {
@@ -485,9 +504,7 @@ export default function NexusStocksPage() {
     });
   };
 
-  // ── MÉTRIQUES GLOBALES DU PORTEFEUILLE ──
   const portTotalInvested = useMemo(() => portfolio.reduce((acc, p) => acc + (p.pru * p.quantity), 0), [portfolio]);
-  
   const portCurrentValue = useMemo(() => {
     return portfolio.reduce((acc, p) => {
       const live = portfolioLiveData.find(l => l.ticker === p.ticker);
@@ -497,7 +514,6 @@ export default function NexusStocksPage() {
 
   const portTotalPnl = portCurrentValue - portTotalInvested;
   const portTotalPnlPct = portTotalInvested > 0 ? (portTotalPnl / portTotalInvested) * 100 : 0;
-
   const portDailyPnl = useMemo(() => {
     return portfolio.reduce((acc, p) => {
       const live = portfolioLiveData.find(l => l.ticker === p.ticker);
@@ -514,6 +530,48 @@ export default function NexusStocksPage() {
     }).sort((a,b) => b.value - a.value);
   }, [portfolio, portfolioLiveData]);
 
+  // ── NOUVEAU: DONNÉES DU RADAR 3D "EMPREINTE QUANTIQUE" ──
+  const radarData = useMemo(() => {
+    if (!fundamentals || !confluence || !healthScore || !momentumScore) return [];
+
+    // 1. Valorisation (Inversé : PER bas = excellent score)
+    let valScore = 50;
+    if (fundamentals.pe) {
+      if (fundamentals.pe < 10) valScore = 95;
+      else if (fundamentals.pe < 20) valScore = 80;
+      else if (fundamentals.pe < 30) valScore = 60;
+      else if (fundamentals.pe < 50) valScore = 40;
+      else valScore = 20;
+    }
+
+    // 2. Croissance
+    let croissScore = 50;
+    if (fundamentals.revenueGrowth) {
+      if (fundamentals.revenueGrowth > 20) croissScore = 95;
+      else if (fundamentals.revenueGrowth > 10) croissScore = 80;
+      else if (fundamentals.revenueGrowth > 5) croissScore = 60;
+      else if (fundamentals.revenueGrowth > 0) croissScore = 40;
+      else croissScore = 20;
+    }
+
+    // 3. Rendement (Dividendes)
+    let rendScore = 20; // Par défaut faible si pas de dividende
+    if (fundamentals.dividendYield) {
+      if (fundamentals.dividendYield > 5) rendScore = 95;
+      else if (fundamentals.dividendYield > 3) rendScore = 80;
+      else if (fundamentals.dividendYield > 1.5) rendScore = 60;
+      else rendScore = 40;
+    }
+
+    return [
+      { subject: 'Technique', A: confluence.score },
+      { subject: 'Momentum', A: momentumScore.score },
+      { subject: 'Croissance', A: croissScore },
+      { subject: 'Valorisation', A: valScore },
+      { subject: 'Rendement', A: rendScore },
+      { subject: 'Sécurité', A: healthScore.score },
+    ];
+  }, [fundamentals, confluence, healthScore, momentumScore]);
 
   // ═══════════════════════════════════════════════════════════════
   // RENDER
@@ -552,20 +610,26 @@ export default function NexusStocksPage() {
                    setStratYield(p.risk === "conservateur" ? 4 : p.risk === "equilibre" ? 8 : 12);
                  }
               }} />
+
+              <button onClick={() => { setShowMovers(true); setShowPortfolio(false); setShowStrategy(false); setShowScanner(false); setSelected(null); }}
+                className="flex items-center gap-2 px-3 md:px-4 py-2.5 rounded-2xl text-[11px] font-bold transition-all"
+                style={{ background: showMovers ? T.blueBg : T.card, border: `1px solid ${showMovers ? T.borderFocus : T.border}`, color: showMovers ? T.cyan : T.textSub }}>
+                <Flame size={14} /> <span className="hidden md:inline">Palmarès</span>
+              </button>
               
-              <button onClick={() => { setShowPortfolio(true); setShowStrategy(false); setShowScanner(false); setSelected(null); }}
+              <button onClick={() => { setShowPortfolio(true); setShowMovers(false); setShowStrategy(false); setShowScanner(false); setSelected(null); }}
                 className="flex items-center gap-2 px-3 md:px-4 py-2.5 rounded-2xl text-[11px] font-bold transition-all"
                 style={{ background: showPortfolio ? T.blueBg : T.card, border: `1px solid ${showPortfolio ? T.borderFocus : T.border}`, color: showPortfolio ? T.cyan : T.textSub }}>
                 <LayoutDashboard size={14} /> <span className="hidden md:inline">Portefeuille</span>
               </button>
 
-              <button onClick={() => { setShowStrategy(true); setShowPortfolio(false); setShowScanner(false); setSelected(null); }}
+              <button onClick={() => { setShowStrategy(true); setShowMovers(false); setShowPortfolio(false); setShowScanner(false); setSelected(null); }}
                 className="flex items-center gap-2 px-3 md:px-4 py-2.5 rounded-2xl text-[11px] font-bold transition-all"
                 style={{ background: showStrategy ? T.blueBg : T.card, border: `1px solid ${showStrategy ? T.borderFocus : T.border}`, color: showStrategy ? T.cyan : T.textSub }}>
                 <PieChart size={14} /> <span className="hidden md:inline">Stratégie</span>
               </button>
 
-              <button onClick={() => { setShowScanner(true); setShowPortfolio(false); setShowStrategy(false); setSelected(null); }}
+              <button onClick={() => { setShowScanner(true); setShowMovers(false); setShowPortfolio(false); setShowStrategy(false); setSelected(null); }}
                 className="flex items-center gap-2 px-3 md:px-4 py-2.5 rounded-2xl text-[11px] font-bold transition-all"
                 style={{ background: showScanner ? T.blueBg : T.card, border: `1px solid ${showScanner ? T.borderFocus : T.border}`, color: showScanner ? T.cyan : T.textSub }}>
                 <ScanLine size={14} /> <span className="hidden md:inline">Scanner</span>
@@ -577,7 +641,7 @@ export default function NexusStocksPage() {
             </div>
           </div>
 
-          {/* ══ GLOBAL SEARCH (Correction du bug UX) ══ */}
+          {/* ══ GLOBAL SEARCH ══ */}
           <div className="relative z-50">
             <div className="flex items-center gap-3 px-5 py-4 rounded-3xl transition-all duration-300 shadow-xl" style={{ ...glass, background: T.cardSolid, border: `1px solid ${T.borderMid}` }}>
               <Search size={18} style={{ color: T.textSub }} />
@@ -620,7 +684,87 @@ export default function NexusStocksPage() {
             </AnimatePresence>
           </div>
 
-          {/* ══ NOUVEAU: VUE PORTEFEUILLE (TRACKER + BENCHMARK) ══ */}
+          {/* ══ VUE PALMARÈS (TOP MOVERS) ══ */}
+          {showMovers && !selected && !loading && (
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-8 pt-4 pb-10">
+              <div className="flex items-center gap-5 mb-8">
+                <div className="w-14 h-14 rounded-3xl flex items-center justify-center shadow-lg shadow-orange-500/20" style={{ background: T.amberBg, border: `1px solid ${T.amber}40` }}>
+                   <Flame size={24} style={{ color: T.amber }} />
+                </div>
+                <div>
+                  <h2 className="text-3xl font-black tracking-tight" style={{ fontFamily: FONT_DISPLAY }}>Palmarès du Jour</h2>
+                  <p className="text-sm font-medium mt-1" style={{ color: T.textSub }}>Les plus fortes variations du marché en temps réel.</p>
+                </div>
+              </div>
+
+              {loadingMovers ? (
+                 <div className="flex flex-col items-center justify-center py-20">
+                    <Loader2 size={32} className="animate-spin mb-4" style={{color: T.amber}} />
+                    <p className="text-sm font-bold" style={{color: T.textDim}}>Analyse des variations en cours...</p>
+                 </div>
+              ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                  {/* COLONNE: TOP HAUSSES */}
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-3 mb-6">
+                      <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{background: T.greenBg}}>
+                        <TrendingUp size={14} style={{color: T.green}} />
+                      </div>
+                      <h3 className="text-xl font-black" style={{color: T.text}}>Top Hausses</h3>
+                    </div>
+                    
+                    {movers.gainers.map((item, i) => (
+                      <div key={item.stock.ticker} onClick={() => pickStock(item.stock)} className="flex items-center justify-between p-5 rounded-3xl cursor-pointer transition-transform hover:scale-[1.02] shadow-lg" style={{...premiumCard, border: `1px solid ${T.green}30`}}>
+                        <div className="flex items-center gap-4">
+                           <div className="w-10 h-10 rounded-xl flex items-center justify-center font-black text-sm" style={{ background: T.cardHover, color: T.green, border: `1px solid ${T.green}20` }}>
+                             {i + 1}
+                           </div>
+                           <div>
+                             <h4 className="text-sm font-black" style={{color: T.text}}>{item.stock.name}</h4>
+                             <span className="text-[9px] font-mono px-2 py-0.5 rounded-md mt-1 inline-block" style={{background: T.elevated, color: T.textSub}}>{item.stock.ticker}</span>
+                           </div>
+                        </div>
+                        <div className="text-right">
+                           <p className="text-lg font-black font-mono" style={{color: T.green}}>+{item.meta.pct.toFixed(2)}%</p>
+                           <p className="text-[10px] font-medium mt-0.5" style={{color: T.textDim}}>{item.meta.curr.toFixed(2)} {item.meta.currency}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* COLONNE: TOP BAISSES */}
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-3 mb-6">
+                      <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{background: T.redBg}}>
+                        <TrendingDown size={14} style={{color: T.red}} />
+                      </div>
+                      <h3 className="text-xl font-black" style={{color: T.text}}>Top Baisses</h3>
+                    </div>
+                    
+                    {movers.losers.map((item, i) => (
+                      <div key={item.stock.ticker} onClick={() => pickStock(item.stock)} className="flex items-center justify-between p-5 rounded-3xl cursor-pointer transition-transform hover:scale-[1.02] shadow-lg" style={{...premiumCard, border: `1px solid ${T.red}30`}}>
+                        <div className="flex items-center gap-4">
+                           <div className="w-10 h-10 rounded-xl flex items-center justify-center font-black text-sm" style={{ background: T.cardHover, color: T.red, border: `1px solid ${T.red}20` }}>
+                             {i + 1}
+                           </div>
+                           <div>
+                             <h4 className="text-sm font-black" style={{color: T.text}}>{item.stock.name}</h4>
+                             <span className="text-[9px] font-mono px-2 py-0.5 rounded-md mt-1 inline-block" style={{background: T.elevated, color: T.textSub}}>{item.stock.ticker}</span>
+                           </div>
+                        </div>
+                        <div className="text-right">
+                           <p className="text-lg font-black font-mono" style={{color: T.red}}>{item.meta.pct.toFixed(2)}%</p>
+                           <p className="text-[10px] font-medium mt-0.5" style={{color: T.textDim}}>{item.meta.curr.toFixed(2)} {item.meta.currency}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          )}
+
+          {/* ══ VUE PORTEFEUILLE (TRACKER + BENCHMARK) ══ */}
           {showPortfolio && !selected && !loading && (
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-8 pt-4 pb-10">
               <div className="flex items-center gap-5 mb-8">
@@ -642,7 +786,6 @@ export default function NexusStocksPage() {
                 </div>
               ) : (
                 <>
-                  {/* METRICS CARDS */}
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div className="p-5 rounded-3xl shadow-lg" style={premiumCard}>
                        <label className="text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 mb-3" style={{color: T.textDim}}><DollarSign size={14}/> Valeur Totale</label>
@@ -667,7 +810,6 @@ export default function NexusStocksPage() {
                     </div>
                   </div>
 
-                  {/* NOUVEAU: BENCHMARK COMPARISON CHART */}
                   <div className="p-6 rounded-3xl shadow-lg mt-6" style={premiumCard}>
                     <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
                       <div>
@@ -709,9 +851,7 @@ export default function NexusStocksPage() {
                     </div>
                   </div>
 
-                  {/* MAIN PORTFOLIO LAYOUT */}
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    {/* LEFT: DONUT ALLOCATION */}
                     <div className="p-6 rounded-3xl flex flex-col items-center shadow-lg" style={premiumCard}>
                       <h4 className="text-xs font-black uppercase tracking-widest mb-6 w-full text-left" style={{color: T.textSub}}>Allocation d'actifs</h4>
                       <div className="h-48 w-48 mb-6">
@@ -737,7 +877,6 @@ export default function NexusStocksPage() {
                       </div>
                     </div>
 
-                    {/* RIGHT: POSITIONS HEATMAP */}
                     <div className="lg:col-span-2 space-y-4">
                       <div className="flex items-center justify-between">
                         <h4 className="text-sm font-black uppercase tracking-widest" style={{color: T.text}}>Vos Positions ({portfolio.length})</h4>
@@ -792,7 +931,7 @@ export default function NexusStocksPage() {
           )}
 
           {/* ══ SCANNER VIEW ══ */}
-          {showScanner && !selected && !showStrategy && !showPortfolio && !loading && (
+          {showScanner && !selected && !showStrategy && !showPortfolio && !showMovers && !loading && (
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-8 pt-4 pb-10">
               <div className="flex items-center gap-5 mb-8">
                 <div className="w-14 h-14 rounded-3xl flex items-center justify-center shadow-lg shadow-cyan-500/20" style={{ background: T.gradPrimary }}>
@@ -870,8 +1009,8 @@ export default function NexusStocksPage() {
             </motion.div>
           )}
 
-          {/* ══ STRATEGY BUILDER VIEW (Avec DCA, Projection & Export) ══ */}
-          {showStrategy && !selected && !showPortfolio && !loading && (
+          {/* ══ STRATEGY BUILDER VIEW ══ */}
+          {showStrategy && !selected && !showPortfolio && !showMovers && !loading && (
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-8 pt-4 pb-10">
               <div className="flex items-center gap-5 mb-8">
                 <div className="w-14 h-14 rounded-3xl flex items-center justify-center shadow-lg shadow-cyan-500/20" style={{ background: T.gradPrimary }}>
@@ -1075,7 +1214,7 @@ export default function NexusStocksPage() {
           )}
 
           {/* ══ HOME VIEW (Premium Dashboard) ══ */}
-          {!selected && !showScanner && !showStrategy && !showPortfolio && !loading && (
+          {!selected && !showScanner && !showStrategy && !showPortfolio && !showMovers && !loading && (
              <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-10 pt-4 pb-10">
                
                <div className="flex flex-col md:flex-row gap-6 items-end justify-between">
@@ -1309,7 +1448,8 @@ export default function NexusStocksPage() {
 
                   <div className="flex p-1 rounded-2xl" style={{ background: T.elevated, border: `1px solid ${T.borderMid}` }}>
                     <button onClick={() => setActiveSubTab("signals")} className="flex-1 py-2.5 rounded-xl text-[11px] font-bold transition-all" style={{ background: activeSubTab === "signals" ? T.cardHover : "transparent", color: activeSubTab === "signals" ? T.text : T.textDim }}>Plan & Signaux</button>
-                    <button onClick={() => setActiveSubTab("fundamentals")} className="flex-1 py-2.5 rounded-xl text-[11px] font-bold transition-all" style={{ background: activeSubTab === "fundamentals" ? T.cardHover : "transparent", color: activeSubTab === "fundamentals" ? T.text : T.textDim }}>Santé & Valeur</button>
+                    {/* NOUVEAU: Changement du nom de l'onglet */}
+                    <button onClick={() => setActiveSubTab("fundamentals")} className="flex-1 py-2.5 rounded-xl text-[11px] font-bold transition-all" style={{ background: activeSubTab === "fundamentals" ? T.cardHover : "transparent", color: activeSubTab === "fundamentals" ? T.text : T.textDim }}>Empreinte 3D</button>
                   </div>
 
                   <div className="flex-1 rounded-3xl p-5 overflow-hidden flex flex-col shadow-lg" style={{ background: T.cardSolid, border: `1px solid ${T.borderMid}` }}>
@@ -1351,8 +1491,26 @@ export default function NexusStocksPage() {
                       </div>
                     )}
 
+                    {/* NOUVEAU: RADAR 3D ET SANTÉ */}
                     {activeSubTab === "fundamentals" && (
                       <div className="space-y-4 overflow-y-auto pr-1 flex-1 custom-scrollbar">
+                         
+                         {/* RADAR CHART */}
+                         <div className="p-4 rounded-2xl flex flex-col items-center justify-center" style={{ background: T.elevated, border: `1px solid ${T.borderMid}` }}>
+                            <h4 className="text-[10px] font-black uppercase tracking-widest mb-2" style={{color: T.textSub}}>ADN Quantique (360°)</h4>
+                            <div className="w-full h-48">
+                              <ResponsiveContainer width="100%" height="100%">
+                                <RadarChart cx="50%" cy="50%" outerRadius="65%" data={radarData}>
+                                  <PolarGrid stroke={T.borderMid} strokeDasharray="3 3" />
+                                  <PolarAngleAxis dataKey="subject" tick={{ fill: T.cyan, fontSize: 9, fontFamily: FONT_MONO, fontWeight: 'bold' }} />
+                                  <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
+                                  <Radar name="Actif" dataKey="A" stroke={T.cyan} strokeWidth={2} fill={T.cyan} fillOpacity={0.3} />
+                                </RadarChart>
+                              </ResponsiveContainer>
+                            </div>
+                         </div>
+
+                         {/* DÉTAILS FONDAMENTAUX */}
                          {[{ t: "Santé financière", icon: <Heart size={14} />, data: healthScore, c: T.green }, 
                            { t: "Valorisation", icon: <Scale size={14} />, data: valuationScore, c: T.amber }, 
                            { t: "Momentum", icon: <Gauge size={14} />, data: momentumScore, c: T.violet }
@@ -1413,8 +1571,8 @@ export default function NexusStocksPage() {
                           <YAxis tick={{ fontSize: 10, fill: T.textDim, fontFamily: FONT_MONO }} tickLine={false} axisLine={false} dx={-10} />
                           <Tooltip content={<ChartTip />} cursor={{ stroke: T.borderMid, strokeWidth: 1 }} />
                           <ReferenceLine y={0} stroke="rgba(255,255,255,0.1)" />
-                          <Line dataKey="macdLine" stroke={T.cyan} dot={false} strokeWidth={2} />
-                          <Line dataKey="macdSig" stroke={T.amber} dot={false} strokeWidth={2} />
+                          <Line dataKey="macdLine" stroke={T.cyan} dot={false} strokeWidth={1} />
+                          <Line dataKey="macdSig" stroke={T.amber} dot={false} strokeWidth={1} />
                           <Bar dataKey="macdHist" barSize={6} radius={[2, 2, 0, 0]}>{chartData.map((d, i) => <Cell key={i} fill={(d.macdHist || 0) >= 0 ? T.green + "CC" : T.red + "CC"} />)}</Bar>
                         </ComposedChart>
                       </ResponsiveContainer>

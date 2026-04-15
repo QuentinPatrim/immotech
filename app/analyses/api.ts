@@ -65,7 +65,7 @@ export const SCAN_UNIVERSES = [
 ];
 
 // ═══════════════════════════════════════════════════════════════
-// YAHOO FINANCE API (100% REAL DATA ONLY + ANTI-CACHE)
+// YAHOO FINANCE API
 // ═══════════════════════════════════════════════════════════════
 
 export async function fetchChart(ticker: string, range: string, interval: string): Promise<OHLCV[]> {
@@ -102,7 +102,6 @@ export async function fetchMeta(ticker: string): Promise<Meta | null> {
 
 export async function fetchFundamentals(ticker: string): Promise<Fundamentals | null> {
   try {
-    // Appel strict à Yahoo avec les modules obligatoires. Aucun fallback inventé.
     const modules = "summaryDetail,defaultKeyStatistics,financialData,price,summaryProfile";
     const res = await fetch(`/api/yahoo?endpoint=quoteSummary&ticker=${encodeURIComponent(ticker)}&modules=${modules}&_t=${Date.now()}`, { cache: 'no-store' });
     
@@ -136,7 +135,7 @@ export async function fetchFundamentals(ticker: string): Promise<Fundamentals | 
       industry: sp.industry ?? null,
     };
   } catch { 
-    return null; // Données indisponibles (honnêteté)
+    return null;
   }
 }
 
