@@ -1,281 +1,316 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useState, useEffect, useRef } from "react";
+import { useParams, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { formatNumber as formatPrice } from "@/lib/formatters";
-import { 
-    ArrowLeft, Printer, Settings2, Sparkles, MapPin, 
-    Maximize, Grid, Layers, Leaf, Banknote, 
-    Calculator, Smartphone, CheckCircle, Image as ImageIcon, MousePointerClick
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Calculator, Wallet, TrendingUp, AlertCircle, Percent, Clock, Key } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 
 const COLORS = {
-    primary: "#8a0e01",
-    secondary: "#d35f52",
-    gray: "#393939",
-    darkBg: "#0a0a0c",
+    primary: "#8a0e01",   // ROUGE
+    secondary: "#d35f52", // ROSE
+    gray: "#393939",      // GRIS
 };
 
-const DPE_COLORS: Record<string, string> = { "A": "#00A06D", "B": "#52B153", "C": "#A5CC74", "D": "#F3E724", "E": "#F0B328", "F": "#EB8235", "G": "#D7221F" };
-
-export default function PlaquetteManager() {
+export default function SimulateurAcquereur() {
     const params = useParams();
-    const router = useRouter();
+    const searchParams = useSearchParams();
+    
     const estimationId = params.id as string;
+    const initialPrice = Number(searchParams.get("price")) || 0;
 
+    const [data, setData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
-    const [baseData, setBaseData] = useState<any>(null);
-    const [domain, setDomain] = useState("");
 
-    // --- VARIABLES COMMERCIALES ---
-    const [sellingPriceFAI, setSellingPriceFAI] = useState<number>(0);
-    const [agencyFees, setAgencyFees] = useState<number>(0);
-    const [feeType, setFeeType] = useState<"PERCENT" | "EUROS">("PERCENT");
-    const [commercialText, setCommercialText] = useState("");
+    // --- INPUTS UTILISATEUR ---
+    const [downPayment, setDownPayment] = useState<number>(0);
+    const [monthlyIncome, setMonthlyIncome] = useState<number>(0);
+    const [worksBudget, setWorksBudget] = useState<number>(0);
+    const [loanDuration, setLoanDuration] = useState<number>(20);
+    const [interestRate, setInterestRate] = useState<number>(3.5);
+
+    // --- OPTION LOCATIVE ---
+    const [isRental, setIsRental] = useState<boolean>(false);
+    const [expectedRent, setExpectedRent] = useState<number>(0);
+
+    // --- GRAPHIQUE INTERACTIF (Scrubbing) ---
+    const [selectedYear, setSelectedYear] = useState<number>(1);
+    const chartContainerRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
-        setDomain(window.location.origin);
         if (!estimationId) return;
-        const fetchEstimation = async () => {
-            const { data } = await supabase.from('estimations').select('data_json').eq('id', estimationId).single();
-            if (data && data.data_json) {
-                setBaseData(data.data_json);
-                setSellingPriceFAI(data.data_json.highPrice || 0);
-                setCommercialText(data.data_json.features || "");
+        const fetchData = async () => {
+            const { data: estim } = await supabase.from('estimations').select('data_json').eq('id', estimationId).single();
+            if (estim && estim.data_json) {
+                setData(estim.data_json);
+                setExpectedRent(estim.data_json.monthlyRent || 0);
             }
             setLoading(false);
         };
-        fetchEstimation();
+        fetchData();
     }, [estimationId]);
 
-    // URLs interactives
-    const photosUrl = `${domain}/galerie/${estimationId}`;
-    const simulationUrl = `${domain}/simulation/${estimationId}?price=${sellingPriceFAI}`;
+    // --- CALCULS FINANCIERS ---
+    const price = initialPrice > 0 ? initialPrice : (data?.highPrice || 0);
+    const notaryFees = price * 0.08; 
+    const totalProject = price + notaryFees + worksBudget;
+    const loanAmount = Math.max(0, totalProject - downPayment);
 
-    const feeAmount = feeType === "PERCENT" ? (sellingPriceFAI * (agencyFees / 100)) : agencyFees;
-    const netVendeur = Math.max(0, sellingPriceFAI - feeAmount);
+    const safeDuration = Math.max(1, loanDuration);
+    const monthlyRate = interestRate / 100 / 12;
+    const numPayments = safeDuration * 12;
+    
+    let monthlyPayment = 0;
+    if (loanAmount > 0 && numPayments > 0) {
+        monthlyPayment = monthlyRate > 0 ? (loanAmount * monthlyRate) / (1 - Math.pow(1 + monthlyRate, -numPayments)) : loanAmount / numPayments;
+    }
 
-    const getDynamicTitle = () => {
-        if (!baseData) return "";
-        let title = `${baseData.propertyType}`;
-        if (baseData.rooms > 0) title += ` T${baseData.rooms}`;
-        return title;
+    const debtRatio = monthlyIncome > 0 ? (monthlyPayment / monthlyIncome) * 100 : 0;
+    const isEligible = debtRatio > 0 && debtRatio <= 35;
+    
+    const monthlyCharges = (data?.coproFees || 0) + ((data?.taxeFonciere || 0) / 12);
+    const monthlyBalance = expectedRent - monthlyPayment - monthlyCharges;
+    const netYield = totalProject > 0 ? (((expectedRent * 12) - (monthlyCharges * 12)) / totalProject) * 100 : 0;
+
+    // --- TABLEAU D'AMORTISSEMENT ---
+    const generateAmortization = () => {
+        let schedule = [];
+        let balance = loanAmount;
+        let cumulativeInterest = 0;
+        let cumulativePrincipal = 0;
+
+        schedule.push({ year: 0, balance, cumulativeInterest, cumulativePrincipal });
+
+        for (let y = 1; y <= safeDuration; y++) {
+            for (let m = 1; m <= 12; m++) {
+                const interestMonth = balance * monthlyRate;
+                const principalMonth = monthlyPayment - interestMonth;
+                balance -= principalMonth;
+                cumulativeInterest += interestMonth;
+                cumulativePrincipal += principalMonth;
+            }
+            schedule.push({ 
+                year: y, 
+                balance: Math.max(0, balance), 
+                cumulativeInterest, 
+                cumulativePrincipal 
+            });
+        }
+        return schedule;
     };
 
-    const getCleanAmenities = () => {
-        if (!baseData) return [];
-        const combined = [...(baseData.strengths || []), ...(baseData.amenities || [])];
-        return combined.filter((item, index) => {
-            return combined.findIndex(t => t.trim().toLowerCase() === item.trim().toLowerCase()) === index;
+    const amortizationSchedule = generateAmortization();
+    const currentYearData = amortizationSchedule[selectedYear] || amortizationSchedule[0];
+    const totalInterestPaid = amortizationSchedule[amortizationSchedule.length - 1]?.cumulativeInterest || 0;
+
+    // --- INTERACTION GRAPHIQUE (Le Scrubbing FinTech) ---
+    const handleChartInteraction = (clientX: number) => {
+        if (!chartContainerRef.current) return;
+        const rect = chartContainerRef.current.getBoundingClientRect();
+        let x = clientX - rect.left;
+        x = Math.max(0, Math.min(x, rect.width)); // Clamp entre 0 et width
+        const percentage = x / rect.width;
+        let year = Math.round(percentage * safeDuration);
+        year = Math.max(1, Math.min(year, safeDuration));
+        setSelectedYear(year);
+    };
+
+    const handleTouchMove = (e: React.TouchEvent) => handleChartInteraction(e.touches[0].clientX);
+    const handleMouseMove = (e: React.MouseEvent) => handleChartInteraction(e.clientX);
+
+    // --- CONSTRUCTION DU SVG ---
+    const svgWidth = 1000;
+    const svgHeight = 250;
+    let balancePath = `M 0 ${svgHeight}`;
+    let interestPath = `M 0 ${svgHeight}`;
+    
+    if (loanAmount > 0) {
+        amortizationSchedule.forEach((d, i) => {
+            const x = (i / safeDuration) * svgWidth;
+            const yBalance = svgHeight - ((d.balance / loanAmount) * svgHeight);
+            balancePath += ` L ${x} ${yBalance}`;
+            const maxScale = Math.max(loanAmount, totalInterestPaid);
+            const yInterest = svgHeight - ((d.cumulativeInterest / maxScale) * svgHeight);
+            interestPath += ` L ${x} ${yInterest}`;
         });
-    };
-
-    const renderLargeEnergyScale = (currentLetter: string, title: string, subtitle: string) => (
-        <div className="flex-1 bg-white rounded-3xl p-6 border border-zinc-100 shadow-sm">
-            <div className="flex justify-between items-end mb-6">
-                <div>
-                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400 mb-1">{title}</p>
-                    <p className="text-[9px] text-zinc-500 font-medium">{subtitle}</p>
-                </div>
-                <div className="text-5xl font-black" style={{ color: DPE_COLORS[currentLetter] || COLORS.gray }}>{currentLetter}</div>
-            </div>
-            <div className="flex items-end h-20 gap-1.5">
-                {["A","B","C","D","E","F","G"].map((letter, index) => {
-                    const isSelected = currentLetter === letter;
-                    const height = 100 - (index * 8); 
-                    return (
-                        <div key={letter} className="flex-1 flex flex-col items-center gap-2">
-                            <div 
-                                className={`w-full rounded-t-lg transition-all duration-500 ${isSelected ? 'h-20 shadow-lg border-2 border-white' : 'h-10 opacity-20'}`}
-                                style={{ 
-                                    backgroundColor: DPE_COLORS[letter],
-                                    height: isSelected ? '80px' : `${height / 2}px`
-                                }}
-                            />
-                            <span className={`text-[10px] font-bold ${isSelected ? 'text-zinc-800' : 'text-zinc-300'}`}>{letter}</span>
-                        </div>
-                    );
-                })}
-            </div>
-        </div>
-    );
+    }
 
     if (loading) return <div className="min-h-screen bg-[#0a0a0c] flex items-center justify-center text-white font-sans">Chargement...</div>;
+    if (!data) return <div className="min-h-screen bg-[#0a0a0c] text-white p-10 font-sans">Bien introuvable.</div>;
 
     return (
-        <div className="min-h-screen font-sans pb-32" style={{ backgroundColor: '#e8e8ec' }}>
-            <style jsx global>{`
-                @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@400;500;700&display=swap');
-                @media print {
-                    @page { size: A4 portrait; margin: 0; }
-                    body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; background-color: white !important; }
-                    .print-hidden { display: none !important; }
-                    .print-page { width: 210mm !important; height: 297mm !important; page-break-after: always !important; box-shadow: none !important; margin: 0 !important; overflow: hidden; }
-                    /* S'assurer que les liens s'impriment sans style bleu/souligné */
-                    a { text-decoration: none !important; color: inherit !important; }
-                }
-                .font-serif { font-family: 'Playfair Display', serif; }
-            `}</style>
-
-            {/* BARRE D'ACTIONS */}
-            <div className="fixed bottom-10 left-1/2 -translate-x-1/2 text-white px-8 py-4 rounded-full flex items-center gap-5 shadow-2xl z-50 print-hidden border bg-[#0a0a0c]/95 backdrop-blur-md">
-                <Button variant="ghost" onClick={() => router.back()} className="text-zinc-400 hover:text-white rounded-full text-sm"><ArrowLeft size={15} className="mr-2"/> Retour</Button>
-                <div className="w-px h-5 bg-white/10"></div>
-                <span className="text-xs font-bold text-white px-4 tracking-widest uppercase">Brochure Interactive Patrim (2 pages)</span>
-                <div className="w-px h-5 bg-white/10"></div>
-                <Button onClick={() => window.print()} className="rounded-full px-7 h-10 font-bold text-sm bg-gradient-to-r from-[#8a0e01] to-[#d35f52]"><Printer size={15} className="mr-2"/> Imprimer PDF</Button>
-            </div>
-
-            {/* CONFIGURATEUR */}
-            <div className="bg-[#0a0a0c] text-white pt-8 pb-12 px-6 shadow-xl print-hidden mb-12 border-b border-white/10">
-                <div className="max-w-6xl mx-auto grid grid-cols-3 gap-8">
-                    <div className="col-span-1 space-y-4">
-                        <h3 className="text-[11px] uppercase tracking-widest font-bold text-[#d35f52] flex items-center gap-2"><MapPin size={14}/> Transaction</h3>
-                        <div className="space-y-2">
-                            <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Prix Affiché FAI</label>
-                            <Input type="number" value={sellingPriceFAI||""} onChange={e=>setSellingPriceFAI(Number(e.target.value))} className="h-10 bg-black/50 border-white/10 text-sm font-bold focus:border-[#d35f52]"/>
-                        </div>
-                        <div className="space-y-2">
-                            <div className="flex justify-between items-center">
-                                <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Honoraires Agence</label>
-                                <div className="flex bg-white/10 rounded overflow-hidden">
-                                    <button onClick={()=>setFeeType("PERCENT")} className={`text-[9px] px-2 py-1 font-bold ${feeType==="PERCENT"?'bg-white text-black':'text-zinc-400'}`}>%</button>
-                                    <button onClick={()=>setFeeType("EUROS")} className={`text-[9px] px-2 py-1 font-bold ${feeType==="EUROS"?'bg-white text-black':'text-zinc-400'}`}>€</button>
-                                </div>
-                            </div>
-                            <Input type="number" value={agencyFees||""} onChange={e=>setAgencyFees(Number(e.target.value))} className="h-10 bg-black/50 border-white/10 text-sm"/>
-                        </div>
-                    </div>
-                    <div className="col-span-2 space-y-2 border-l border-white/10 pl-8">
-                        <label className="text-[11px] font-bold uppercase tracking-widest text-[#d35f52] flex items-center gap-2 mb-2"><Sparkles size={14}/> Accroche Commerciale</label>
-                        <textarea value={commercialText} onChange={e=>setCommercialText(e.target.value)} className="w-full h-36 bg-black/50 border border-white/10 rounded-xl p-4 text-sm text-zinc-200 outline-none focus:border-[#d35f52] resize-none leading-relaxed" />
-                    </div>
+        <div className="min-h-screen bg-[#0a0a0c] text-white font-sans pb-20 selection:bg-[#d35f52]/30">
+            {/* HERO MOBILE XXL (FinTech Premium) */}
+            <div className="relative h-[40vh] min-h-[350px] w-full">
+                <img src={data.mainPhoto} className="w-full h-full object-cover" alt="Bien"/>
+                {/* Gradient plus sombre pour faire ressortir le texte blanc */}
+                <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0c] via-[#0a0a0c]/60 to-transparent"></div>
+                
+                <div className="absolute top-6 left-6 flex items-center justify-center bg-black/30 p-3 rounded-2xl backdrop-blur-md border border-white/10">
+                    <img src="/logo-patrim.png" className="h-8 object-contain"/>
+                </div>
+                
+                <div className="absolute bottom-8 left-6 right-6">
+                    <p className="text-[10px] text-zinc-400 uppercase tracking-[0.2em] font-bold mb-2 flex items-center gap-2">
+                        <TrendingUp size={14} className="text-[#d35f52]"/> Simulateur Financier
+                    </p>
+                    <h1 className="text-3xl font-serif font-bold mb-1 leading-tight">{data.propertyType} {data.rooms > 0 && `T${data.rooms}`}</h1>
+                    <p className="text-5xl font-black text-white drop-shadow-md">
+                        {formatPrice(price)} <span className="text-2xl text-zinc-400 font-bold">€</span>
+                    </p>
                 </div>
             </div>
 
-            {/* RENDU PDF */}
-            <div className="flex flex-col items-center gap-10">
-                {/* PAGE 1 */}
-                <div className="print-page w-[210mm] h-[297mm] bg-white shadow-2xl relative flex flex-col">
-                    <div className="relative w-full h-[45%]">
-                        <img src={baseData.mainPhoto} className="w-full h-full object-cover"/>
-                        <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-black/80"></div>
-                        <div className="absolute top-8 left-8 bg-white p-3.5 rounded-2xl shadow-xl"><img src="/logo-patrim.png" alt="PATRIM" className="h-8 object-contain"/></div>
-                        <div className="absolute top-8 right-8"><span className="bg-[#8a0e01] text-white text-[10px] font-black uppercase tracking-[0.2em] px-4 py-2 rounded-full shadow-lg border border-white/20">À la Vente</span></div>
-                        <div className="absolute bottom-10 left-10 text-white right-10">
-                            <h1 className="font-serif text-5xl font-bold tracking-tight mb-2 uppercase">{getDynamicTitle()}</h1>
-                            <p className="text-lg font-medium opacity-90 flex items-center gap-2"><MapPin size={18} className="text-[#d35f52]"/> {baseData.propertyAddress}</p>
+            <div className="px-5 -mt-4 relative z-10 space-y-6 max-w-2xl mx-auto">
+                
+                {/* 1. DONNÉES DU PROJET */}
+                <div className="bg-[#111114] p-6 rounded-[28px] border border-white/5 shadow-2xl space-y-6">
+                    <h2 className="text-sm font-bold uppercase tracking-widest text-zinc-400 flex items-center gap-2"><Wallet size={16}/> Votre Projet</h2>
+                    
+                    <div>
+                        <label className="text-xs text-zinc-500 mb-2 block font-medium">Revenus nets mensuels (€)</label>
+                        <Input type="number" value={monthlyIncome||""} onChange={e=>setMonthlyIncome(Number(e.target.value))} className="bg-black border-white/10 h-14 text-xl text-white font-bold focus:border-[#d35f52] rounded-2xl" placeholder="Ex: 4500"/>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="text-[10px] uppercase font-bold text-zinc-500 mb-2 block">Apport Personnel</label>
+                            <Input type="number" value={downPayment||""} onChange={e=>setDownPayment(Number(e.target.value))} className="bg-black border-white/10 h-12 text-base text-white font-bold focus:border-[#d35f52] rounded-xl" placeholder="Ex: 20000"/>
+                        </div>
+                        <div>
+                            <label className="text-[10px] uppercase font-bold text-zinc-500 mb-2 block">Budget Travaux</label>
+                            <Input type="number" value={worksBudget||""} onChange={e=>setWorksBudget(Number(e.target.value))} className="bg-black border-white/10 h-12 text-base text-white font-bold focus:border-[#d35f52] rounded-xl" placeholder="Optionnel"/>
                         </div>
                     </div>
+                </div>
+
+                {/* 2. PARAMÈTRES CRÉDIT */}
+                <div className="bg-[#111114] p-6 rounded-[28px] border border-white/5 shadow-2xl space-y-6">
+                    <h2 className="text-sm font-bold uppercase tracking-widest text-white/70 flex items-center gap-2"><Clock size={16}/> Hypothèse Bancaire</h2>
                     
-                    <div className="relative -mt-8 mx-10 bg-white rounded-2xl shadow-xl flex overflow-hidden border border-zinc-100 z-10">
-                        <div className="w-2" style={{ background: `linear-gradient(to bottom, ${COLORS.primary}, ${COLORS.secondary})` }}></div>
-                        <div className="flex-1 py-5 px-8 flex justify-between items-center">
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="text-[10px] uppercase font-bold text-zinc-500 mb-2 flex items-center gap-1.5"><Clock size={12}/> Durée (Années)</label>
+                            <Input type="number" value={loanDuration||""} onChange={e=>setLoanDuration(Number(e.target.value))} className="bg-black border-white/10 h-12 text-lg text-white focus:border-[#d35f52] text-center font-black rounded-xl"/>
+                        </div>
+                        <div>
+                            <label className="text-[10px] uppercase font-bold text-zinc-500 mb-2 flex items-center gap-1.5"><Percent size={12}/> Taux d'intérêt</label>
+                            <Input type="number" step="0.1" value={interestRate||""} onChange={e=>setInterestRate(Number(e.target.value))} className="bg-black border-white/10 h-12 text-lg text-[#d35f52] focus:border-[#d35f52] text-center font-black rounded-xl"/>
+                        </div>
+                    </div>
+
+                    <div className="pt-5 border-t border-white/5 flex justify-between items-end">
+                        <div>
+                            <p className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold mb-1">Mensualité Prêt</p>
+                            <p className="text-4xl font-black text-white tracking-tighter">{formatPrice(Math.round(monthlyPayment))} <span className="text-sm text-zinc-500 font-medium">€/m</span></p>
+                        </div>
+                        <div className="text-right">
+                            <p className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold mb-1">Endettement</p>
+                            <div className={`px-3 py-1.5 rounded-lg text-base font-black inline-block ${debtRatio > 35 ? 'bg-rose-500/10 text-rose-500' : 'bg-emerald-500/10 text-emerald-500'}`}>
+                                {monthlyIncome > 0 ? debtRatio.toFixed(1) + "%" : "-"}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* 3. GRAPHIQUE D'AMORTISSEMENT RÉEL (Interactif Finary Style) */}
+                {loanAmount > 0 && (
+                    <div className="bg-[#111114] p-6 rounded-[28px] border border-white/5 shadow-2xl">
+                        <h2 className="text-sm font-bold uppercase tracking-widest text-[#d35f52] flex items-center gap-2 mb-6"><TrendingUp size={16}/> Amortissement</h2>
+                        
+                        {/* Afficheur en temps réel piloté par le graphique */}
+                        <div className="mb-6 bg-black p-5 rounded-2xl border border-white/5 shadow-inner">
+                            <p className="text-[11px] uppercase tracking-widest font-bold text-zinc-400 mb-4 flex items-center gap-2">
+                                <Clock size={14}/> À la fin de l'année <span className="text-white text-base bg-[#393939] px-2.5 py-1 rounded-md">{selectedYear}</span>
+                            </p>
+                            <div className="flex justify-between items-end border-b border-white/5 pb-4 mb-4">
+                                <div><p className="text-[10px] text-zinc-500 uppercase font-bold mb-1">Capital Restant Dû</p><p className="text-2xl font-black text-white">{formatPrice(Math.round(currentYearData.balance))} €</p></div>
+                                <div className="text-right"><p className="text-[10px] text-zinc-500 uppercase font-bold mb-1">Capital Amorti</p><p className="text-xl font-bold text-emerald-500">+{formatPrice(Math.round(currentYearData.cumulativePrincipal))} €</p></div>
+                            </div>
                             <div>
-                                <p className="text-[10px] uppercase font-bold text-zinc-400 mb-1">Prix de présentation</p>
-                                <div className="flex items-baseline gap-2">
-                                    <span className="font-serif text-4xl font-black" style={{ color: COLORS.gray }}>{formatPrice(sellingPriceFAI)}</span>
-                                    <span className="text-xl font-bold" style={{ color: COLORS.primary }}>€ <span className="text-[11px] font-sans text-zinc-400">FAI</span></span>
-                                </div>
-                                <p className="text-[9px] font-bold text-zinc-500 mt-1">
-                                    Prix net vendeur : {formatPrice(netVendeur)} € plus {feeType === "PERCENT" ? agencyFees + "%" : formatPrice(feeAmount)+" €"} d'honoraires à charge acquéreur.
+                                <p className="text-[10px] text-zinc-500 uppercase font-bold mb-1 flex items-center justify-between">
+                                    <span>Coût des intérêts (cumulé)</span>
+                                    <span className="text-[#d35f52] font-black text-base">{formatPrice(Math.round(currentYearData.cumulativeInterest))} €</span>
                                 </p>
                             </div>
-                            <span className="text-xs font-bold text-zinc-600 bg-zinc-100 px-3 py-1.5 rounded-lg border border-zinc-200">{Math.round(sellingPriceFAI / (baseData.surface || 1))} € / m²</span>
                         </div>
+
+                        {/* LE GRAPHIQUE INTERACTIF (Scrubbing) */}
+                        <div 
+                            className="relative w-full h-48 border-b border-l border-white/20 mb-2 cursor-crosshair touch-none"
+                            ref={chartContainerRef}
+                            onTouchMove={handleTouchMove}
+                            onMouseMove={handleMouseMove}
+                            onClick={(e) => handleChartInteraction(e.clientX)} // Permet de cliquer directement sur une année
+                        >
+                            <svg viewBox={`0 0 ${svgWidth} ${svgHeight}`} className="w-full h-full overflow-visible" preserveAspectRatio="none">
+                                {/* Zone Capital Restant */}
+                                <path d={`${balancePath} L ${svgWidth} ${svgHeight} L 0 ${svgHeight} Z`} fill="#393939" opacity="0.3" />
+                                <path d={balancePath} fill="none" stroke="#fff" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+                                
+                                {/* Zone Intérêts Payés */}
+                                <path d={`${interestPath} L ${svgWidth} ${svgHeight} L 0 ${svgHeight} Z`} fill="#8a0e01" opacity="0.4" />
+                                <path d={interestPath} fill="none" stroke="#d35f52" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+
+                                {/* Ligne Verticale Interactive qui suit le doigt */}
+                                <line 
+                                    x1={(selectedYear / safeDuration) * svgWidth} y1="0" 
+                                    x2={(selectedYear / safeDuration) * svgWidth} y2={svgHeight} 
+                                    stroke="white" strokeWidth="2" strokeDasharray="5 5" opacity="0.7"
+                                />
+                                {/* Point sur la courbe du capital */}
+                                <circle cx={(selectedYear / safeDuration) * svgWidth} cy={svgHeight - ((currentYearData.balance / loanAmount) * svgHeight)} r="12" fill="white" className="shadow-lg"/>
+                            </svg>
+                        </div>
+                        <p className="text-center text-[9px] text-zinc-500 uppercase tracking-widest font-bold mt-3 mb-6">
+                            Glissez le doigt sur le graphique pour avancer dans le temps
+                        </p>
+
+                        <div className="flex justify-center gap-6 text-[10px] text-zinc-400 font-bold uppercase">
+                            <span className="flex items-center gap-2"><div className="w-3 h-3 bg-white rounded-sm"></div> Capital Restant</span>
+                            <span className="flex items-center gap-2"><div className="w-3 h-3 bg-[#d35f52] rounded-sm"></div> Intérêts Payés</span>
+                        </div>
+                    </div>
+                )}
+
+                {/* 4. OPTION LOCATIVE */}
+                <div className="bg-[#111114] p-6 rounded-[28px] border border-white/5 shadow-xl space-y-5">
+                    <div className="flex items-center justify-between">
+                        <h2 className="text-sm font-bold uppercase tracking-widest text-[#c9a84c] flex items-center gap-2"><Key size={16}/> Projet Locatif</h2>
+                        <Switch checked={isRental} onCheckedChange={setIsRental} />
                     </div>
 
-                    <div className="flex-1 px-10 py-8 flex flex-col justify-center">
-                        <div className="grid grid-cols-4 gap-4 mb-10">
-                            {[{ icon: <Maximize size={16}/>, label: "Surface", value: `${baseData.surface} m²` }, { icon: <Grid size={16}/>, label: "Pièces", value: `${baseData.rooms} pces` }, { icon: <Layers size={16}/>, label: "Étage", value: baseData.floor || "RDC" }, { icon: <Leaf size={16}/>, label: "DPE", value: `Classe ${baseData.dpe}` }].map((item, idx) => (
-                                <div key={idx} className="bg-[#f8f8f9] rounded-[14px] p-4 flex flex-col items-center justify-center text-center border border-zinc-100">
-                                    <div className="w-8 h-8 rounded-full mb-2 flex items-center justify-center" style={{ backgroundColor: `${COLORS.secondary}15`, color: COLORS.secondary }}>{item.icon}</div>
-                                    <p className="text-[9px] uppercase font-bold tracking-widest text-zinc-400 mb-1">{item.label}</p>
-                                    <p className="text-base font-black text-zinc-800">{item.value}</p>
+                    {isRental && (
+                        <div className="pt-4 border-t border-white/5 space-y-6 animate-in slide-in-from-top-2 fade-in duration-300">
+                            <div>
+                                <label className="text-[11px] uppercase font-bold text-zinc-400 mb-2 block">Loyer Mensuel Estimé (€ HC)</label>
+                                <Input type="number" value={expectedRent||""} onChange={e=>setExpectedRent(Number(e.target.value))} className="bg-black border-white/10 h-14 text-2xl text-[#c9a84c] font-black focus:border-[#c9a84c] rounded-xl text-center" />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="bg-black p-4 rounded-2xl border border-white/5 text-center">
+                                    <p className="text-[10px] text-zinc-500 uppercase font-bold mb-2">Renta Nette</p>
+                                    <p className="text-2xl font-black text-[#c9a84c]">{netYield.toFixed(2)} <span className="text-sm">%</span></p>
                                 </div>
-                            ))}
+                                <div className={`p-4 rounded-2xl border text-center ${monthlyBalance >= 0 ? 'bg-emerald-500/10 border-emerald-500/20' : 'bg-rose-500/10 border-rose-500/20'}`}>
+                                    <p className={`text-[10px] uppercase font-bold mb-2 ${monthlyBalance >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                                        {monthlyBalance >= 0 ? "Cash-Flow" : "Effort Épargne"}
+                                    </p>
+                                    <p className={`text-2xl font-black tracking-tighter ${monthlyBalance >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                        {monthlyBalance >= 0 ? '+' : ''}{formatPrice(Math.round(monthlyBalance))} <span className="text-xs font-medium opacity-70">€/m</span>
+                                    </p>
+                                </div>
+                            </div>
                         </div>
-                        <div className="flex-1">
-                            <h3 className="text-[11px] uppercase tracking-[0.2em] font-black mb-4 flex items-center gap-2" style={{ color: COLORS.primary }}><span className="w-4 h-px bg-[#8a0e01]"></span> Description</h3>
-                            <p className="text-[13px] text-zinc-600 leading-relaxed whitespace-pre-wrap font-medium text-justify">{commercialText}</p>
-                        </div>
-                    </div>
-                    <div className="h-[20px] bg-[#0a0a0c] w-full"></div>
+                    )}
                 </div>
 
-                {/* PAGE 2 */}
-                <div className="print-page w-[210mm] h-[297mm] bg-[#f8f8f9] shadow-2xl relative flex flex-col p-12">
-                    <div className="flex justify-between items-end border-b-2 border-zinc-200 pb-5 mb-8">
-                        <div>
-                            <h2 className="font-serif text-3xl font-black text-zinc-800">Dossier Technique & Interactif</h2>
-                            <p className="text-[10px] uppercase font-bold tracking-widest text-zinc-400 mt-1">{baseData.propertyAddress}</p>
-                        </div>
-                        <img src="/logo-patrim.png" alt="PATRIM" className="h-8 object-contain"/>
-                    </div>
-
-                    <div className="flex gap-6 mb-10">
-                        {/* SECTION INTERACTIVE (Cliquable) */}
-                        <div className="w-[55%] grid grid-cols-2 gap-5">
-                            
-                            {/* Le lien englobe toute la carte */}
-                            <a href={photosUrl} target="_blank" rel="noopener noreferrer" className="bg-white rounded-[32px] p-6 border border-zinc-100 shadow-lg flex flex-col items-center text-center relative overflow-hidden group cursor-pointer hover:border-[#d35f52] transition-colors">
-                                <div className="absolute inset-x-0 top-0 h-1.5 bg-[#d35f52]"></div>
-                                <div className="bg-zinc-50 p-3 rounded-2xl mb-4 border border-zinc-50 shadow-inner group-hover:scale-105 transition-transform">
-                                    <img src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(photosUrl)}`} alt="QR Photos" className="w-24 h-24"/>
-                                </div>
-                                <h3 className="text-sm font-black text-zinc-800 mb-1 uppercase tracking-tighter">Album Photo HD</h3>
-                                <p className="text-[10px] text-zinc-400 leading-tight">Cliquez ou flashez pour visiter le bien</p>
-                            </a>
-
-                            {/* Le lien englobe toute la carte */}
-                            <a href={simulationUrl} target="_blank" rel="noopener noreferrer" className="bg-white rounded-[32px] p-6 border border-zinc-100 shadow-lg flex flex-col items-center text-center relative overflow-hidden group cursor-pointer hover:border-[#8a0e01] transition-colors">
-                                <div className="absolute inset-x-0 top-0 h-1.5 bg-[#8a0e01]"></div>
-                                <div className="bg-zinc-50 p-3 rounded-2xl mb-4 border border-zinc-50 shadow-inner group-hover:scale-105 transition-transform">
-                                    <img src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(simulationUrl)}`} alt="QR Simulation" className="w-24 h-24"/>
-                                </div>
-                                <h3 className="text-sm font-black text-zinc-800 mb-1 uppercase tracking-tighter">Simulateur FinTech</h3>
-                                <p className="text-[10px] text-zinc-400 leading-tight">Cliquez ou flashez pour calculer votre prêt</p>
-                            </a>
-                            
-                            <div className="col-span-2 flex items-center justify-center gap-3 text-[#8a0e01] font-black text-[10px] uppercase tracking-[0.2em] bg-white py-3 rounded-2xl border border-zinc-100 shadow-sm">
-                                <MousePointerClick size={16}/> Cliquez sur les blocs ou utilisez votre smartphone
-                            </div>
-                        </div>
-
-                        {/* COÛTS & EQUIPEMENTS */}
-                        <div className="w-[45%] flex flex-col gap-5">
-                            <div className="bg-white p-6 rounded-[32px] border border-zinc-100 shadow-md">
-                                <h3 className="text-[10px] uppercase tracking-widest font-black flex items-center gap-2 mb-4 text-[#8a0e01]"><Banknote size={14}/> Coûts Annuels</h3>
-                                <div className="space-y-3">
-                                    <div className="flex justify-between items-center text-xs border-b border-zinc-50 pb-2"><span className="text-zinc-400 font-bold">Taxe Foncière</span><span className="font-black text-[#393939]">{formatPrice(baseData.taxeFonciere)} €</span></div>
-                                    <div className="flex justify-between items-center text-xs"><span className="text-zinc-400 font-bold">Copropriété</span><span className="font-black text-[#393939]">{baseData.isCopropriete ? formatPrice(baseData.coproFees * 12) + " €" : "N/A"}</span></div>
-                                </div>
-                            </div>
-                            <div className="bg-white p-6 rounded-[32px] border border-zinc-100 shadow-md flex-1">
-                                <h3 className="text-[10px] uppercase tracking-widest font-black flex items-center gap-2 mb-4 text-zinc-400"><Layers size={14}/> Équipements</h3>
-                                <div className="flex flex-wrap gap-1.5">
-                                    {getCleanAmenities().map((item:any, i:number) => (
-                                        <span key={i} className="text-[9px] font-bold px-2.5 py-1 bg-zinc-50 text-zinc-600 rounded-lg border border-zinc-100 uppercase tracking-tighter"> {item} </span>
-                                    ))}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* BILAN ÉNERGÉTIQUE */}
-                    <div className="mt-auto flex flex-col gap-6">
-                        <h3 className="text-[11px] uppercase tracking-[0.3em] font-black text-center text-zinc-300 flex items-center justify-center gap-5">
-                            <div className="h-px flex-1 bg-zinc-100"></div> Bilan Énergétique <div className="h-px flex-1 bg-zinc-100"></div>
-                        </h3>
-                        <div className="flex gap-6">
-                            {renderLargeEnergyScale(baseData.dpe, "DPE — Consommation", "kWh/m²/an")}
-                            {renderLargeEnergyScale(baseData.ges, "GES — Émissions", "kg CO2/m²/an")}
-                        </div>
-                    </div>
-                </div>
+            </div>
+            
+            <div className="text-center mt-10 opacity-50 pb-10">
+                <img src="/logo-patrim.png" className="h-5 mx-auto mb-2 grayscale"/>
+                <p className="text-[9px] uppercase tracking-widest font-bold">Outil d'aide à la décision non contractuel</p>
             </div>
         </div>
     );

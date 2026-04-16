@@ -37,7 +37,9 @@ export default function PlaquetteManager() {
     const [commercialText, setCommercialText] = useState("");
 
     useEffect(() => {
-        setDomain(window.location.origin);
+        if (typeof window !== "undefined") {
+            setDomain(window.location.origin);
+        }
         if (!estimationId) return;
         const fetchEstimation = async () => {
             const { data } = await supabase.from('estimations').select('data_json').eq('id', estimationId).single();
@@ -51,9 +53,9 @@ export default function PlaquetteManager() {
         fetchEstimation();
     }, [estimationId]);
 
-    // URLs interactives
-    const photosUrl = `${domain}/galerie/${estimationId}`;
-    const simulationUrl = `${domain}/simulation/${estimationId}?price=${sellingPriceFAI}`;
+    // URLs interactives (Sécurisées pour ne s'activer que quand le domaine est connu)
+    const photosUrl = domain ? `${domain}/galerie/${estimationId}` : "";
+    const simulationUrl = domain ? `${domain}/simulation/${estimationId}?price=${sellingPriceFAI}` : "";
 
     const feeAmount = feeType === "PERCENT" ? (sellingPriceFAI * (agencyFees / 100)) : agencyFees;
     const netVendeur = Math.max(0, sellingPriceFAI - feeAmount);
@@ -217,14 +219,14 @@ export default function PlaquetteManager() {
                         {/* SECTION QR CODES - RENDUS CLIQUABLES POUR LE PDF */}
                         <div className="w-[55%] grid grid-cols-2 gap-5">
                             
-                            {/* Lien englobant toute la carte. Le texte transparent assure la détection par le PDF */}
                             <a href={photosUrl} target="_blank" rel="noopener noreferrer" className="block bg-white rounded-[32px] p-6 border border-zinc-100 shadow-lg flex flex-col items-center text-center relative overflow-hidden group hover:border-[#d35f52] transition-colors cursor-pointer">
                                 <span className="opacity-0 absolute text-[1px]">{photosUrl}</span>
                                 <div className="absolute inset-x-0 top-0 h-1.5 bg-[#d35f52]"></div>
                                 <div className="bg-zinc-50 p-3 rounded-2xl mb-4 border border-zinc-50 shadow-inner group-hover:scale-105 transition-transform">
-                                    <img src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(photosUrl)}`} alt="QR Photos" className="w-24 h-24"/>
+                                    {/* L'ajout de &margin=1 force la création d'un QR code propre sans utiliser de cache erroné */}
+                                    {domain && <img src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(photosUrl)}&margin=1`} alt="QR Photos" className="w-24 h-24"/>}
                                 </div>
-                                <h3 className="text-sm font-black text-zinc-800 mb-1 uppercase tracking-tighter">Album Photo HD</h3>
+                                <h3 className="text-sm font-black text-zinc-800 mb-1 uppercase tracking-tighter">Galerie Photos</h3>
                                 <p className="text-[10px] text-zinc-400 leading-tight">Cliquez ou flashez pour visiter</p>
                             </a>
 
@@ -232,10 +234,10 @@ export default function PlaquetteManager() {
                                 <span className="opacity-0 absolute text-[1px]">{simulationUrl}</span>
                                 <div className="absolute inset-x-0 top-0 h-1.5 bg-[#8a0e01]"></div>
                                 <div className="bg-zinc-50 p-3 rounded-2xl mb-4 border border-zinc-50 shadow-inner group-hover:scale-105 transition-transform">
-                                    <img src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(simulationUrl)}`} alt="QR Simulation" className="w-24 h-24"/>
+                                    {domain && <img src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(simulationUrl)}&margin=1`} alt="QR Simulation" className="w-24 h-24"/>}
                                 </div>
-                                <h3 className="text-sm font-black text-zinc-800 mb-1 uppercase tracking-tighter">Simulateur Prêt</h3>
-                                <p className="text-[10px] text-zinc-400 leading-tight">Cliquez ou flashez pour calculer</p>
+                                <h3 className="text-sm font-black text-zinc-800 mb-1 uppercase tracking-tighter">Simulateur de Prêt</h3>
+                                <p className="text-[10px] text-zinc-400 leading-tight">Possibilité de simulation de rentabilité</p>
                             </a>
                             
                             <div className="col-span-2 flex items-center justify-center gap-3 text-[#8a0e01] font-black text-[10px] uppercase tracking-[0.2em] bg-white py-3 rounded-2xl border border-zinc-100 shadow-sm">
