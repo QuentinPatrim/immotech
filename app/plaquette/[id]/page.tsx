@@ -155,7 +155,7 @@ export default function PlaquetteManager() {
     if (loading) return (
         <div className="min-h-screen bg-[#faf8f6] flex items-center justify-center">
             <div className="flex flex-col items-center gap-4">
-                <img src="/logo-patrim.png" className="h-12 object-contain animate-pulse" alt="Patrim"/>
+                <img src="/logo-patrim.png" className="h-12 object-contain animate-pulse shrink-0" alt="Patrim"/>
                 <p className="text-zinc-500 text-xs uppercase tracking-[0.3em] font-bold">Chargement de la plaquette…</p>
             </div>
         </div>
@@ -212,6 +212,7 @@ export default function PlaquetteManager() {
                         width: 210mm !important; height: 297mm !important;
                         position: relative !important;
                         margin: 0 !important; padding: 0 !important; box-shadow: none !important; transform: none !important;
+                        /* Suppression du padding: 0 forcé pour que Tailwind px-10 fonctionne */
                     }
                     a { text-decoration: none !important; color: inherit !important; display: block !important; }
                 }
@@ -284,7 +285,7 @@ export default function PlaquetteManager() {
                         <div className="absolute inset-0 mix-blend-overlay opacity-20" style={{ background: `linear-gradient(135deg, ${COLORS.primary}00 0%, ${COLORS.primary}40 100%)` }}/>
 
                         <div className="absolute top-10 left-10 flex items-center gap-3 bg-white/95 backdrop-blur-xl p-3 pr-5 rounded-2xl border border-white shadow-xl">
-                            <img src="/logo-patrim.png" className="h-10 object-contain" alt="Patrim"/>
+                            <img src="/logo-patrim.png" className="h-10 object-contain shrink-0" alt="Patrim"/>
                             <div className="h-7 w-px bg-zinc-300"/>
                             <div className="flex flex-col">
                                 <span className="text-[8px] uppercase tracking-[0.25em] font-bold text-zinc-500 leading-none">Patrim</span>
@@ -349,7 +350,7 @@ export default function PlaquetteManager() {
                             ))}
                         </div>
 
-                        {/* Footer Page 1 ancré */}
+                        {/* Signature bas page 1 */}
                         <div className="mt-auto pt-6 flex items-center justify-between w-full">
                             <div className="flex items-center gap-3"><div className="h-px w-8" style={{ backgroundColor: COLORS.primary }}/><span className="text-[9px] uppercase tracking-[0.3em] font-black" style={{ color: COLORS.primary }}>Dossier de présentation</span></div>
                             <span className="text-[9px] uppercase tracking-widest font-bold text-zinc-400 font-mono-num">01 / 02</span>
@@ -359,24 +360,23 @@ export default function PlaquetteManager() {
                 </div>
 
                 {/* ================================================
-                    PAGE 2 — ANCRAGE ABSOLU (Fixation Marges & Positions)
+                    PAGE 2 — DESCRIPTION + ÉQUIPEMENTS + COÛTS + DIAGNOSTICS + QR
                    ================================================ */}
                 <div className="print-page-wrapper">
-                <div className="print-page w-[210mm] h-[297mm] shadow-2xl relative overflow-hidden" style={{ backgroundColor: COLORS.ivory }}>
-                    
-                    {/* PARTIE HAUTE (Top: 40px) */}
-                    <div className="absolute top-10 left-10 right-10">
-                        
-                        <div className="flex justify-between items-end border-b border-zinc-300 pb-4 mb-6">
+                <div className="print-page w-[210mm] h-[297mm] shadow-2xl relative flex flex-col overflow-hidden" style={{ backgroundColor: COLORS.ivory }}>
+                    {/* CONTENEUR AVEC PADDING INTERNE (Maintient les bordures intactes à l'impression) */}
+                    <div className="flex-1 w-full h-full flex flex-col px-10 py-10">
+
+                        <div className="flex justify-between items-end border-b border-zinc-300 pb-4 mb-6 shrink-0">
                             <div>
                                 <p className="text-[9px] uppercase tracking-[0.3em] font-black mb-1" style={{ color: COLORS.primary }}>Dossier technique</p>
                                 <h2 className="font-serif text-2xl font-black text-zinc-900">{getDynamicTitle()}</h2>
                                 <p className="text-[10px] uppercase font-bold tracking-widest text-zinc-500 mt-0.5">{baseData.propertyAddress}</p>
                             </div>
-                            <img src="/logo-patrim.png" alt="PATRIM" className="h-10 object-contain"/>
+                            <img src="/logo-patrim.png" alt="PATRIM" className="h-10 object-contain shrink-0"/>
                         </div>
 
-                        <div className="grid grid-cols-5 gap-5 mb-5">
+                        <div className="grid grid-cols-5 gap-5 mb-5 shrink-0">
                             <div className="col-span-3 bg-white rounded-[24px] p-5 border border-zinc-200/70 shadow-sm">
                                 <h3 className="text-[10px] uppercase tracking-[0.25em] font-black mb-3 flex items-center gap-2" style={{ color: COLORS.primary }}><span className="w-4 h-px" style={{ backgroundColor: COLORS.primary }}/>Description</h3>
                                 <p className="text-[11px] text-zinc-700 leading-relaxed whitespace-pre-wrap font-medium text-justify">{commercialText}</p>
@@ -391,7 +391,7 @@ export default function PlaquetteManager() {
                             </div>
                         </div>
 
-                        <div className="bg-white rounded-[24px] p-5 border border-zinc-200/70 shadow-sm">
+                        <div className="bg-white rounded-[24px] p-5 border border-zinc-200/70 shadow-sm mb-5 shrink-0">
                             <h3 className="text-[10px] uppercase tracking-[0.25em] font-black flex items-center gap-2 mb-3" style={{ color: COLORS.primary }}><Banknote size={12}/> Coûts Annuels</h3>
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="flex justify-between items-center py-1.5 border-b border-zinc-100"><span className="text-xs text-zinc-500 font-bold">Taxe Foncière</span><span className="text-base font-black font-mono-num" style={{ color: COLORS.gray }}>{formatPrice(baseData.taxeFonciere)}<span className="text-[10px] opacity-60"> €</span></span></div>
@@ -399,12 +399,7 @@ export default function PlaquetteManager() {
                             </div>
                         </div>
 
-                    </div>
-
-                    {/* PARTIE BASSE SOUDÉE EN ABSOLU (Bottom: 40px) */}
-                    <div className="absolute bottom-10 left-10 right-10 flex flex-col">
-                        
-                        <div className="mb-5">
+                        <div className="mb-5 shrink-0">
                             <div className="flex items-center gap-3 mb-3"><span className="text-[9px] uppercase tracking-[0.3em] font-black" style={{ color: COLORS.primary }}>Bilan Énergétique</span><div className="h-px flex-1 bg-zinc-300"/></div>
                             <div className="grid grid-cols-2 gap-5">
                                 <CompactDiagnostic currentLetter={baseData.dpe} title="DPE — Consommation" subtitle="kWh ENp/m²/an" icon={<Flame size={11}/>} labels={DPE_LABELS}/>
@@ -412,7 +407,7 @@ export default function PlaquetteManager() {
                             </div>
                         </div>
 
-                        <div>
+                        <div className="shrink-0">
                             <div className="flex items-center gap-3 mb-3"><span className="text-[9px] uppercase tracking-[0.3em] font-black" style={{ color: COLORS.primary }}>Accès Interactif</span><div className="h-px flex-1 bg-zinc-300"/></div>
                             <div className="grid grid-cols-2 gap-5">
                                 <a href={photosUrl} target="_blank" rel="noopener noreferrer" className="block bg-white rounded-[24px] p-4 border border-zinc-200/70 shadow-sm relative overflow-hidden">
@@ -445,9 +440,10 @@ export default function PlaquetteManager() {
                             </div>
                         </div>
 
-                        <div className="mt-5 pt-4 border-t border-zinc-300 flex items-center justify-between">
+                        {/* Footer intégré à l'intérieur du conteneur paddé */}
+                        <div className="mt-auto pt-4 border-t border-zinc-300 flex items-center justify-between w-full">
                             <div className="flex items-center gap-3">
-                                <img src="/logo-patrim.png" className="h-8 object-contain" alt="Patrim"/>
+                                <img src="/logo-patrim.png" className="h-8 object-contain shrink-0" alt="Patrim"/>
                                 <div><p className="text-[9px] uppercase tracking-[0.25em] font-black" style={{ color: COLORS.primary }}>Patrim Immobilier</p><p className="text-[8px] text-zinc-500 font-medium">Votre expert de la transaction à Toulouse</p></div>
                             </div>
                             <div className="flex items-center gap-2 px-3 py-1.5 rounded-full border" style={{ backgroundColor: `${COLORS.secondary}08`, borderColor: `${COLORS.secondary}25` }}>
