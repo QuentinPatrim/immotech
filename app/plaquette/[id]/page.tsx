@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { formatNumber as formatPrice } from "@/lib/formatters";
@@ -9,7 +9,8 @@ import {
     Maximize, Grid, Layers, Leaf, Banknote,
     Calculator, MousePointerClick, Image as ImageIcon,
     Flame, CloudFog, ArrowUpRight, Home,
-    Share2, MessageCircle, Mail, Link2, Check, X
+    Share2, MessageCircle, Mail, Check, X,
+    Download, Loader2, FileText
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -66,7 +67,9 @@ export default function PlaquetteManager() {
 
     // --- PARTAGE ---
     const [shareMenuOpen, setShareMenuOpen] = useState(false);
-    const [copied, setCopied] = useState(false);
+    const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+    const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
+    const plaquetteRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         if (typeof window !== "undefined") {
@@ -109,63 +112,376 @@ export default function PlaquetteManager() {
     };
 
     /* ============================================================
-       PARTAGE — menu natif mobile / menu custom desktop
+       PARTAGE PDF
+       -- Mobile : génère le PDF, utilise navigator.share() avec fichier
+          → menu natif (WhatsApp, Mail, SMS, AirDrop) avec PDF en pièce jointe
+       -- Desktop : génère le PDF, propose actions dédiées
+          (télécharger + ouvrir WhatsApp Web / client mail / etc.)
        ============================================================ */
-    const handleShare = async () => {
-        const shareUrl = typeof window !== "undefined" ? window.location.href : "";
-        const shareTitle = `${getDynamicTitle()} · ${baseData?.propertyAddress || ""}`;
-        const shareText = `Découvrez ce bien à la vente avec PATRIM Immobilier — ${formatPrice(sellingPriceFAI)} € FAI`;
 
-        // Mobile (et certains navigateurs desktop) → menu natif (WhatsApp, Mail, SMS, AirDrop…)
-        if (typeof navigator !== "undefined" && (navigator as any).share) {
+    // Nom du fichier PDF généré
+    const getPdfFileName = () => {
+        const title = (getDynamicTitle() || "plaquette").replace(/\s+/g, "-").toLowerCase();
+        const addr = (baseData?.propertyAddress || "")
+            .split(",")[0]
+            .replace(/\s+/g, "-")
+            .replace(/[^a-z0-9\-]/gi, "")
+            .toLowerCase();
+        return `patrim-${title}${addr ? "-" + addr : ""}.pdf`;
+    };
+
+    // Convertit n'importe quelle string CSS color (oklch, lab, hsl, rgb…) en "rgb(r, g, b)" ou "rgba(r,g,b,a)"
+    // Utilise un canvas pour laisser le navigateur faire la conversion.
+    const toRgbString = (() => {
+        let canvas: HTMLCanvasElement | null = null;
+        let ctx: CanvasRenderingContext2D | null = null;
+        const cache = new Map<string, string>();
+
+        return (color: string): string => {
+            if (!color) return color;
+            const trimmed = color.trim();
+            if (cache.has(trimmed)) return cache.get(trimmed)!;
+
+            // Si c'est déjà rgb/rgba/hex pur, on renvoie tel quel
+            if (/^(rgb\s*\(|rgba\s*\(|#|transparent$|currentcolor$)/i.test(trimmed)) {
+                cache.set(trimmed, trimmed);
+                return trimmed;
+            }
+
+            if (!canvas) {
+                canvas = document.createElement("canvas");
+                canvas.width = 1;
+                canvas.height = 1;
+                ctx = canvas.getContext("2d", { willReadFrequently: true });
+            }
+
+            if (!ctx) {
+                cache.set(trimmed, trimmed);
+                return trimmed;
+            }
+
             try {
-                await (navigator as any).share({
-                    title: shareTitle,
-                    text: shareText,
-                    url: shareUrl,
-                });
+                ctx.fillStyle = "rgb(0, 0, 0)"; // reset
+                ctx.fillStyle = trimmed; // Canvas parse et convertit
+                const resolved = ctx.fillStyle as string;
+                cache.set(trimmed, resolved);
+                return resolved;
+            } catch (e) {
+                cache.set(trimmed, trimmed);
+                return trimmed;
+            }
+        };
+    })();
+
+    // Detecte toute fonction couleur moderne non-supportée par html2canvas
+    const hasModernColorFn = (val: string): boolean =>
+        /\b(lab|oklch|oklab|color)\s*\(/i.test(val);
+
+    // Remplace toutes les fonctions couleur modernes dans une string (gradients, ombres, etc.)
+    const replaceModernColorsInString = (val: string): string => {
+        if (!hasModernColorFn(val)) return val;
+        // Match récursif de fonctions couleur (on gère les parenthèses internes basiques)
+        return val.replace(
+            /\b(lab|oklch|oklab|color)\s*\([^()]*(?:\([^()]*\)[^()]*)*\)/gi,
+            (match) => toRgbString(match)
+        );
+    };
+
+    // Propriétés à scanner (simples couleurs)
+    const COLOR_PROPS = [
+        "color", "background-color",
+        "border-top-color", "border-right-color", "border-bottom-color", "border-left-color",
+        "outline-color", "text-decoration-color", "caret-color",
+        "fill", "stroke",
+    ];
+
+    // Propriétés qui peuvent contenir des couleurs embarquées dans une string
+    const COMPOSITE_PROPS = [
+        "background-image", "box-shadow", "text-shadow",
+        "background", "border-color", "border",
+    ];
+
+    // Parcourt TOUTES les feuilles de style du document et remplace les fonctions couleur modernes
+    // par leurs équivalents RGB dans les CSSOM. Évite que html2canvas lise directement oklch/lab
+    // depuis les stylesheets.
+    // Retourne une fonction de restauration pour remettre les règles d'origine après génération.
+    const patchStylesheets = (): (() => void) => {
+        const restoreFns: Array<() => void> = [];
+
+        const patchRule = (rule: CSSRule) => {
+            // @supports, @media, etc. contiennent d'autres règles
+            if ("cssRules" in rule) {
+                const groupRule = rule as CSSGroupingRule;
+                for (let i = 0; i < groupRule.cssRules.length; i++) {
+                    patchRule(groupRule.cssRules[i]);
+                }
                 return;
-            } catch (err: any) {
-                // L'utilisateur a annulé → on ne fait rien
-                if (err?.name === "AbortError") return;
+            }
+            if (!(rule instanceof CSSStyleRule)) return;
+
+            const style = rule.style;
+            for (let i = 0; i < style.length; i++) {
+                const prop = style[i];
+                const val = style.getPropertyValue(prop);
+                if (val && hasModernColorFn(val)) {
+                    const converted = replaceModernColorsInString(val);
+                    if (converted !== val) {
+                        const priority = style.getPropertyPriority(prop);
+                        const original = val;
+                        try {
+                            style.setProperty(prop, converted, priority);
+                            restoreFns.push(() => {
+                                try { style.setProperty(prop, original, priority); } catch (e) {}
+                            });
+                        } catch (e) {}
+                    }
+                }
+            }
+        };
+
+        // Parcours de toutes les stylesheets du document
+        for (let s = 0; s < document.styleSheets.length; s++) {
+            try {
+                const sheet = document.styleSheets[s] as CSSStyleSheet;
+                if (!sheet.cssRules) continue;
+                for (let r = 0; r < sheet.cssRules.length; r++) {
+                    patchRule(sheet.cssRules[r]);
+                }
+            } catch (e) {
+                // Cross-origin stylesheets : on ne peut pas y accéder, on ignore
             }
         }
 
-        // Fallback desktop → menu custom
-        setShareMenuOpen(true);
+        // Restauration
+        return () => restoreFns.forEach(fn => fn());
     };
 
-    const shareViaWhatsApp = () => {
-        const url = typeof window !== "undefined" ? window.location.href : "";
-        const text = `${getDynamicTitle()} — ${formatPrice(sellingPriceFAI)} € FAI\n${url}`;
-        window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank");
-        setShareMenuOpen(false);
-    };
+    // Génère le PDF à partir du DOM des 2 pages
+    const generatePdf = async (): Promise<Blob | null> => {
+        if (!plaquetteRef.current) return null;
 
-    const shareViaEmail = () => {
-        const url = typeof window !== "undefined" ? window.location.href : "";
-        const subject = `${getDynamicTitle()} — ${baseData?.propertyAddress || ""}`;
-        const body = `Bonjour,\n\nJe vous invite à découvrir ce bien proposé à la vente par PATRIM Immobilier :\n\n${getDynamicTitle()}\n${baseData?.propertyAddress || ""}\nPrix : ${formatPrice(sellingPriceFAI)} € FAI\n\nPlaquette complète :\n${url}\n\nCordialement,`;
-        window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-        setShareMenuOpen(false);
-    };
+        // Import dynamique pour éviter SSR issues
+        const html2pdf = (await import("html2pdf.js")).default;
 
-    const shareViaSMS = () => {
-        const url = typeof window !== "undefined" ? window.location.href : "";
-        const text = `${getDynamicTitle()} — ${formatPrice(sellingPriceFAI)} € FAI : ${url}`;
-        window.location.href = `sms:?&body=${encodeURIComponent(text)}`;
-        setShareMenuOpen(false);
-    };
+        const source = plaquetteRef.current;
 
-    const copyLink = async () => {
-        const url = typeof window !== "undefined" ? window.location.href : "";
+        // ÉTAPE 1 : patch global des stylesheets pour remplacer oklch/lab/oklab par rgb
+        const restoreStylesheets = patchStylesheets();
+
+        // ÉTAPE 2 : on attend un frame que les stylesheets s'appliquent
+        await new Promise(resolve => requestAnimationFrame(() => resolve(null)));
+
+        // ÉTAPE 3 : clone hors écran, en aplatissant les wrappers (qui sont pour l'affichage mobile uniquement)
+        const offscreen = document.createElement("div");
+        offscreen.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: -99999px;
+            width: 210mm;
+            background-color: #faf8f6;
+            z-index: -1;
+        `;
+
+        // Pour chaque wrapper, on extrait uniquement le .print-page sans le wrapper de scaling
+        const pages = source.querySelectorAll(".print-page");
+        pages.forEach((page) => {
+            const clonedPage = page.cloneNode(true) as HTMLElement;
+            // On reset tout style inline résiduel du scaling mobile
+            clonedPage.style.transform = "none";
+            clonedPage.style.position = "static";
+            clonedPage.style.width = "210mm";
+            clonedPage.style.height = "297mm";
+            clonedPage.style.margin = "0";
+            clonedPage.style.boxShadow = "none";
+            clonedPage.style.overflow = "hidden";
+            offscreen.appendChild(clonedPage);
+        });
+
+        document.body.appendChild(offscreen);
+
+        const options = {
+            margin: 0,
+            filename: getPdfFileName(),
+            image: { type: "jpeg", quality: 0.96 },
+            html2canvas: {
+                scale: 2,
+                useCORS: true,
+                allowTaint: true,
+                backgroundColor: "#faf8f6",
+                logging: false,
+                windowWidth: 794, // 210mm en px
+                onclone: (clonedDoc: Document) => {
+                    // Filet de sécurité : on re-patch les stylesheets du document cloné par html2canvas
+                    try {
+                        for (let s = 0; s < clonedDoc.styleSheets.length; s++) {
+                            const sheet = clonedDoc.styleSheets[s] as CSSStyleSheet;
+                            if (!sheet.cssRules) continue;
+                            const patchRuleDeep = (rule: CSSRule) => {
+                                if ("cssRules" in rule) {
+                                    const g = rule as CSSGroupingRule;
+                                    for (let i = 0; i < g.cssRules.length; i++) patchRuleDeep(g.cssRules[i]);
+                                    return;
+                                }
+                                if (!(rule instanceof (clonedDoc.defaultView as any).CSSStyleRule)) return;
+                                const styleRule = rule as CSSStyleRule;
+                                const style = styleRule.style;
+                                for (let i = 0; i < style.length; i++) {
+                                    const prop = style[i];
+                                    const val = style.getPropertyValue(prop);
+                                    if (val && hasModernColorFn(val)) {
+                                        try {
+                                            style.setProperty(prop, replaceModernColorsInString(val), style.getPropertyPriority(prop));
+                                        } catch (e) {}
+                                    }
+                                }
+                            };
+                            for (let r = 0; r < sheet.cssRules.length; r++) patchRuleDeep(sheet.cssRules[r]);
+                        }
+                    } catch (e) {
+                        console.warn("onclone stylesheet patch failed", e);
+                    }
+
+                    // Walk DOM + inline sanitize
+                    try {
+                        const walk = (el: Element) => {
+                            if (el instanceof (clonedDoc.defaultView as any).HTMLElement || el instanceof (clonedDoc.defaultView as any).SVGElement) {
+                                const htmlEl = el as HTMLElement;
+                                const computed = (clonedDoc.defaultView as any).getComputedStyle(htmlEl);
+                                [...COLOR_PROPS, ...COMPOSITE_PROPS].forEach(prop => {
+                                    const val = computed.getPropertyValue(prop);
+                                    if (val && hasModernColorFn(val)) {
+                                        try {
+                                            htmlEl.style.setProperty(prop, replaceModernColorsInString(val), "important");
+                                        } catch (e) {}
+                                    }
+                                });
+                            }
+                            for (let i = 0; i < el.children.length; i++) walk(el.children[i]);
+                        };
+                        walk(clonedDoc.body);
+                    } catch (e) {
+                        console.warn("onclone DOM walk failed", e);
+                    }
+                },
+            },
+            jsPDF: {
+                unit: "mm",
+                format: "a4",
+                orientation: "portrait",
+                compress: true,
+                hotfixes: ["px_scaling"],
+            },
+            pagebreak: {
+                mode: ["css", "legacy"],
+                before: ".print-page:not(:first-of-type)"
+            },
+        };
+
         try {
-            await navigator.clipboard.writeText(url);
-            setCopied(true);
-            setTimeout(() => setCopied(false), 2000);
+            const blob: Blob = await html2pdf()
+                .set(options)
+                .from(offscreen)
+                .outputPdf("blob");
+            return blob;
         } catch (err) {
-            console.error("Copy failed", err);
+            console.error("Erreur génération PDF", err);
+            return null;
+        } finally {
+            // Restauration des stylesheets d'origine
+            restoreStylesheets();
+            // Nettoyage du clone hors écran
+            if (offscreen.parentNode) {
+                offscreen.parentNode.removeChild(offscreen);
+            }
         }
+    };
+
+    // Point d'entrée : clic sur le bouton Partager de la toolbar
+    const handleShare = async () => {
+        setIsGeneratingPdf(true);
+        try {
+            const blob = await generatePdf();
+            if (!blob) {
+                alert("Impossible de générer le PDF. Veuillez réessayer.");
+                return;
+            }
+            setPdfBlob(blob);
+
+            const fileName = getPdfFileName();
+            const pdfFile = new File([blob], fileName, { type: "application/pdf" });
+            const shareTitle = `${getDynamicTitle()} · ${baseData?.propertyAddress || ""}`;
+            const shareText = `Découvrez ce bien à la vente avec PATRIM Immobilier — ${formatPrice(sellingPriceFAI)} € FAI`;
+
+            // Mobile : navigator.share avec fichier PDF
+            const canShareFiles =
+                typeof navigator !== "undefined" &&
+                (navigator as any).canShare &&
+                (navigator as any).canShare({ files: [pdfFile] });
+
+            if (canShareFiles) {
+                try {
+                    await (navigator as any).share({
+                        title: shareTitle,
+                        text: shareText,
+                        files: [pdfFile],
+                    });
+                    return;
+                } catch (err: any) {
+                    if (err?.name === "AbortError") return;
+                }
+            }
+
+            // Desktop : ouverture du menu custom (avec PDF stocké dans le state)
+            setShareMenuOpen(true);
+        } finally {
+            setIsGeneratingPdf(false);
+        }
+    };
+
+    // Télécharge le PDF stocké
+    const downloadPdf = () => {
+        if (!pdfBlob) return;
+        const url = URL.createObjectURL(pdfBlob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = getPdfFileName();
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    };
+
+    // WhatsApp Web : on télécharge le PDF + on ouvre WhatsApp avec un message pré-rempli
+    // L'utilisateur glisse-dépose le PDF (ou clique "joindre") depuis son téléchargement
+    const shareViaWhatsApp = () => {
+        downloadPdf();
+        const text = `${getDynamicTitle()} — ${formatPrice(sellingPriceFAI)} € FAI\n\nPlaquette PDF en pièce jointe (téléchargée).`;
+        setTimeout(() => {
+            window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank");
+        }, 500);
+        setShareMenuOpen(false);
+    };
+
+    // Email : on télécharge le PDF + on ouvre le client mail avec sujet et corps pré-remplis
+    // L'utilisateur ajoute le PDF en pièce jointe depuis son téléchargement
+    const shareViaEmail = () => {
+        downloadPdf();
+        const subject = `${getDynamicTitle()} — ${baseData?.propertyAddress || ""}`;
+        const body = `Bonjour,\n\nJe vous invite à découvrir ce bien proposé à la vente par PATRIM Immobilier :\n\n${getDynamicTitle()}\n${baseData?.propertyAddress || ""}\nPrix : ${formatPrice(sellingPriceFAI)} € FAI\n\nVeuillez trouver ci-jointe la plaquette de présentation du bien (téléchargée automatiquement).\n\nCordialement,`;
+        setTimeout(() => {
+            window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+        }, 500);
+        setShareMenuOpen(false);
+    };
+
+    // SMS : idem, téléchargement + ouverture app Messages
+    const shareViaSMS = () => {
+        downloadPdf();
+        const text = `${getDynamicTitle()} — ${formatPrice(sellingPriceFAI)} € FAI. Plaquette PDF ci-jointe.`;
+        setTimeout(() => {
+            window.location.href = `sms:?&body=${encodeURIComponent(text)}`;
+        }, 500);
+        setShareMenuOpen(false);
     };
 
     /* ============================================================
@@ -258,27 +574,93 @@ export default function PlaquetteManager() {
         <div className="min-h-screen font-sans pb-32" style={{ backgroundColor: '#e8e8ec' }}>
             <style jsx global>{`
                 @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@400;500;700;900&family=JetBrains+Mono:wght@500;700&display=swap');
+
+                /* Desktop : pages A4 centrées à leur taille réelle */
+                .print-page-wrapper {
+                    width: 210mm;
+                    max-width: 100%;
+                }
+
+                /* Mobile/tablette : scale visuel des pages pour qu'elles rentrent à l'écran */
+                @media screen and (max-width: 820px) {
+                    .plaquette-container {
+                        padding: 0 0.75rem;
+                        width: 100%;
+                        max-width: 100vw;
+                        overflow: hidden;
+                    }
+                    .print-page-wrapper {
+                        width: 100%;
+                        max-width: 100%;
+                        /* On calcule l'échelle : largeur dispo / 210mm */
+                        --scale: calc((100vw - 1.5rem) / 210mm);
+                        /* Hauteur du wrapper = hauteur scalée de la page (A4 = 297mm) */
+                        height: calc(297mm * var(--scale));
+                        position: relative;
+                        overflow: hidden;
+                    }
+                    .print-page {
+                        transform: scale(var(--scale));
+                        transform-origin: top left;
+                        position: absolute;
+                        top: 0;
+                        left: 0;
+                    }
+                }
+
                 @media print {
                     @page { size: A4 portrait; margin: 0; }
                     body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; background-color: white !important; }
                     .print-hidden { display: none !important; }
-                    .print-page { width: 210mm !important; height: 297mm !important; page-break-after: always !important; box-shadow: none !important; margin: 0 !important; overflow: hidden; }
+                    .print-page-wrapper {
+                        width: 210mm !important;
+                        height: auto !important;
+                        overflow: visible !important;
+                    }
+                    .print-page {
+                        width: 210mm !important;
+                        height: 297mm !important;
+                        box-shadow: none !important;
+                        margin: 0 !important;
+                        overflow: hidden;
+                        transform: none !important;
+                        position: static !important;
+                    }
+                    .print-page:not(:last-child) { page-break-after: always !important; }
+                    .print-page:last-child { page-break-after: auto !important; }
                     a { text-decoration: none !important; color: inherit !important; display: block !important; }
                 }
                 .font-serif { font-family: 'Playfair Display', serif; }
                 .font-mono-num { font-family: 'JetBrains Mono', monospace; }
             `}</style>
 
-            {/* TOOLBAR ÉDITEUR */}
-            <div className="fixed bottom-10 left-1/2 -translate-x-1/2 text-white px-8 py-4 rounded-full flex items-center gap-5 shadow-2xl z-50 print-hidden border bg-[#0a0a0c]/95 backdrop-blur-md">
+            {/* ============================================================
+                TOOLBAR — version DESKTOP (large, avec titre)
+               ============================================================ */}
+            <div className="hidden md:flex fixed bottom-10 left-1/2 -translate-x-1/2 text-white px-8 py-4 rounded-full items-center gap-5 shadow-2xl z-50 print-hidden border bg-[#0a0a0c]/95 backdrop-blur-md">
                 <Button variant="ghost" onClick={() => router.back()} className="text-zinc-400 hover:text-white rounded-full text-sm">
                     <ArrowLeft size={15} className="mr-2"/> Retour
                 </Button>
                 <div className="w-px h-5 bg-white/10"></div>
                 <span className="text-xs font-bold text-white px-4 tracking-widest uppercase">Brochure Commerciale (2 pages)</span>
                 <div className="w-px h-5 bg-white/10"></div>
-                <Button onClick={handleShare} variant="ghost" className="rounded-full px-5 h-10 font-bold text-sm text-white hover:bg-white/10 border border-white/15">
-                    <Share2 size={15} className="mr-2"/> Partager
+                <Button
+                    onClick={handleShare}
+                    disabled={isGeneratingPdf}
+                    variant="ghost"
+                    className="rounded-full px-5 h-10 font-bold text-sm text-white hover:bg-white/10 border border-white/15 disabled:opacity-60"
+                >
+                    {isGeneratingPdf ? (
+                        <>
+                            <Loader2 size={15} className="mr-2 animate-spin"/>
+                            Génération…
+                        </>
+                    ) : (
+                        <>
+                            <Share2 size={15} className="mr-2"/>
+                            Partager
+                        </>
+                    )}
                 </Button>
                 <Button onClick={() => window.print()} className="rounded-full px-7 h-10 font-bold text-sm bg-gradient-to-r from-[#8a0e01] to-[#d35f52]">
                     <Printer size={15} className="mr-2"/> Imprimer PDF
@@ -286,8 +668,46 @@ export default function PlaquetteManager() {
             </div>
 
             {/* ============================================================
+                TOOLBAR — version MOBILE (compacte, icônes)
+               ============================================================ */}
+            <div className="md:hidden fixed bottom-5 left-3 right-3 text-white px-3 py-2.5 rounded-full flex items-center gap-2 shadow-2xl z-50 print-hidden border border-white/10 bg-[#0a0a0c]/95 backdrop-blur-md">
+                <button
+                    onClick={() => router.back()}
+                    className="text-zinc-400 hover:text-white p-2.5 rounded-full shrink-0"
+                    aria-label="Retour"
+                >
+                    <ArrowLeft size={16}/>
+                </button>
+                <div className="w-px h-5 bg-white/10"></div>
+                <button
+                    onClick={handleShare}
+                    disabled={isGeneratingPdf}
+                    className="flex-1 flex items-center justify-center gap-2 px-3 h-10 font-bold text-xs text-white hover:bg-white/10 rounded-full border border-white/15 disabled:opacity-60 min-w-0"
+                >
+                    {isGeneratingPdf ? (
+                        <>
+                            <Loader2 size={14} className="animate-spin shrink-0"/>
+                            <span className="truncate">Génération…</span>
+                        </>
+                    ) : (
+                        <>
+                            <Share2 size={14} className="shrink-0"/>
+                            <span>Partager</span>
+                        </>
+                    )}
+                </button>
+                <button
+                    onClick={() => window.print()}
+                    className="flex items-center justify-center gap-2 px-4 h-10 font-bold text-xs rounded-full bg-gradient-to-r from-[#8a0e01] to-[#d35f52] shrink-0"
+                >
+                    <Printer size={14}/>
+                    <span>Imprimer</span>
+                </button>
+            </div>
+
+            {/* ============================================================
                 MENU PARTAGE CUSTOM (desktop uniquement)
-                S'ouvre si navigator.share n'est pas disponible
+                S'ouvre si navigator.share (fichiers) n'est pas disponible
                ============================================================ */}
             {shareMenuOpen && (
                 <div
@@ -315,6 +735,22 @@ export default function PlaquetteManager() {
                             </button>
                         </div>
 
+                        {/* Bandeau info PDF */}
+                        <div className="px-5 py-3 flex items-center gap-3 border-b border-zinc-100" style={{ backgroundColor: `${COLORS.primary}08` }}>
+                            <span className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: COLORS.primary }}>
+                                <FileText size={14} className="text-white"/>
+                            </span>
+                            <div className="flex-1 min-w-0">
+                                <p className="text-[10px] uppercase font-black tracking-wider" style={{ color: COLORS.primary }}>
+                                    PDF prêt à partager
+                                </p>
+                                <p className="text-[10px] text-zinc-600 font-medium truncate">{getPdfFileName()}</p>
+                            </div>
+                            <span className="text-[9px] uppercase tracking-widest font-black text-emerald-600 bg-emerald-50 px-2 py-1 rounded-md border border-emerald-200">
+                                <Check size={10} className="inline mr-0.5"/> Généré
+                            </span>
+                        </div>
+
                         {/* Options de partage */}
                         <div className="p-5 space-y-2">
                             {/* WhatsApp */}
@@ -326,8 +762,8 @@ export default function PlaquetteManager() {
                                     <MessageCircle size={20} style={{ color: '#25D366' }}/>
                                 </span>
                                 <div className="flex-1 text-left">
-                                    <p className="text-sm font-black text-zinc-900">WhatsApp</p>
-                                    <p className="text-[10px] text-zinc-500 font-medium">Envoyer via WhatsApp Web</p>
+                                    <p className="text-sm font-black text-zinc-900">WhatsApp Web</p>
+                                    <p className="text-[10px] text-zinc-500 font-medium">Télécharge le PDF & ouvre WhatsApp</p>
                                 </div>
                                 <ArrowUpRight size={16} className="text-zinc-400 group-hover:text-zinc-700 transition-colors"/>
                             </button>
@@ -342,7 +778,7 @@ export default function PlaquetteManager() {
                                 </span>
                                 <div className="flex-1 text-left">
                                     <p className="text-sm font-black text-zinc-900">Email</p>
-                                    <p className="text-[10px] text-zinc-500 font-medium">Ouvrir votre messagerie</p>
+                                    <p className="text-[10px] text-zinc-500 font-medium">Télécharge le PDF & ouvre le mail</p>
                                 </div>
                                 <ArrowUpRight size={16} className="text-zinc-400 group-hover:text-zinc-700 transition-colors"/>
                             </button>
@@ -357,37 +793,32 @@ export default function PlaquetteManager() {
                                 </span>
                                 <div className="flex-1 text-left">
                                     <p className="text-sm font-black text-zinc-900">SMS</p>
-                                    <p className="text-[10px] text-zinc-500 font-medium">Envoyer par message</p>
+                                    <p className="text-[10px] text-zinc-500 font-medium">Télécharge le PDF & ouvre Messages</p>
                                 </div>
                                 <ArrowUpRight size={16} className="text-zinc-400 group-hover:text-zinc-700 transition-colors"/>
                             </button>
 
-                            {/* Copier le lien */}
+                            {/* Télécharger uniquement */}
                             <button
-                                onClick={copyLink}
+                                onClick={() => { downloadPdf(); setShareMenuOpen(false); }}
                                 className="w-full flex items-center gap-4 p-4 rounded-2xl hover:bg-zinc-50 transition-colors border border-zinc-100 group"
                             >
-                                <span className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0 transition-colors" style={{ backgroundColor: copied ? '#10b98115' : '#39393915' }}>
-                                    {copied
-                                        ? <Check size={20} className="text-emerald-600"/>
-                                        : <Link2 size={20} style={{ color: COLORS.gray }}/>
-                                    }
+                                <span className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0" style={{ backgroundColor: `${COLORS.gray}15` }}>
+                                    <Download size={20} style={{ color: COLORS.gray }}/>
                                 </span>
                                 <div className="flex-1 text-left">
-                                    <p className="text-sm font-black text-zinc-900">
-                                        {copied ? "Lien copié !" : "Copier le lien"}
-                                    </p>
-                                    <p className="text-[10px] text-zinc-500 font-medium truncate max-w-[280px]">
-                                        {typeof window !== "undefined" ? window.location.href : ""}
-                                    </p>
+                                    <p className="text-sm font-black text-zinc-900">Télécharger le PDF</p>
+                                    <p className="text-[10px] text-zinc-500 font-medium">Sauvegarder le fichier sur votre appareil</p>
                                 </div>
+                                <ArrowUpRight size={16} className="text-zinc-400 group-hover:text-zinc-700 transition-colors"/>
                             </button>
                         </div>
 
-                        {/* Footer modale */}
-                        <div className="px-5 py-3 border-t border-zinc-100 bg-zinc-50 text-center">
-                            <p className="text-[9px] uppercase tracking-[0.25em] font-bold text-zinc-400">
-                                PATRIM Immobilier · Partage sécurisé
+                        {/* Note d'usage */}
+                        <div className="px-5 py-3 border-t border-zinc-100 bg-zinc-50">
+                            <p className="text-[9px] text-zinc-500 font-medium text-center leading-relaxed">
+                                Le PDF sera téléchargé automatiquement avant l'ouverture de l'app.<br/>
+                                Joignez-le depuis votre dossier Téléchargements.
                             </p>
                         </div>
                     </div>
@@ -428,11 +859,12 @@ export default function PlaquetteManager() {
             {/* ============================================================
                 RENDU PLAQUETTE — 2 pages A4 portrait
                ============================================================ */}
-            <div className="flex flex-col items-center gap-10">
+            <div ref={plaquetteRef} className="plaquette-container flex flex-col items-center gap-10">
 
                 {/* ================================================
                     PAGE 1 — COUVERTURE PREMIUM
                    ================================================ */}
+                <div className="print-page-wrapper">
                 <div className="print-page w-[210mm] h-[297mm] shadow-2xl relative flex flex-col overflow-hidden" style={{ backgroundColor: COLORS.ivory }}>
 
                     {/* Hero photo 58% — titre DANS le hero sur zone sombre */}
@@ -548,10 +980,12 @@ export default function PlaquetteManager() {
                         </span>
                     </div>
                 </div>
+                </div>
 
                 {/* ================================================
                     PAGE 2 — DESCRIPTION + ÉQUIPEMENTS + COÛTS + DIAGNOSTICS + QR
                    ================================================ */}
+                <div className="print-page-wrapper">
                 <div className="print-page w-[210mm] h-[297mm] shadow-2xl relative flex flex-col p-12" style={{ backgroundColor: COLORS.ivory }}>
 
                     <div className="flex justify-between items-end border-b border-zinc-300 pb-4 mb-6">
@@ -726,6 +1160,7 @@ export default function PlaquetteManager() {
                             02 / 02
                         </span>
                     </div>
+                </div>
                 </div>
 
             </div>
