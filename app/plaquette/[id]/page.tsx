@@ -7,7 +7,7 @@ import { formatNumber as formatPrice } from "@/lib/formatters";
 import { 
     ArrowLeft, Printer, Settings2, Sparkles, MapPin, 
     Maximize, Grid, Layers, Leaf, Banknote, 
-    Smartphone, CheckCircle, Image as ImageIcon
+    Calculator, Smartphone, CheckCircle, Image as ImageIcon, MousePointerClick
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,7 +16,6 @@ const COLORS = {
     primary: "#8a0e01",
     secondary: "#d35f52",
     gray: "#393939",
-    lightGray: "#f8f8f9",
     darkBg: "#0a0a0c",
 };
 
@@ -52,6 +51,7 @@ export default function PlaquetteManager() {
         fetchEstimation();
     }, [estimationId]);
 
+    // URLs interactives
     const photosUrl = `${domain}/galerie/${estimationId}`;
     const simulationUrl = `${domain}/simulation/${estimationId}?price=${sellingPriceFAI}`;
 
@@ -85,7 +85,6 @@ export default function PlaquetteManager() {
             <div className="flex items-end h-20 gap-1.5">
                 {["A","B","C","D","E","F","G"].map((letter, index) => {
                     const isSelected = currentLetter === letter;
-                    // Hauteur dégressive pour le style Fintech
                     const height = 100 - (index * 8); 
                     return (
                         <div key={letter} className="flex-1 flex flex-col items-center gap-2">
@@ -93,7 +92,7 @@ export default function PlaquetteManager() {
                                 className={`w-full rounded-t-lg transition-all duration-500 ${isSelected ? 'h-20 shadow-lg border-2 border-white' : 'h-10 opacity-20'}`}
                                 style={{ 
                                     backgroundColor: DPE_COLORS[letter],
-                                    height: isSelected ? '80px' : `${height / 2}px` // Hauteur normale vs surbrillance
+                                    height: isSelected ? '80px' : `${height / 2}px`
                                 }}
                             />
                             <span className={`text-[10px] font-bold ${isSelected ? 'text-zinc-800' : 'text-zinc-300'}`}>{letter}</span>
@@ -115,20 +114,20 @@ export default function PlaquetteManager() {
                     body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; background-color: white !important; }
                     .print-hidden { display: none !important; }
                     .print-page { width: 210mm !important; height: 297mm !important; page-break-after: always !important; box-shadow: none !important; margin: 0 !important; overflow: hidden; }
+                    /* Sécurisation absolue des liens PDF */
+                    a { text-decoration: none !important; color: inherit !important; display: block !important; }
                 }
                 .font-serif { font-family: 'Playfair Display', serif; }
             `}</style>
 
-            {/* BARRE D'ACTIONS */}
             <div className="fixed bottom-10 left-1/2 -translate-x-1/2 text-white px-8 py-4 rounded-full flex items-center gap-5 shadow-2xl z-50 print-hidden border bg-[#0a0a0c]/95 backdrop-blur-md">
                 <Button variant="ghost" onClick={() => router.back()} className="text-zinc-400 hover:text-white rounded-full text-sm"><ArrowLeft size={15} className="mr-2"/> Retour</Button>
                 <div className="w-px h-5 bg-white/10"></div>
-                <span className="text-xs font-bold text-white px-4 tracking-widest uppercase">Brochure Interactive Patrim (2 pages)</span>
+                <span className="text-xs font-bold text-white px-4 tracking-widest uppercase">Brochure Commerciale (2 pages)</span>
                 <div className="w-px h-5 bg-white/10"></div>
                 <Button onClick={() => window.print()} className="rounded-full px-7 h-10 font-bold text-sm bg-gradient-to-r from-[#8a0e01] to-[#d35f52]"><Printer size={15} className="mr-2"/> Imprimer PDF</Button>
             </div>
 
-            {/* CONFIGURATEUR */}
             <div className="bg-[#0a0a0c] text-white pt-8 pb-12 px-6 shadow-xl print-hidden mb-12 border-b border-white/10">
                 <div className="max-w-6xl mx-auto grid grid-cols-3 gap-8">
                     <div className="col-span-1 space-y-4">
@@ -155,7 +154,6 @@ export default function PlaquetteManager() {
                 </div>
             </div>
 
-            {/* RENDU PDF */}
             <div className="flex flex-col items-center gap-10">
                 {/* PAGE 1 */}
                 <div className="print-page w-[210mm] h-[297mm] bg-white shadow-2xl relative flex flex-col">
@@ -216,32 +214,36 @@ export default function PlaquetteManager() {
                     </div>
 
                     <div className="flex gap-6 mb-10">
-                        {/* SECTION QR CODES - ÉLARGIE ET EMBELLIE */}
+                        {/* SECTION QR CODES - RENDUS CLIQUABLES POUR LE PDF */}
                         <div className="w-[55%] grid grid-cols-2 gap-5">
-                            <div className="bg-white rounded-[32px] p-6 border border-zinc-100 shadow-lg flex flex-col items-center text-center relative overflow-hidden group">
+                            
+                            {/* Lien englobant toute la carte. Le texte transparent assure la détection par le PDF */}
+                            <a href={photosUrl} target="_blank" rel="noopener noreferrer" className="block bg-white rounded-[32px] p-6 border border-zinc-100 shadow-lg flex flex-col items-center text-center relative overflow-hidden group hover:border-[#d35f52] transition-colors cursor-pointer">
+                                <span className="opacity-0 absolute text-[1px]">{photosUrl}</span>
                                 <div className="absolute inset-x-0 top-0 h-1.5 bg-[#d35f52]"></div>
-                                <div className="bg-zinc-50 p-3 rounded-2xl mb-4 border border-zinc-50 shadow-inner">
+                                <div className="bg-zinc-50 p-3 rounded-2xl mb-4 border border-zinc-50 shadow-inner group-hover:scale-105 transition-transform">
                                     <img src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(photosUrl)}`} alt="QR Photos" className="w-24 h-24"/>
                                 </div>
                                 <h3 className="text-sm font-black text-zinc-800 mb-1 uppercase tracking-tighter">Album Photo HD</h3>
-                                <p className="text-[10px] text-zinc-400 leading-tight">Flashez pour visiter le bien</p>
-                            </div>
+                                <p className="text-[10px] text-zinc-400 leading-tight">Cliquez ou flashez pour visiter</p>
+                            </a>
 
-                            <div className="bg-white rounded-[32px] p-6 border border-zinc-100 shadow-lg flex flex-col items-center text-center relative overflow-hidden group">
+                            <a href={simulationUrl} target="_blank" rel="noopener noreferrer" className="block bg-white rounded-[32px] p-6 border border-zinc-100 shadow-lg flex flex-col items-center text-center relative overflow-hidden group hover:border-[#8a0e01] transition-colors cursor-pointer">
+                                <span className="opacity-0 absolute text-[1px]">{simulationUrl}</span>
                                 <div className="absolute inset-x-0 top-0 h-1.5 bg-[#8a0e01]"></div>
-                                <div className="bg-zinc-50 p-3 rounded-2xl mb-4 border border-zinc-50 shadow-inner">
+                                <div className="bg-zinc-50 p-3 rounded-2xl mb-4 border border-zinc-50 shadow-inner group-hover:scale-105 transition-transform">
                                     <img src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(simulationUrl)}`} alt="QR Simulation" className="w-24 h-24"/>
                                 </div>
-                                <h3 className="text-sm font-black text-zinc-800 mb-1 uppercase tracking-tighter">Simulateur FinTech</h3>
-                                <p className="text-[10px] text-zinc-400 leading-tight">Calculez votre crédit et rentabilité</p>
-                            </div>
+                                <h3 className="text-sm font-black text-zinc-800 mb-1 uppercase tracking-tighter">Simulateur Prêt</h3>
+                                <p className="text-[10px] text-zinc-400 leading-tight">Cliquez ou flashez pour calculer</p>
+                            </a>
                             
                             <div className="col-span-2 flex items-center justify-center gap-3 text-[#8a0e01] font-black text-[10px] uppercase tracking-[0.2em] bg-white py-3 rounded-2xl border border-zinc-100 shadow-sm">
-                                <Smartphone size={16}/> Flashez avec votre mobile
+                                <MousePointerClick size={16}/> Cliquez sur les blocs ou utilisez un smartphone
                             </div>
                         </div>
 
-                        {/* CHARGES & EQUIPEMENTS - TEXTES CORRIGÉS */}
+                        {/* COÛTS & EQUIPEMENTS */}
                         <div className="w-[45%] flex flex-col gap-5">
                             <div className="bg-white p-6 rounded-[32px] border border-zinc-100 shadow-md">
                                 <h3 className="text-[10px] uppercase tracking-widest font-black flex items-center gap-2 mb-4 text-[#8a0e01]"><Banknote size={14}/> Coûts Annuels</h3>
@@ -261,6 +263,7 @@ export default function PlaquetteManager() {
                         </div>
                     </div>
 
+                    {/* BILAN ÉNERGÉTIQUE */}
                     <div className="mt-auto flex flex-col gap-6">
                         <h3 className="text-[11px] uppercase tracking-[0.3em] font-black text-center text-zinc-300 flex items-center justify-center gap-5">
                             <div className="h-px flex-1 bg-zinc-100"></div> Bilan Énergétique <div className="h-px flex-1 bg-zinc-100"></div>
