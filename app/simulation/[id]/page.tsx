@@ -847,7 +847,7 @@ export default function SimulateurAcquereur() {
                 <div className="absolute bottom-10 left-10 right-10 flex items-end justify-between gap-10 max-w-[1600px] mx-auto">
                     <div className="text-white flex-1 min-w-0">
                         <p className="text-xs uppercase tracking-[0.3em] font-black mb-3 flex items-center gap-2" style={{ color: COLORS.secondary, textShadow: '0 2px 6px rgba(0,0,0,0.6)' }}>
-                            <TrendingUp size={14}/> Simulateur Financier Premium
+                            <TrendingUp size={14}/> Simulateur Financier
                         </p>
                         <h1 className="font-serif text-5xl xl:text-6xl font-bold leading-tight" style={{ textShadow: '0 4px 16px rgba(0,0,0,0.7)' }}>
                             {data.propertyType} {data.rooms > 0 && `T${data.rooms}`}
