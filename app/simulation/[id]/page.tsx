@@ -537,14 +537,10 @@ export default function SimulateurAcquereur() {
             >
                 <svg viewBox={`0 0 ${svgWidth} ${svgHeight}`} className="w-full h-56 lg:h-72 overflow-visible" preserveAspectRatio="none">
                     <defs>
-                        <linearGradient id="gradBalanceArea" x1="0" x2="0" y1="0" y2="1">
-                            <stop offset="0%" stopColor={COLORS.primary} stopOpacity="0.25"/>
-                            <stop offset="60%" stopColor={COLORS.secondary} stopOpacity="0.12"/>
+                        {/* Gradient pour l'aire sous courbe uniquement, en coordonnées absolues */}
+                        <linearGradient id="gradBalanceArea" x1="0" y1="0" x2="0" y2={svgHeight} gradientUnits="userSpaceOnUse">
+                            <stop offset="0%" stopColor={COLORS.primary} stopOpacity="0.28"/>
                             <stop offset="100%" stopColor={COLORS.secondary} stopOpacity="0.02"/>
-                        </linearGradient>
-                        <linearGradient id="gradBalanceLine" x1="0" x2="1" y1="0" y2="0">
-                            <stop offset="0%" stopColor={COLORS.primary}/>
-                            <stop offset="100%" stopColor={COLORS.secondary}/>
                         </linearGradient>
                         <filter id="glowDot" x="-50%" y="-50%" width="200%" height="200%">
                             <feGaussianBlur stdDeviation="4" result="coloredBlur"/>
@@ -555,25 +551,46 @@ export default function SimulateurAcquereur() {
                         </filter>
                     </defs>
 
+                    {/* Grille horizontale */}
                     {[0.25, 0.5, 0.75].map((r, i) => (
                         <line key={i} x1="0" x2={svgWidth} y1={svgPadding.top + chartHeight * r} y2={svgPadding.top + chartHeight * r} stroke="#e4e4e7" strokeWidth="1" strokeDasharray="2 6"/>
                     ))}
 
+                    {/* Grille verticale (tous les 5 ans) */}
                     {Array.from({ length: Math.floor(safeDuration / 5) + 1 }, (_, i) => i * 5).filter(y => y > 0 && y < safeDuration).map(y => (
                         <line key={y} x1={(y / safeDuration) * svgWidth} x2={(y / safeDuration) * svgWidth} y1={svgPadding.top} y2={svgPadding.top + chartHeight} stroke="#e4e4e7" strokeWidth="1" strokeDasharray="2 6" opacity="0.6"/>
                     ))}
 
-                    <path d={`${balancePath} L ${svgWidth} ${svgPadding.top + chartHeight} L 0 ${svgPadding.top + chartHeight} Z`} fill="url(#gradBalanceArea)"/>
-                    <path d={balancePath} fill="none" stroke="url(#gradBalanceLine)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+                    {/* Aire sous courbe avec gradient */}
+                    {balancePath && (
+                        <path d={`${balancePath} L ${svgWidth} ${svgPadding.top + chartHeight} L 0 ${svgPadding.top + chartHeight} Z`} fill="url(#gradBalanceArea)"/>
+                    )}
 
-                    <line x1={currentX} y1={svgPadding.top} x2={currentX} y2={svgPadding.top + chartHeight} stroke={COLORS.primary} strokeWidth="1.5" strokeDasharray="4 4" opacity="0.6"/>
+                    {/* Courbe capital restant dû — couleur solide rouge PATRIM, pas de gradient
+                        (le gradient sur stroke posait problème avec preserveAspectRatio=none) */}
+                    {balancePath && (
+                        <path
+                            d={balancePath}
+                            fill="none"
+                            stroke={COLORS.primary}
+                            strokeWidth="3"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            vectorEffect="non-scaling-stroke"
+                        />
+                    )}
 
+                    {/* Ligne verticale interactive (scrubbing) */}
+                    <line x1={currentX} y1={svgPadding.top} x2={currentX} y2={svgPadding.top + chartHeight} stroke={COLORS.primary} strokeWidth="1.5" strokeDasharray="4 4" opacity="0.6" vectorEffect="non-scaling-stroke"/>
+
+                    {/* Marques jalons sur l'axe X */}
                     {MILESTONES.filter(m => m <= safeDuration).map(m => (
-                        <circle key={`ms-${m}`} cx={(m / safeDuration) * svgWidth} cy={svgPadding.top + chartHeight} r="3" fill="#fff" stroke={COLORS.secondary} strokeWidth="1.5" opacity="0.7"/>
+                        <circle key={`ms-${m}`} cx={(m / safeDuration) * svgWidth} cy={svgPadding.top + chartHeight} r="3" fill="#fff" stroke={COLORS.secondary} strokeWidth="1.5" opacity="0.7" vectorEffect="non-scaling-stroke"/>
                     ))}
 
+                    {/* Point de sélection */}
                     <circle cx={currentX} cy={currentBalanceY} r="14" fill="white" opacity="0.9"/>
-                    <circle cx={currentX} cy={currentBalanceY} r="9" fill="white" stroke={COLORS.primary} strokeWidth="2.5"/>
+                    <circle cx={currentX} cy={currentBalanceY} r="9" fill="white" stroke={COLORS.primary} strokeWidth="2.5" vectorEffect="non-scaling-stroke"/>
                     <circle cx={currentX} cy={currentBalanceY} r="3.5" fill={COLORS.primary}/>
                 </svg>
 
@@ -868,7 +885,7 @@ export default function SimulateurAcquereur() {
                 <div className="absolute bottom-10 left-10 right-10 flex items-end justify-between gap-10 max-w-[1600px] mx-auto">
                     <div className="text-white flex-1 min-w-0">
                         <p className="text-xs uppercase tracking-[0.3em] font-black mb-3 flex items-center gap-2" style={{ color: COLORS.secondary, textShadow: '0 2px 6px rgba(0,0,0,0.6)' }}>
-                            <TrendingUp size={14}/> Simulateur Financier Premium
+                            <TrendingUp size={14}/> Simulateur Financier 
                         </p>
                         <h1 className="font-serif text-5xl xl:text-6xl font-bold leading-tight" style={{ textShadow: '0 4px 16px rgba(0,0,0,0.7)' }}>
                             {data.propertyType} {data.rooms > 0 && `T${data.rooms}`}
