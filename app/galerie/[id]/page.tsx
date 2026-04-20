@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
+import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
-import { X, ChevronLeft, ChevronRight, ImageIcon, Search, Camera, ZoomIn } from "lucide-react";
+import { X, ChevronLeft, ChevronRight, ImageIcon, Search, Camera, ZoomIn, Calculator, ArrowRight } from "lucide-react";
 
 /* ============================================================
    PATRIM · Charte couleurs
@@ -19,6 +20,7 @@ export default function GalerieAutomatique() {
     const [photos, setPhotos] = useState<string[]>([]);
     const [loading, setLoading] = useState(true);
     const [address, setAddress] = useState("");
+    const [price, setPrice] = useState<number>(0);
 
     // --- ÉTATS GALERIE ---
     const [selectedPhotoIndex, setSelectedPhotoIndex] = useState<number | null>(null);
@@ -36,6 +38,7 @@ export default function GalerieAutomatique() {
             if (data?.data_json) {
                 const d = data.data_json;
                 setAddress(d.propertyAddress || "");
+                setPrice(d.highPrice || 0);
                 const all = Array.from(new Set([d.mainPhoto, ...(d.secondaryPhotos || []), ...(d.extraPhotos || [])])).filter(Boolean) as string[];
                 setPhotos(all);
             }
@@ -135,7 +138,7 @@ export default function GalerieAutomatique() {
             <div className="pointer-events-none fixed top-0 -left-40 w-[500px] h-[500px] rounded-full blur-[120px] opacity-20" style={{ background: `radial-gradient(circle, ${COLORS.secondary} 0%, transparent 70%)` }}/>
             <div className="pointer-events-none fixed top-40 -right-40 w-[500px] h-[500px] rounded-full blur-[140px] opacity-15" style={{ background: `radial-gradient(circle, ${COLORS.primary} 0%, transparent 70%)` }}/>
 
-            <div className="max-w-4xl mx-auto space-y-8 relative z-10">
+            <div className="max-w-4xl mx-auto space-y-8 relative z-10 pb-24">
                 {/* HEADER PREMIUM */}
                 <div className="pt-10 pb-6 text-center">
                     <div className="inline-flex flex-col items-center gap-4 px-8 py-6 rounded-3xl bg-white/70 backdrop-blur-xl border border-white shadow-[0_20px_60px_-15px_rgba(138,14,1,0.15)]">
@@ -203,6 +206,46 @@ export default function GalerieAutomatique() {
                     </p>
                 </div>
             </div>
+
+            {/* ============================================================
+                BOUTON STICKY FLOTTANT — Accès au simulateur
+                Masqué quand la lightbox est ouverte pour ne pas gêner
+                ============================================================ */}
+            {selectedPhotoIndex === null && (
+                <Link
+                    href={`/simulation/${params.id}${price > 0 ? `?price=${price}` : ''}`}
+                    className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 group animate-in slide-in-from-bottom-8 fade-in duration-500"
+                >
+                    <div
+                        className="relative flex items-center gap-3 pl-4 pr-3 py-3 rounded-full backdrop-blur-2xl border border-white shadow-[0_20px_50px_-10px_rgba(138,14,1,0.5)] transition-all duration-300 hover:scale-105 hover:shadow-[0_25px_60px_-10px_rgba(138,14,1,0.65)]"
+                        style={{ background: `linear-gradient(135deg, ${COLORS.primary}, ${COLORS.secondary})` }}
+                    >
+                        {/* Halo de brillance au hover */}
+                        <div
+                            className="absolute inset-0 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"
+                            style={{ background: `linear-gradient(135deg, rgba(255,255,255,0.25) 0%, transparent 50%)` }}
+                        />
+
+                        {/* Icône calculator */}
+                        <div className="flex items-center justify-center w-9 h-9 rounded-full bg-white/20 backdrop-blur-sm border border-white/30 flex-shrink-0">
+                            <Calculator size={16} className="text-white"/>
+                        </div>
+
+                        {/* Texte */}
+                        <div className="flex flex-col pr-1">
+                            <span className="text-[8px] uppercase tracking-[0.25em] font-black text-white/80 leading-none">Ce bien vous plaît ?</span>
+                            <span className="text-xs md:text-sm font-black text-white tracking-tight leading-tight mt-0.5">
+                                Calculer ma mensualité
+                            </span>
+                        </div>
+
+                        {/* Flèche */}
+                        <div className="flex items-center justify-center w-9 h-9 rounded-full bg-white/90 group-hover:bg-white transition-all duration-300 flex-shrink-0 shadow-md group-hover:translate-x-0.5">
+                            <ArrowRight size={16} style={{ color: COLORS.primary }}/>
+                        </div>
+                    </div>
+                </Link>
+            )}
 
             {/* ============================================================
                 LIGHTBOX PREMIUM

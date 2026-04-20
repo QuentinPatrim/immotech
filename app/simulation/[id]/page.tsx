@@ -2,12 +2,13 @@
 
 import { useState, useEffect, useRef, useMemo, ReactNode } from "react";
 import { useParams, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import { formatNumber as formatPrice } from "@/lib/formatters";
 import {
     Calculator, Wallet, TrendingUp, AlertCircle, Percent, Clock, Key,
     Sparkles, ArrowUpRight, ArrowDownRight, Home, Coins, Receipt, PiggyBank,
-    Landmark, BadgePercent, Tag, Info
+    Landmark, BadgePercent, Tag, Info, Camera, ArrowRight
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -48,6 +49,17 @@ export default function SimulateurAcquereur() {
 
     // --- PRIX DE RÉFÉRENCE (prix de présentation FAI, non modifiable) ---
     const referencePrice = initialPrice > 0 ? initialPrice : (data?.highPrice || 0);
+
+    // --- COMPTAGE DES PHOTOS DISPONIBLES (pour la mini-preview galerie) ---
+    const photoCount = useMemo(() => {
+        if (!data) return 0;
+        const all = Array.from(new Set([
+            data.mainPhoto,
+            ...(data.secondaryPhotos || []),
+            ...(data.extraPhotos || []),
+        ])).filter(Boolean);
+        return all.length;
+    }, [data]);
 
     // --- INPUTS UTILISATEUR ---
     const [offerPrice, setOfferPrice] = useState<number>(0);
@@ -811,6 +823,15 @@ export default function SimulateurAcquereur() {
                             </p>
                         </div>
                     </div>
+
+                    {/* Mini-preview galerie — Version MOBILE */}
+                    {photoCount > 0 && (
+                        <GalleryPreview
+                            galleryId={estimationId}
+                            mainPhoto={data.mainPhoto}
+                            photoCount={photoCount}
+                        />
+                    )}
                 </div>
             </div>
 
@@ -847,7 +868,7 @@ export default function SimulateurAcquereur() {
                 <div className="absolute bottom-10 left-10 right-10 flex items-end justify-between gap-10 max-w-[1600px] mx-auto">
                     <div className="text-white flex-1 min-w-0">
                         <p className="text-xs uppercase tracking-[0.3em] font-black mb-3 flex items-center gap-2" style={{ color: COLORS.secondary, textShadow: '0 2px 6px rgba(0,0,0,0.6)' }}>
-                            <TrendingUp size={14}/> Simulateur Financier
+                            <TrendingUp size={14}/> Simulateur Financier Premium
                         </p>
                         <h1 className="font-serif text-5xl xl:text-6xl font-bold leading-tight" style={{ textShadow: '0 4px 16px rgba(0,0,0,0.7)' }}>
                             {data.propertyType} {data.rooms > 0 && `T${data.rooms}`}
@@ -855,7 +876,7 @@ export default function SimulateurAcquereur() {
                     </div>
 
                     {/* Cartouche prix — intégré dans le hero, plus de translate-y qui déborde */}
-                    <div className="flex-shrink-0">
+                    <div className="flex-shrink-0 flex flex-col gap-3 items-end">
                         <div className="bg-white/95 backdrop-blur-2xl rounded-2xl border border-white shadow-[0_20px_60px_-10px_rgba(138,14,1,0.5)] overflow-hidden">
                             <div className="px-6 pt-2.5 pb-2 flex items-center justify-between gap-6" style={{ background: `linear-gradient(135deg, ${COLORS.primary}, ${COLORS.secondary})` }}>
                                 <span className="text-[10px] uppercase tracking-[0.3em] font-black text-white/95">
@@ -870,6 +891,16 @@ export default function SimulateurAcquereur() {
                                 </p>
                             </div>
                         </div>
+
+                        {/* Mini-preview galerie — Version DESKTOP (sous le cartouche prix) */}
+                        {photoCount > 0 && (
+                            <GalleryPreview
+                                galleryId={estimationId}
+                                mainPhoto={data.mainPhoto}
+                                photoCount={photoCount}
+                                variant="desktop"
+                            />
+                        )}
                     </div>
                 </div>
             </div>
@@ -1143,5 +1174,65 @@ function WaterfallChart({
                 );
             })}
         </div>
+    );
+}
+
+/* ============================================================
+   COMPOSANT GALLERY PREVIEW — Lien vers la galerie photo
+   Petite bande avec photo miniature + compteur + flèche.
+   Deux variantes : mobile (plus compact) / desktop (aligné
+   sur la largeur du cartouche prix).
+   ============================================================ */
+function GalleryPreview({
+    galleryId, mainPhoto, photoCount, variant = "mobile",
+}: {
+    galleryId: string;
+    mainPhoto: string;
+    photoCount: number;
+    variant?: "mobile" | "desktop";
+}) {
+    return (
+        <Link
+            href={`/galerie/${galleryId}`}
+            className={`group block mt-3 ${variant === "desktop" ? "w-full" : ""}`}
+        >
+            <div className="flex items-center gap-3 p-2 pr-4 bg-white/90 backdrop-blur-xl rounded-2xl border border-white shadow-[0_10px_30px_-8px_rgba(138,14,1,0.25)] hover:shadow-[0_15px_40px_-8px_rgba(138,14,1,0.4)] transition-all duration-300 hover:-translate-y-0.5">
+                {/* Miniature photo avec zoom au hover */}
+                <div className="relative w-14 h-14 rounded-xl overflow-hidden flex-shrink-0">
+                    <img
+                        src={mainPhoto}
+                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                        alt="Aperçu"
+                    />
+                    {/* Overlay icône caméra au hover */}
+                    <div
+                        className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+                        style={{ background: `${COLORS.primary}50` }}
+                    >
+                        <Camera size={18} className="text-white"/>
+                    </div>
+                </div>
+
+                {/* Texte */}
+                <div className="flex-1 min-w-0">
+                    <p
+                        className="text-[8px] uppercase tracking-[0.25em] font-black leading-none"
+                        style={{ color: COLORS.primary }}
+                    >
+                        Galerie Photo
+                    </p>
+                    <p className="text-xs font-black text-zinc-800 mt-1 leading-tight">
+                        Voir les {photoCount} {photoCount > 1 ? "photos" : "photo"} du bien
+                    </p>
+                </div>
+
+                {/* Flèche qui glisse au hover */}
+                <ArrowRight
+                    size={14}
+                    style={{ color: COLORS.primary }}
+                    className="flex-shrink-0 transition-transform duration-300 group-hover:translate-x-1"
+                />
+            </div>
+        </Link>
     );
 }
