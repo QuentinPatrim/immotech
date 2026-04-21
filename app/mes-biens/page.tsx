@@ -7,7 +7,7 @@ import { formatNumber as formatPrice } from "@/lib/formatters";
 import {
     Search, Calculator, Camera, Copy, Check, MessageCircle, Mail, ImageIcon,
     MoreVertical, ExternalLink, Home, MapPin, LayoutGrid, List, Sparkles, X,
-    QrCode, Download, Layers, PlusCircle
+    QrCode, Download, Layers, PlusCircle, Edit3, Trash2, Instagram // <-- AJOUT DE TRASH2 ICI
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,7 @@ type Estimation = {
     id: string;
     createdAt?: string;
     data: {
+        clientName?: string;
         mainPhoto?: string;
         propertyAddress?: string;
         propertyType?: string;
@@ -48,10 +49,9 @@ export default function MesBiens() {
 
     useEffect(() => {
         const fetchEstimations = async () => {
-            // OPTIMISATION MAJEURE : On limite à 40 résultats pour un chargement instantané
             const { data, error } = await supabase
                 .from('estimations')
-                .select('id, created_at, data_json')
+                .select('id, created_at, client_name, data_json')
                 .order('created_at', { ascending: false })
                 .limit(40); 
 
@@ -59,7 +59,10 @@ export default function MesBiens() {
                 const normalized: Estimation[] = data.map((row: any) => ({
                     id: row.id,
                     createdAt: row.created_at,
-                    data: row.data_json || {},
+                    data: {
+                        ...row.data_json,
+                        clientName: row.client_name 
+                    },
                 }));
                 setEstimations(normalized);
             }
@@ -116,6 +119,21 @@ export default function MesBiens() {
         window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
     };
 
+    // --- NOUVEAU : FONCTION DE SUPPRESSION ---
+    const handleDelete = async (id: string) => {
+        if (window.confirm("Êtes-vous sûr de vouloir supprimer ce bien ? Cette action est irréversible et supprimera l'accès au simulateur et à la galerie pour vos clients.")) {
+            // Suppression en base de données
+            const { error } = await supabase.from('estimations').delete().eq('id', id);
+            
+            if (!error) {
+                // Mise à jour de l'affichage (on retire l'élément de la liste)
+                setEstimations(prev => prev.filter(e => e.id !== id));
+            } else {
+                alert("Erreur lors de la suppression du bien.");
+            }
+        }
+    };
+
     if (loading) return (
         <div className="min-h-screen bg-[#faf8f6] flex items-center justify-center">
             <div className="flex flex-col items-center gap-4">
@@ -149,7 +167,6 @@ export default function MesBiens() {
                     </div>
 
                     <div className="flex flex-col sm:flex-row gap-3">
-                        {/* LIEN CORRIGÉ : Redirige vers estimation en déclenchant un nouveau dossier vierge */}
                         <Link href="/estimation?new=true" className="flex items-center justify-center gap-2 h-12 px-6 rounded-2xl bg-gradient-to-r from-[#8a0e01] to-[#d35f52] text-white font-bold shadow-lg hover:scale-105 transition-transform">
                             <Sparkles size={18} /> Nouvelle Estimation
                         </Link>
@@ -174,7 +191,20 @@ export default function MesBiens() {
                 ) : (
                     <div className="space-y-4">
                         {filteredEstimations.map(e => (
-                            <EstimationRow key={e.id} estimation={e} simulationUrl={buildSimulationUrl(e)} galleryUrl={buildGalleryUrl(e)} copiedId={copiedId} openMenuId={openMenuId} setOpenMenuId={setOpenMenuId} onCopy={copyToClipboard} onSMS={() => sendBySMS(e)} onEmail={() => sendByEmail(e)} onOpenQrModal={() => setQrModalEstimation(e)} />
+                            <EstimationRow 
+                                key={e.id} 
+                                estimation={e} 
+                                simulationUrl={buildSimulationUrl(e)} 
+                                galleryUrl={buildGalleryUrl(e)} 
+                                copiedId={copiedId} 
+                                openMenuId={openMenuId} 
+                                setOpenMenuId={setOpenMenuId} 
+                                onCopy={copyToClipboard} 
+                                onSMS={() => sendBySMS(e)} 
+                                onEmail={() => sendByEmail(e)} 
+                                onOpenQrModal={() => setQrModalEstimation(e)} 
+                                onDelete={handleDelete} // <-- On passe la fonction au composant
+                            />
                         ))}
                     </div>
                 )}
@@ -191,7 +221,7 @@ export default function MesBiens() {
     );
 }
 
-function EstimationRow({ estimation, simulationUrl, galleryUrl, copiedId, openMenuId, setOpenMenuId, onCopy, onSMS, onEmail, onOpenQrModal }: any) {
+function EstimationRow({ estimation, simulationUrl, galleryUrl, copiedId, openMenuId, setOpenMenuId, onCopy, onSMS, onEmail, onOpenQrModal, onDelete }: any) {
     const e = estimation;
     const simCopyId = `sim-${e.id}`;
     const galCopyId = `gal-${e.id}`;
@@ -199,11 +229,9 @@ function EstimationRow({ estimation, simulationUrl, galleryUrl, copiedId, openMe
     const propertyLabel = `${e.data.propertyType || "Bien"}${e.data.rooms ? ` T${e.data.rooms}` : ""}`;
 
     return (
-        /* CORRECTION BUG MENU COUPÉ : Retrait de overflow-hidden ici + Z-Index dynamique pur */
         <div className={`bg-white/80 backdrop-blur-2xl rounded-3xl border border-white shadow-[0_15px_40px_-15px_rgba(138,14,1,0.15)] hover:shadow-[0_20px_50px_-15px_rgba(138,14,1,0.25)] transition-all duration-300 relative ${menuOpen ? 'z-50' : 'z-10'}`}>
             <div className="flex flex-col md:flex-row md:items-stretch">
 
-                {/* Miniature (c'est le seul endroit où on garde l'overflow-hidden pour couper l'image) */}
                 <div className="relative w-full md:w-36 h-40 md:h-auto flex-shrink-0 overflow-hidden md:rounded-l-3xl md:rounded-tr-none rounded-t-3xl md:rounded-t-none bg-zinc-100">
                     {e.data.mainPhoto ? <img src={e.data.mainPhoto} className="w-full h-full object-cover" alt={propertyLabel} /> : <div className="w-full h-full flex items-center justify-center"><ImageIcon size={32} className="text-zinc-300"/></div>}
                     <div className="absolute top-3 left-3 bg-white/95 backdrop-blur-md px-2.5 py-1 rounded-full border border-white shadow-md">
@@ -240,6 +268,32 @@ function EstimationRow({ estimation, simulationUrl, galleryUrl, copiedId, openMe
 
                             {menuOpen && (
                                 <div className="absolute right-0 top-full mt-3 w-56 bg-white rounded-2xl border border-zinc-200 shadow-[0_20px_50px_-10px_rgba(0,0,0,0.2)] overflow-hidden z-[100] animate-in slide-in-from-top-2 fade-in duration-200" onClick={(event) => event.stopPropagation()}>
+                                    <Link 
+    href={`/social?id=${e.id}`} 
+    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-fuchsia-50 transition-colors text-left border-b border-zinc-100"
+>
+    <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-fuchsia-100">
+        <Instagram size={14} className="text-fuchsia-700"/>
+    </div>
+    <div className="flex-1">
+        <p className="text-xs font-black text-fuchsia-900">Post Réseaux Sociaux</p>
+        <p className="text-[10px] text-fuchsia-600">Visuels & Texte IA</p>
+    </div>
+</Link>
+                                    
+                                    <Link 
+                                        href={e.data.clientName === "QR Code Express" || e.data.clientName === "Génération Express QR" ? `/generateur-qr?id=${e.id}` : `/estimation`} 
+                                        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-blue-50 transition-colors text-left border-b border-zinc-100"
+                                    >
+                                        <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-blue-100">
+                                            <Edit3 size={14} className="text-blue-700"/>
+                                        </div>
+                                        <div className="flex-1">
+                                            <p className="text-xs font-black text-blue-900">Éditer les données</p>
+                                            <p className="text-[10px] text-blue-600">Modifier prix, photos...</p>
+                                        </div>
+                                    </Link>
+
                                     <button onClick={() => { onOpenQrModal(); setOpenMenuId(null); }} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-rose-50 transition-colors text-left border-b border-zinc-100">
                                         <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-rose-100"><QrCode size={14} className="text-rose-700"/></div>
                                         <div className="flex-1"><p className="text-xs font-black text-[#8a0e01]">Cartes QR Codes</p><p className="text-[10px] text-[#d35f52]">Générer les visuels</p></div>
@@ -252,15 +306,22 @@ function EstimationRow({ estimation, simulationUrl, galleryUrl, copiedId, openMe
                                         <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: `${COLORS.secondary}15` }}><Mail size={14} style={{ color: COLORS.primary }}/></div>
                                         <div className="flex-1"><p className="text-xs font-black text-zinc-800">Envoyer par email</p><p className="text-[10px] text-zinc-500">Message pré-rempli</p></div>
                                     </button>
+                                    
                                     <div className="border-t border-zinc-100 bg-zinc-50/50">
                                         <Link href={simulationUrl} target="_blank" onClick={() => setOpenMenuId(null)} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-zinc-100 transition-colors">
                                             <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-white border border-zinc-200"><ExternalLink size={14} className="text-zinc-600"/></div>
                                             <div className="flex-1"><p className="text-xs font-black text-zinc-800">Simulateur</p><p className="text-[10px] text-zinc-500">Nouvel onglet</p></div>
                                         </Link>
-                                        <Link href={galleryUrl} target="_blank" onClick={() => setOpenMenuId(null)} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-zinc-100 transition-colors border-t border-zinc-100">
+                                        <Link href={galleryUrl} target="_blank" onClick={() => setOpenMenuId(null)} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-zinc-100 transition-colors border-t border-zinc-100 border-b">
                                             <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-white border border-zinc-200"><ExternalLink size={14} className="text-zinc-600"/></div>
                                             <div className="flex-1"><p className="text-xs font-black text-zinc-800">Galerie</p><p className="text-[10px] text-zinc-500">Nouvel onglet</p></div>
                                         </Link>
+
+                                        {/* NOUVEAU BOUTON : SUPPRIMER LE BIEN */}
+                                        <button onClick={() => { onDelete(e.id); setOpenMenuId(null); }} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-red-50 transition-colors text-left bg-red-50/30">
+                                            <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-red-100"><Trash2 size={14} className="text-red-600"/></div>
+                                            <div className="flex-1"><p className="text-xs font-black text-red-600">Supprimer le bien</p><p className="text-[10px] text-red-400">Action irréversible</p></div>
+                                        </button>
                                     </div>
                                 </div>
                             )}
