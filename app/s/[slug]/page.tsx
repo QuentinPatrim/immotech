@@ -43,9 +43,11 @@ export default async function ShortLinkRedirect({
 
     // 3. Incrément des clics (fire-and-forget, on n'attend pas le résultat)
     //    Utilise la fonction SQL increment_short_link_clicks pour un update atomique
-    supabase.rpc('increment_short_link_clicks', { slug_param: slug.toUpperCase() })
-        .then(() => {})
-        .catch((e) => console.error('[shortlinks] clicks++ failed:', e));
+    try {
+    await supabase.rpc('increment_short_link_clicks', { slug_param: slug.toUpperCase() });
+} catch (e) {
+    console.error('[shortlinks] clicks++ failed:', e);
+}
 
     // 4. Redirection HTTP 307 vers la cible
     redirect(data.target_url);

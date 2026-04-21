@@ -7,7 +7,7 @@ import { formatNumber as formatPrice } from "@/lib/formatters";
 import {
     Search, Calculator, Camera, Copy, Check, MessageCircle, Mail, ImageIcon,
     MoreVertical, ExternalLink, Home, MapPin, LayoutGrid, List, Sparkles, X,
-    QrCode, Download, Layers, PlusCircle, Edit3, Trash2, Instagram // <-- AJOUT DE TRASH2 ICI
+    QrCode, Download, Layers, PlusCircle, Edit3, Trash2, Instagram
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -119,14 +119,10 @@ export default function MesBiens() {
         window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
     };
 
-    // --- NOUVEAU : FONCTION DE SUPPRESSION ---
     const handleDelete = async (id: string) => {
         if (window.confirm("Êtes-vous sûr de vouloir supprimer ce bien ? Cette action est irréversible et supprimera l'accès au simulateur et à la galerie pour vos clients.")) {
-            // Suppression en base de données
             const { error } = await supabase.from('estimations').delete().eq('id', id);
-            
             if (!error) {
-                // Mise à jour de l'affichage (on retire l'élément de la liste)
                 setEstimations(prev => prev.filter(e => e.id !== id));
             } else {
                 alert("Erreur lors de la suppression du bien.");
@@ -203,7 +199,7 @@ export default function MesBiens() {
                                 onSMS={() => sendBySMS(e)} 
                                 onEmail={() => sendByEmail(e)} 
                                 onOpenQrModal={() => setQrModalEstimation(e)} 
-                                onDelete={handleDelete} // <-- On passe la fonction au composant
+                                onDelete={handleDelete}
                             />
                         ))}
                     </div>
@@ -257,7 +253,8 @@ function EstimationRow({ estimation, simulationUrl, galleryUrl, copiedId, openMe
                         </div>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-2 flex-shrink-0">
+                    {/* MODIFICATION RESPONSIVE : w-full md:w-auto, justify-end, mt-2 md:mt-0 */}
+                    <div className="flex flex-wrap items-center justify-end gap-2 flex-shrink-0 w-full md:w-auto mt-2 md:mt-0">
                         <ActionButton icon={copiedId === simCopyId ? <Check size={13}/> : <Calculator size={13}/>} label={copiedId === simCopyId ? "Copié !" : "Simulateur"} onClick={(event: { stopPropagation: () => void; }) => { event.stopPropagation(); onCopy(simulationUrl, simCopyId); }} variant={copiedId === simCopyId ? "success" : "primary"} title="Copier le lien du simulateur"/>
                         <ActionButton icon={copiedId === galCopyId ? <Check size={13}/> : <Camera size={13}/>} label={copiedId === galCopyId ? "Copié !" : "Galerie"} onClick={(event: { stopPropagation: () => void; }) => { event.stopPropagation(); onCopy(galleryUrl, galCopyId); }} variant={copiedId === galCopyId ? "success" : "secondary"} title="Copier le lien de la galerie"/>
 
@@ -266,20 +263,21 @@ function EstimationRow({ estimation, simulationUrl, galleryUrl, copiedId, openMe
                                 {menuOpen ? <X size={15}/> : <MoreVertical size={15}/>}
                             </button>
 
+                            {/* MODIFICATION DU MENU DÉROULANT : bottom-full mb-3 sur mobile pour s'ouvrir vers le haut */}
                             {menuOpen && (
-                                <div className="absolute right-0 top-full mt-3 w-56 bg-white rounded-2xl border border-zinc-200 shadow-[0_20px_50px_-10px_rgba(0,0,0,0.2)] overflow-hidden z-[100] animate-in slide-in-from-top-2 fade-in duration-200" onClick={(event) => event.stopPropagation()}>
+                                <div className="absolute right-0 bottom-full mb-3 md:bottom-auto md:top-full md:mt-3 w-56 bg-white rounded-2xl border border-zinc-200 shadow-[0_20px_50px_-10px_rgba(0,0,0,0.2)] overflow-hidden z-[100] animate-in slide-in-from-bottom-2 md:slide-in-from-top-2 fade-in duration-200 origin-bottom-right md:origin-top-right" onClick={(event) => event.stopPropagation()}>
                                     <Link 
-    href={`/social?id=${e.id}`} 
-    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-fuchsia-50 transition-colors text-left border-b border-zinc-100"
->
-    <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-fuchsia-100">
-        <Instagram size={14} className="text-fuchsia-700"/>
-    </div>
-    <div className="flex-1">
-        <p className="text-xs font-black text-fuchsia-900">Post Réseaux Sociaux</p>
-        <p className="text-[10px] text-fuchsia-600">Visuels & Texte IA</p>
-    </div>
-</Link>
+                                        href={`/social?id=${e.id}`} 
+                                        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-fuchsia-50 transition-colors text-left border-b border-zinc-100"
+                                    >
+                                        <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-fuchsia-100">
+                                            <Instagram size={14} className="text-fuchsia-700"/>
+                                        </div>
+                                        <div className="flex-1">
+                                            <p className="text-xs font-black text-fuchsia-900">Post Réseaux Sociaux</p>
+                                            <p className="text-[10px] text-fuchsia-600">Visuels & Texte IA</p>
+                                        </div>
+                                    </Link>
                                     
                                     <Link 
                                         href={e.data.clientName === "QR Code Express" || e.data.clientName === "Génération Express QR" ? `/generateur-qr?id=${e.id}` : `/estimation`} 
@@ -317,7 +315,6 @@ function EstimationRow({ estimation, simulationUrl, galleryUrl, copiedId, openMe
                                             <div className="flex-1"><p className="text-xs font-black text-zinc-800">Galerie</p><p className="text-[10px] text-zinc-500">Nouvel onglet</p></div>
                                         </Link>
 
-                                        {/* NOUVEAU BOUTON : SUPPRIMER LE BIEN */}
                                         <button onClick={() => { onDelete(e.id); setOpenMenuId(null); }} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-red-50 transition-colors text-left bg-red-50/30">
                                             <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-red-100"><Trash2 size={14} className="text-red-600"/></div>
                                             <div className="flex-1"><p className="text-xs font-black text-red-600">Supprimer le bien</p><p className="text-[10px] text-red-400">Action irréversible</p></div>
