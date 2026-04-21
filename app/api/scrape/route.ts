@@ -1,11 +1,14 @@
 import { NextResponse } from 'next/server';
+import * as cheerio from 'cheerio';
 
 /* ============================================================
-   SCRAPER PATRIM.FR + FALLBACK GÉNÉRIQUE
-   Architecture : 
-   - On détecte le domaine de l'URL
-   - Si patrim.fr → parseur sur-mesure (très fiable)
-   - Sinon → parseur générique (JSON-LD / OpenGraph / regex)
+   SCRAPER PATRIM.FR + FALLBACK GÉNÉRIQUE — version cheerio
+   Beaucoup plus robuste que les regex précédentes.
+   - Si l'URL est patrim.fr → parseur sur-mesure validé en tests
+   - Sinon → parseur générique (JSON-LD / OpenGraph / DOM)
+
+   Mode debug : si aucune donnée n'est trouvée, on renvoie un
+   échantillon du HTML reçu pour diagnostiquer facilement.
    ============================================================ */
 
 type ScrapedData = {
@@ -22,52 +25,68 @@ type ScrapedData = {
     photos: string[];
     source: 'patrim' | 'generic' | 'error';
     error?: string;
+    debug?: {
+        htmlLength: number;
+        htmlSample: string;
+        imgCount: number;
+        photoboxImgCount: number;
+    };
 };
 
 export async function POST(request: Request) {
     try {
         const { url } = await request.json();
-        if (!url) return NextResponse.json({ success: false, error: 'URL manquante' }, { status: 400 });
+        if (!url) return NextResponse.json({ success: false, error: 'URL manquante', photos: [] }, { status: 400 });
 
-        // Validation URL
         let parsedUrl: URL;
         try {
             parsedUrl = new URL(url);
         } catch {
-            return NextResponse.json({ success: false, error: 'URL invalide' }, { status: 400 });
+            return NextResponse.json({ success: false, error: 'URL invalide', photos: [] }, { status: 400 });
         }
 
-        // Fetch du HTML avec un User-Agent de vrai navigateur
         const response = await fetch(url, {
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
                 'Accept-Language': 'fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7',
             },
-            // Next.js App Router supporte le cache, on désactive pour avoir toujours les dernières données
             cache: 'no-store',
         });
 
         if (!response.ok) {
             return NextResponse.json({
                 success: false,
-                error: `Le site a répondu avec le code ${response.status}. Vérifiez l'URL ou essayez à nouveau.`,
+                error: `Le site a répondu avec le code ${response.status}.`,
+                photos: [],
             }, { status: 200 });
         }
 
         const html = await response.text();
-
-        // Détection du site pour router vers le bon parseur
         const isPatrim = parsedUrl.hostname.includes('patrim.fr');
 
         const result: ScrapedData = isPatrim
             ? parsePatrim(html, url)
             : parseGeneric(html, url);
 
+        // Mode debug : si rien n'est trouvé, on renvoie un aperçu du HTML
+        // pour que tu puisses me le partager et qu'on diagnostique ensemble.
+        const nothingFound = !result.price && !result.title && result.photos.length === 0;
+        if (nothingFound) {
+            const $ = cheerio.load(html);
+            result.debug = {
+                htmlLength: html.length,
+                htmlSample: html.substring(0, 1500),
+                imgCount: $('img').length,
+                photoboxImgCount: $('img[src*="photobox"]').length,
+            };
+            console.log('[scrape] Rien trouvé. HTML length:', html.length, '- img count:', $('img').length);
+        }
+
         return NextResponse.json(result);
 
     } catch (error) {
-        console.error("Erreur scraping:", error);
+        console.error("[scrape] Erreur:", error);
         return NextResponse.json({
             success: false,
             error: 'Impossible de lire cette URL. Le site est peut-être inaccessible ou bloque les imports automatiques.',
@@ -77,11 +96,10 @@ export async function POST(request: Request) {
 }
 
 /* ============================================================
-   PARSEUR SPÉCIALISÉ PATRIM.FR
-   Exploite la structure HTML connue du site pour une extraction
-   ultra-fiable. Patterns identifiés par inspection manuelle du HTML.
+   PARSEUR PATRIM.FR (avec cheerio)
    ============================================================ */
 function parsePatrim(html: string, url: string): ScrapedData {
+    const $ = cheerio.load(html);
     const result: ScrapedData = {
         success: true,
         photos: [],
@@ -89,58 +107,47 @@ function parsePatrim(html: string, url: string): ScrapedData {
     };
 
     // --- TITRE ---
-    // Format observé : "Appartement 5 pièces de 152m2 à Toulouse proposé par Patrim - TAPP99892"
-    // On nettoie les suffixes marketing pour garder l'essentiel
-    const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
-    if (titleMatch) {
-        let title = decodeHtmlEntities(titleMatch[1].trim());
-        // Retirer "proposé par Patrim - TAPPxxxxx" en fin de titre
-        title = title.replace(/\s*(proposé par Patrim|Patrim).*$/i, '').trim();
-        // Retirer la référence en fin si présente
-        title = title.replace(/\s*[-–]\s*T[A-Z]+\d+\s*$/i, '').trim();
-        result.title = title;
-    }
+    let title = $('title').text().trim();
+    title = title.replace(/\s*(proposé par Patrim|Patrim).*$/i, '').trim();
+    title = title.replace(/\s*[-–]\s*T[A-Z]+\d+\s*$/i, '').trim();
+    if (title) result.title = title;
 
-    // --- RÉFÉRENCE DE L'ANNONCE ---
-    // Pattern observé dans l'URL et le HTML : TAPPxxxxx, TMAIxxxxx, etc.
-    const refMatch = url.match(/T[A-Z]+\d+/i) || html.match(/\bT[A-Z]{2,4}\d{4,}\b/);
+    // --- RÉFÉRENCE ---
+    const refMatch = url.match(/T[A-Z]+\d+/i);
     if (refMatch) result.reference = refMatch[0];
 
-    // --- PRIX ---
-    // Pattern très fiable sur patrim.fr : "### 800 000 € - Ref. TAPPxxxxx"
-    // ou présence répétée dans les slides des photos (contexte "vente")
-    // On cherche en priorité le format "XXX XXX € - Ref." qui est l'indicateur le plus sûr
+    // --- PRIX : stratégie 1 → h3 qui contient "€ - Ref." ---
     let price: number | null = null;
-
-    // Stratégie 1 : prix juste avant "- Ref."
-    const priceBeforeRefMatch = html.match(/([\d\s.,]+)\s*€\s*[-–]\s*Ref\./i);
-    if (priceBeforeRefMatch) {
-        const clean = parseInt(priceBeforeRefMatch[1].replace(/[^\d]/g, ''), 10);
-        if (clean >= 20000 && clean <= 50000000) price = clean;
-    }
-
-    // Stratégie 2 : prix dans le texte du descriptif "prix total de XXX XXX,00 euros"
-    if (!price) {
-        const priceTextMatch = html.match(/prix\s+total\s+de\s+([\d\s.,]+)\s+euros/i);
-        if (priceTextMatch) {
-            const clean = parseInt(priceTextMatch[1].replace(/[^\d]/g, ''), 10);
+    const h3WithRef = $('h3').filter((_, el) => /€\s*[-–]\s*Ref/i.test($(el).text())).first();
+    if (h3WithRef.length > 0) {
+        const priceMatch = h3WithRef.text().match(/([\d\s.,]+)\s*€/);
+        if (priceMatch) {
+            const clean = parseInt(priceMatch[1].replace(/[^\d]/g, ''), 10);
             if (clean >= 20000 && clean <= 50000000) price = clean;
         }
     }
 
-    // Stratégie 3 : on cherche tous les "XXX XXX €" et on prend le plus FRÉQUENT
-    // (car sur patrim.fr, le prix du bien apparaît dans chaque slide photo)
+    // --- PRIX : stratégie 2 → "prix total de XXX euros" dans le texte ---
     if (!price) {
-        const textOnly = html.replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ');
-        const allPriceMatches = [...textOnly.matchAll(/([\d]{1,3}(?:[\s.,][\d]{3})+)\s*€/g)];
-        const counts = new Map<number, number>();
-        for (const m of allPriceMatches) {
+        const bodyText = $('body').text();
+        const m = bodyText.match(/prix\s+total\s+de\s+([\d\s.,]+)\s+euros/i);
+        if (m) {
             const clean = parseInt(m[1].replace(/[^\d]/g, ''), 10);
-            if (clean >= 20000 && clean <= 50000000) {
-                counts.set(clean, (counts.get(clean) || 0) + 1);
+            if (clean >= 20000 && clean <= 50000000) price = clean;
+        }
+    }
+
+    // --- PRIX : stratégie 3 → le prix qui apparaît le plus souvent dans la page ---
+    if (!price) {
+        const bodyText = $('body').text();
+        const counts = new Map<number, number>();
+        const matches = [...bodyText.matchAll(/([\d]{1,3}(?:[\s.,][\d]{3})+)\s*€/g)];
+        for (const m of matches) {
+            const n = parseInt(m[1].replace(/[^\d]/g, ''), 10);
+            if (n >= 20000 && n <= 50000000) {
+                counts.set(n, (counts.get(n) || 0) + 1);
             }
         }
-        // Prendre le prix qui apparaît le plus souvent
         let maxCount = 0;
         for (const [p, c] of counts) {
             if (c > maxCount) { maxCount = c; price = p; }
@@ -149,50 +156,53 @@ function parsePatrim(html: string, url: string): ScrapedData {
 
     if (price) result.price = price;
 
-    // --- INFORMATIONS STRUCTURÉES ---
-    // Pattern observé : "Label : <strong>Valeur</strong>" ou "**Label :** <strong>Valeur</strong>"
-    const extractField = (labels: string[]): string | null => {
-        for (const label of labels) {
-            // Capture la valeur dans <strong>...</strong> après le label
-            const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            const regex = new RegExp(`${escapedLabel}\\s*:?\\s*</[^>]+>\\s*<strong[^>]*>([^<]+)</strong>`, 'i');
-            const match = html.match(regex);
-            if (match) return match[1].trim();
-            // Fallback : label suivi directement de strong
-            const regex2 = new RegExp(`${escapedLabel}\\s*:?\\s*<strong[^>]*>([^<]+)</strong>`, 'i');
-            const match2 = html.match(regex2);
-            if (match2) return match2[1].trim();
-        }
-        return null;
+    // --- CHAMPS STRUCTURÉS ---
+    // Pattern patrim.fr : "<li>Label : <strong>Valeur</strong></li>"
+    // Cheerio permet de parcourir les <li> et extraire le texte avant <strong>
+    const extractByLabel = (labelRegex: RegExp): string | null => {
+        let result: string | null = null;
+        $('li').each((_, el) => {
+            const $el = $(el);
+            // Texte de l'élément SANS le contenu des <strong>
+            const textWithoutStrong = $el.clone().children('strong').remove().end().text();
+            if (labelRegex.test(textWithoutStrong)) {
+                const strong = $el.find('strong').first().text().trim();
+                if (strong) {
+                    result = strong;
+                    return false; // break
+                }
+            }
+        });
+        return result;
     };
 
-    // Surface habitable
-    const surfaceStr = extractField(['Surface Habitable', 'Surface']);
+    // Surface
+    const surfaceStr = extractByLabel(/Surface Habitable/i);
     if (surfaceStr) {
-        const sNum = parseInt(surfaceStr.replace(/[^\d]/g, ''), 10);
-        if (sNum > 0 && sNum < 10000) result.surface = sNum;
+        const s = parseInt(surfaceStr.replace(/[^\d]/g, ''), 10);
+        if (s > 0 && s < 10000) result.surface = s;
     }
 
-    // Nombre de pièces
-    const roomsStr = extractField(['Nombre de pièce\\(s\\)', 'Nombre de pièces']);
+    // Pièces
+    const roomsStr = extractByLabel(/Nombre de pièce/i);
     if (roomsStr) {
         const r = parseInt(roomsStr.replace(/[^\d]/g, ''), 10);
         if (r > 0 && r < 20) result.rooms = r;
     }
 
-    // Nombre de chambres
-    const bedroomsStr = extractField(['Nombre de chambre\\(s\\)', 'Nombre de chambres']);
+    // Chambres
+    const bedroomsStr = extractByLabel(/Nombre de chambre/i);
     if (bedroomsStr) {
         const b = parseInt(bedroomsStr.replace(/[^\d]/g, ''), 10);
         if (b > 0 && b < 20) result.bedrooms = b;
     }
 
-    // Catégorie (type de bien)
-    const categoryStr = extractField(['Catégorie']);
+    // Catégorie
+    const categoryStr = extractByLabel(/Catégorie/i);
     if (categoryStr) {
         result.propertyType = categoryStr;
     } else {
-        // Fallback depuis l'URL ou le titre
+        // Fallback depuis l'URL
         const urlType = url.match(/vente-(appartement|maison|parking|immeuble|local)/i);
         if (urlType) {
             result.propertyType = urlType[1].charAt(0).toUpperCase() + urlType[1].slice(1).toLowerCase();
@@ -200,77 +210,68 @@ function parsePatrim(html: string, url: string): ScrapedData {
     }
 
     // --- VILLE ---
-    // Extraction depuis le titre "... à Toulouse" ou l'URL "toulouse-TAPPxxx"
     if (result.title) {
-        const cityMatch = result.title.match(/\bà\s+([A-ZÀ-Ÿ][a-zà-ÿ\-\s]+?)(?:\s+proposé|\s*$)/);
+        // Note : \b ne fonctionne pas bien avec "à" accentué, on utilise un espace littéral
+        const cityMatch = result.title.match(/\s+à\s+([A-ZÀ-Ÿ][A-Za-zÀ-ÿ\-\s]+?)\s*$/);
         if (cityMatch) result.city = cityMatch[1].trim();
     }
     if (!result.city) {
         const urlCityMatch = url.match(/-([a-z\-]+)-T[A-Z]+\d+/i);
         if (urlCityMatch) {
-            // Capitalize
             result.city = urlCityMatch[1].split('-')
                 .map(w => w.charAt(0).toUpperCase() + w.slice(1))
                 .join(' ');
         }
     }
 
-    // --- ADRESSE APPROXIMATIVE ---
-    // Le site mentionne souvent le quartier dans le descriptif :
-    //   "APPARTEMENT DE PRESTIGE - ESQUIROL / rue des Marchands :"
-    //   "MAISON FAMILIALE - SAINT-CYPRIEN :"
-    // On cherche dans le TEXTE (pas les URLs) une ligne en MAJUSCULES qui précède ":"
-    // Cette regex exige que le match soit dans un <p> ou après une balise de fin,
-    // donc pas dans une URL encodée.
-    const textContent = html.replace(/<a[^>]*>[^<]*<\/a>/gi, ''); // retire les liens
-    const descMatch = textContent.match(/>\s*(APPARTEMENT[^<:]*:[^<.]+)/i)
-        || textContent.match(/>\s*(MAISON[^<:]*:[^<.]+)/i);
-    if (descMatch) {
-        // On prend ce qui suit le ":" (le vrai début de description)
-        const parts = descMatch[1].split(':');
-        if (parts.length >= 2) {
-            // parts[0] = "APPARTEMENT DE PRESTIGE - ESQUIROL / rue des Marchands"
-            // On extrait la partie quartier/rue après le tiret
-            const preColon = parts[0].trim();
+    // --- ADRESSE / QUARTIER ---
+    // Format observé : "APPARTEMENT DE PRESTIGE - ESQUIROL / rue des Marchands : ..."
+    $('p').each((_, el) => {
+        if (result.address) return false;
+        const text = $(el).text().trim();
+        const match = text.match(/^(APPARTEMENT|MAISON)[^:]*:/i);
+        if (match) {
+            const preColon = text.split(':')[0].trim();
             const dashSplit = preColon.split(/\s+[-–]\s+/);
             if (dashSplit.length >= 2) {
                 const quartier = dashSplit.slice(1).join(' - ').trim();
-                if (result.city) {
-                    result.address = `${quartier} · ${result.city}`;
-                } else {
-                    result.address = quartier;
-                }
+                result.address = result.city ? `${quartier} · ${result.city}` : quartier;
+                return false;
             }
         }
-    }
-    // Fallback : si on n'a pas pu extraire le quartier, on met juste la ville
+    });
     if (!result.address && result.city) {
         result.address = result.city;
     }
 
     // --- PHOTOS ---
-    // Sur patrim.fr, toutes les photos d'annonce sont dans /photobox/
-    // Les vignettes sont dans /photobox/.../vignettes/ — on les ignore
-    // Pour récupérer les photos HD
-    const photoRegex = /https?:\/\/[^"'\s]*\/photobox\/[^"'\s]+?\.(?:jpe?g|png|webp)/gi;
-    const photoMatches = html.match(photoRegex) || [];
-
-    // Déduplication + filtrage des vignettes (on préfère les grandes)
-    const uniquePhotos = new Set<string>();
-    for (const p of photoMatches) {
-        if (!p.includes('/vignettes/')) {
-            uniquePhotos.add(p);
+    // Toutes les <img> dont le src contient /photobox/ mais PAS /vignettes/
+    const seen = new Set<string>();
+    $('img').each((_, el) => {
+        const src = $(el).attr('src') || '';
+        if (src.includes('/photobox/') && !src.includes('/vignettes/')) {
+            // Résoudre en URL absolue si besoin
+            const absolute = resolveUrl(src, url);
+            if (absolute && !seen.has(absolute)) {
+                seen.add(absolute);
+                result.photos.push(absolute);
+            }
         }
-    }
+    });
 
-    // Si aucune grande version, on prend les vignettes en secours
-    if (uniquePhotos.size === 0) {
-        for (const p of photoMatches) {
-            uniquePhotos.add(p);
-        }
+    // Fallback : si aucune grande photo trouvée, on prend les vignettes
+    if (result.photos.length === 0) {
+        $('img').each((_, el) => {
+            const src = $(el).attr('src') || '';
+            if (src.includes('/photobox/')) {
+                const absolute = resolveUrl(src, url);
+                if (absolute && !seen.has(absolute)) {
+                    seen.add(absolute);
+                    result.photos.push(absolute);
+                }
+            }
+        });
     }
-
-    result.photos = Array.from(uniquePhotos);
 
     return result;
 }
@@ -278,9 +279,9 @@ function parsePatrim(html: string, url: string): ScrapedData {
 /* ============================================================
    PARSEUR GÉNÉRIQUE (FALLBACK)
    Pour les URLs qui ne sont pas sur patrim.fr.
-   Stratégie en cascade : JSON-LD > OpenGraph > regex prudentes.
    ============================================================ */
 function parseGeneric(html: string, url: string): ScrapedData {
+    const $ = cheerio.load(html);
     const result: ScrapedData = {
         success: true,
         photos: [],
@@ -288,65 +289,67 @@ function parseGeneric(html: string, url: string): ScrapedData {
     };
 
     // --- STRATÉGIE 1 : JSON-LD (données structurées schema.org) ---
-    // Beaucoup de sites immo modernes exposent des données Product/RealEstateListing
-    const jsonLdMatches = [...html.matchAll(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)];
-    for (const match of jsonLdMatches) {
+    $('script[type="application/ld+json"]').each((_, el) => {
         try {
-            const jsonData = JSON.parse(match[1]);
+            const raw = $(el).html() || '';
+            const jsonData = JSON.parse(raw);
             const items = Array.isArray(jsonData) ? jsonData : [jsonData];
             for (const item of items) {
                 const obj = item['@graph'] ? item['@graph'][0] : item;
                 if (obj.name && !result.title) result.title = String(obj.name);
-                if (obj.address) {
+                if (obj.address && !result.address) {
                     result.address = typeof obj.address === 'string'
                         ? obj.address
-                        : obj.address.streetAddress || obj.address.addressLocality;
+                        : (obj.address.streetAddress || obj.address.addressLocality || '');
                 }
-                if (obj.offers?.price) {
+                if (obj.offers?.price && !result.price) {
                     const p = parseInt(String(obj.offers.price).replace(/[^\d]/g, ''), 10);
                     if (p > 0) result.price = p;
                 }
                 if (obj.image) {
                     const imgs = Array.isArray(obj.image) ? obj.image : [obj.image];
-                    result.photos.push(...imgs.map((i: any) => typeof i === 'string' ? i : i.url).filter(Boolean));
+                    for (const i of imgs) {
+                        const src = typeof i === 'string' ? i : i?.url;
+                        if (src) result.photos.push(src);
+                    }
                 }
             }
         } catch { /* JSON malformé, on continue */ }
-    }
+    });
 
     // --- STRATÉGIE 2 : OpenGraph ---
     if (!result.title) {
-        const ogTitle = html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i);
-        if (ogTitle) result.title = decodeHtmlEntities(ogTitle[1]);
+        const ogTitle = $('meta[property="og:title"]').attr('content');
+        if (ogTitle) result.title = ogTitle.trim();
     }
     if (!result.price) {
-        const ogPrice = html.match(/<meta[^>]+property=["']og:price:amount["'][^>]+content=["']([^"']+)["']/i)
-            || html.match(/<meta[^>]+property=["']product:price:amount["'][^>]+content=["']([^"']+)["']/i);
+        const ogPrice = $('meta[property="og:price:amount"]').attr('content')
+            || $('meta[property="product:price:amount"]').attr('content');
         if (ogPrice) {
-            const p = parseInt(ogPrice[1].replace(/[^\d]/g, ''), 10);
+            const p = parseInt(ogPrice.replace(/[^\d]/g, ''), 10);
             if (p > 0) result.price = p;
         }
     }
-    const ogImages = [...html.matchAll(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/gi)];
-    result.photos.push(...ogImages.map(m => m[1]));
+    $('meta[property="og:image"]').each((_, el) => {
+        const src = $(el).attr('content');
+        if (src) result.photos.push(src);
+    });
 
-    // --- STRATÉGIE 3 : Regex HTML (avec prudence) ---
+    // --- STRATÉGIE 3 : DOM générique ---
     if (!result.title) {
-        const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
-        if (titleMatch) {
-            result.title = decodeHtmlEntities(titleMatch[1].trim()).split(/[-|]/)[0].trim();
-        }
+        let t = $('title').text().trim();
+        t = t.split(/[-|]/)[0].trim();
+        if (t) result.title = t;
     }
 
     if (!result.price) {
-        // Recherche du nombre le plus fréquent qui ressemble à un prix immobilier
-        const textOnly = html.replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ');
-        const allMatches = [...textOnly.matchAll(/([\d]{1,3}(?:[\s.,][\d]{3})+)\s*€/g)];
+        const bodyText = $('body').text();
         const counts = new Map<number, number>();
-        for (const m of allMatches) {
-            const clean = parseInt(m[1].replace(/[^\d]/g, ''), 10);
-            if (clean >= 20000 && clean <= 50000000) {
-                counts.set(clean, (counts.get(clean) || 0) + 1);
+        const matches = [...bodyText.matchAll(/([\d]{1,3}(?:[\s.,][\d]{3})+)\s*€/g)];
+        for (const m of matches) {
+            const n = parseInt(m[1].replace(/[^\d]/g, ''), 10);
+            if (n >= 20000 && n <= 50000000) {
+                counts.set(n, (counts.get(n) || 0) + 1);
             }
         }
         let maxCount = 0;
@@ -355,33 +358,27 @@ function parseGeneric(html: string, url: string): ScrapedData {
         }
     }
 
-    // --- PHOTOS (générique) ---
-    // On cherche dans l'ordre dans une zone "article" ou "main" (plus fiable que toute la page)
-    const bodyZone = extractContentZone(html);
-
-    // Images dans <img src>
-    const imgMatches = [...bodyZone.matchAll(/<img[^>]+src=["']([^"']+)["']/gi)];
-    for (const m of imgMatches) {
-        const src = resolveUrl(m[1], url);
-        if (src && isLikelyPropertyPhoto(src)) {
-            result.photos.push(src);
+    // --- PHOTOS dans <main>, <article> ou body ---
+    const scope = $('main').length ? $('main') : $('article').length ? $('article') : $('body');
+    scope.find('img').each((_, el) => {
+        const src = $(el).attr('src') || '';
+        const absolute = resolveUrl(src, url);
+        if (absolute && isLikelyPropertyPhoto(absolute)) {
+            result.photos.push(absolute);
         }
-    }
+    });
 
-    // Déduplication
     result.photos = [...new Set(result.photos)];
-
     return result;
 }
 
 /* ============================================================
    HELPERS
    ============================================================ */
-
-// Résout une URL relative en absolue
 function resolveUrl(src: string, baseUrl: string): string | null {
     try {
         let clean = src.replace(/&amp;/g, '&').trim();
+        if (!clean) return null;
         if (clean.startsWith('//')) return 'https:' + clean;
         if (clean.startsWith('http')) return clean;
         return new URL(clean, baseUrl).href;
@@ -390,41 +387,9 @@ function resolveUrl(src: string, baseUrl: string): string | null {
     }
 }
 
-// Filtre : est-ce probablement une photo d'annonce et pas un logo/icône/pub ?
 function isLikelyPropertyPhoto(src: string): boolean {
     if (!src.startsWith('http')) return false;
     if (src.match(/\.(js|css|woff|ttf|svg|ico|json|gif)(\?|$)/i)) return false;
-    // Logos, icônes, avatars courants
     if (src.match(/\b(logo|icon|avatar|marker|pin|favicon|banner|sprite|flag|social|facebook|twitter|instagram|linkedin|youtube)\b/i)) return false;
-    // On garde si extension photo OU CDN image connu
     return /\.(jpe?g|png|webp)(\?|$)/i.test(src) || /(_next\/image|cdn|cloudfront|imgix|cloudinary)/i.test(src);
-}
-
-// Extrait la zone de contenu principale du HTML (pour réduire le bruit sur les photos)
-function extractContentZone(html: string): string {
-    // On cherche <main>, <article>, ou un div avec classe contenant "content"/"annonce"/"listing"/"property"
-    const tagMatches = [
-        /<main[^>]*>([\s\S]*?)<\/main>/i,
-        /<article[^>]*>([\s\S]*?)<\/article>/i,
-        /<div[^>]*class=["'][^"']*(?:content|annonce|listing|property|bien)[^"']*["'][^>]*>([\s\S]*?)<\/div>/i,
-    ];
-    for (const regex of tagMatches) {
-        const match = html.match(regex);
-        if (match && match[1].length > 500) return match[1];
-    }
-    // Fallback : toute la page
-    return html;
-}
-
-// Décode les entités HTML fréquentes
-function decodeHtmlEntities(str: string): string {
-    return str
-        .replace(/&amp;/g, '&')
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-        .replace(/&quot;/g, '"')
-        .replace(/&#039;/g, "'")
-        .replace(/&apos;/g, "'")
-        .replace(/&nbsp;/g, ' ')
-        .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(parseInt(n, 10)));
 }

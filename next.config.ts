@@ -1,6 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  images: { unoptimized: true }
+    // ...tes configs existantes
+    serverExternalPackages: ['cheerio'],
 };
 
-export default nextConfig;
+module.exports = nextConfig;
+
