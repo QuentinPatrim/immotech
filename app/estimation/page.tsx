@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation"; // Pour le lien vers la plaquette
+import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
     Home, MapPin, Image as ImageIcon, TrendingUp, CheckCircle, 
@@ -26,6 +26,16 @@ const COLORS = {
     gold: "#c9a84c",
 };
 
+// --- LISTE DES COLLABORATEURS ---
+const AGENTS = [
+    { id: "quentin", name: "Quentin Delsol", role: "Service Transaction", signatureUrl: "/signatures/signature-quentin.png" },
+    { id: "rebecca", name: "Rebecca Gau", role: "Service Transacrtion", signatureUrl: "/signatures/signature-rebecca.png" },
+    { id: "clement", name: "Clément Monti", role: "Service Transaction", signatureUrl: "/signatures/signature-clement.png" },
+    { id: "julien", name: "Julien Passerini", role: "BOSS", signatureUrl: "/signatures/signature-julien.png" },
+    { id: "sabri", name: "Sabri Abdesselem", role: "Service Transaction", signatureUrl: "/signatures/signature-sabri.png" },
+    { id: "catherine", name: "Catherine Leloup", role: " Service gestion ", signatureUrl: "/signatures/signature-catherine.png" },
+];
+
 // --- TYPES ---
 interface Comparable { id: string; address: string; surface: number; price: number; photoUrl: string; }
 interface EstimationData {
@@ -41,10 +51,10 @@ interface EstimationData {
     hasRentalEstimation: boolean; monthlyRent: number; 
     taxeFonciere: number; isCopropriete: boolean; coproFees: number;
     amenities: string[];
-    // Nouveaux champs pour le mode loué
     isRented: boolean;
     lowPriceRented: number;
     highPriceRented: number;
+    agentId: string;
 }
 
 const ALL_AMENITIES = [
@@ -74,6 +84,7 @@ const DEFAULT_DATA: EstimationData = {
     isRented: false,
     lowPriceRented: 0,
     highPriceRented: 0,
+    agentId: "",
 };
 
 const DPE_COLORS: Record<string, string> = { "A": "#00A06D", "B": "#52B153", "C": "#A5CC74", "D": "#F3E724", "E": "#F0B328", "F": "#EB8235", "G": "#D7221F" };
@@ -171,7 +182,8 @@ export default function EstimationManager() {
             gardenSurface: estim.data_json?.gardenSurface ?? 0,
             isRented: estim.data_json?.isRented ?? false,
             lowPriceRented: estim.data_json?.lowPriceRented ?? 0,
-            highPriceRented: estim.data_json?.highPriceRented ?? 0
+            highPriceRented: estim.data_json?.highPriceRented ?? 0,
+            agentId: estim.data_json?.agentId ?? ""
         }); 
         setStep(1); 
         setView("EDIT"); 
@@ -317,7 +329,7 @@ export default function EstimationManager() {
                                         <Button variant="ghost" onClick={() => openEstimation(est)} className="flex-1 rounded-xl h-9 text-sm font-semibold hover:bg-white/5 text-zinc-300 hover:text-white">
                                             Ouvrir
                                         </Button>
-                                        <Button variant="ghost" onClick={() => { setCurrentId(est.id); setData({ ...DEFAULT_DATA, ...est.data_json, amenities: est.data_json?.amenities ?? [], extraPhotos: est.data_json?.extraPhotos ?? [], isRented: est.data_json?.isRented ?? false, lowPriceRented: est.data_json?.lowPriceRented ?? 0, highPriceRented: est.data_json?.highPriceRented ?? 0 }); setView("PRINT"); }} 
+                                        <Button variant="ghost" onClick={() => { setCurrentId(est.id); setData({ ...DEFAULT_DATA, ...est.data_json, amenities: est.data_json?.amenities ?? [], extraPhotos: est.data_json?.extraPhotos ?? [], isRented: est.data_json?.isRented ?? false, lowPriceRented: est.data_json?.lowPriceRented ?? 0, highPriceRented: est.data_json?.highPriceRented ?? 0, agentId: est.data_json?.agentId ?? "" }); setView("PRINT"); }} 
                                             className="flex-1 rounded-xl h-9 text-sm font-semibold hover:bg-white/5 text-zinc-300 hover:text-white">
                                             PDF
                                         </Button>
@@ -785,6 +797,15 @@ export default function EstimationManager() {
                                         <label className="text-xs font-semibold text-zinc-500 uppercase tracking-widest">Analyse Personnalisée</label>
                                         <textarea value={data.agentAnalysis} onChange={e => setData({...data, agentAnalysis: e.target.value})} className="w-full bg-black/50 border border-white/8 rounded-2xl p-4 text-white min-h-[140px] outline-none focus:border-[#d35f52] transition-colors resize-none" placeholder="Rédigez votre conclusion pour le client..."/>
                                     </div>
+
+                                    {/* SÉLECTION DU COLLABORATEUR */}
+                                    <div className="space-y-2 mt-4 pb-10">
+                                        <label className="text-xs font-semibold text-zinc-500 uppercase tracking-widest">Collaborateur en charge</label>
+                                        <select value={data.agentId} onChange={e => setData({...data, agentId: e.target.value})} className={selectClass}>
+                                            <option value="">Sélectionner un collaborateur...</option>
+                                            {AGENTS.map(a => <option key={a.id} value={a.id}>{a.name} — {a.role}</option>)}
+                                        </select>
+                                    </div>
                                 </motion.div>
                             )}
                         </AnimatePresence>
@@ -837,6 +858,35 @@ export default function EstimationManager() {
             })}
         </div>
     );
+
+    // COMPOSANT POUR GÉNÉRER LA SIGNATURE ET LE TAMPON
+    const renderSignature = () => {
+        if (!data.agentId) return null;
+        const agent = AGENTS.find(a => a.id === data.agentId);
+        if (!agent) return null;
+        return (
+            <div className="absolute bottom-2 right-2 flex items-end z-10 pointer-events-none opacity-95">
+                <div className="flex flex-col items-end z-10 pb-2">
+                    <p className="text-[13px] font-black text-zinc-800">{agent.name}</p>
+                    <p className="text-[9px] text-zinc-500 mb-2 uppercase tracking-widest">{agent.role}</p>
+                    <img 
+                        src={agent.signatureUrl} 
+                        alt="Signature" 
+                        className="h-28 w-auto object-contain mix-blend-multiply" 
+                        onError={(e) => e.currentTarget.style.display = 'none'} 
+                    />
+                </div>
+                <div className="relative -ml-20 -mb-4 z-0 opacity-80">
+                    <img 
+                        src="/signatures/signature-agence.png" 
+                        alt="Tampon Agence" 
+                        className="h-32 w-auto object-contain mix-blend-multiply" 
+                        onError={(e) => e.currentTarget.style.display = 'none'} 
+                    />
+                </div>
+            </div>
+        );
+    };
 
     return (
         <>
@@ -1401,11 +1451,13 @@ export default function EstimationManager() {
                                     )}
                                 </div>
                             </div>
-                            <div className="premium-card bg-white rounded-[16px] px-4 py-3 shadow-sm border border-zinc-200 shrink-0">
-                                <p className="text-[9px] uppercase font-bold tracking-widest text-zinc-400 mb-1.5 flex items-center gap-1.5">
-                                    <Star size={10}/> Analyse de l'Expertise
-                                </p>
-                                <div className="text-[10.5px] leading-relaxed text-zinc-600 italic whitespace-pre-wrap">{data.agentAnalysis || "Aucune analyse rédigée."}</div>
+                            <div className="premium-card bg-white rounded-[16px] px-4 py-4 shadow-sm border border-zinc-200 shrink-0 flex flex-col justify-between" style={{ minHeight: '180px' }}>
+                                <div>
+                                    <p className="text-[9px] uppercase font-bold tracking-widest text-zinc-400 mb-1.5 flex items-center gap-1.5">
+                                        <Star size={10}/> Analyse de l'Expertise
+                                    </p>
+                                    <div className="text-[10.5px] leading-relaxed text-zinc-600 italic whitespace-pre-wrap">{data.agentAnalysis || "Aucune analyse rédigée."}</div>
+                                </div>
                             </div>
                         </div>
 
@@ -1461,6 +1513,8 @@ export default function EstimationManager() {
                                                 </div>
                                             </div>
                                         </div>
+                                        {/* SIGNATURE DANS LA CARTE "LOUÉ" */}
+                                        {renderSignature()}
                                     </div>
                                 </div>
                             ) : (
@@ -1494,6 +1548,8 @@ export default function EstimationManager() {
                                             </div>
                                         </div>
                                     </div>
+                                    {/* SIGNATURE DANS LA CARTE "NON LOUÉ" */}
+                                    {renderSignature()}
                                 </div>
                             )}
 
@@ -1531,7 +1587,7 @@ export default function EstimationManager() {
 
                     <div className="mt-3 pt-3 border-t border-zinc-200 shrink-0">
                         <p className="text-[6.5px] leading-relaxed text-zinc-400 text-justify" style={{ lineHeight: '1.6' }}>
-                            Sous réserve que l'étude des diagnostics techniques et du carnet numérique...
+                            Sous réserve que l'étude des diagnostics techniques et du carnet numérique du logement ne révèlent pas d'anomalie ni de non-conformité affectant sa valeur. Document à usage strictement privé. Conformément à la réglementation, le professionnel de l'immobilier n'est en aucun cas qualifié pour déterminer la surface du bien de manière réglementaire. La surface indiquée a été communiquée par le propriétaire, lue sur le titre de propriété ou lue sur l'avis de taxe foncière. Pour toute commercialisation de ce bien, le mandant fera appel à un diagnostiqueur professionnel dont la loi impose la qualification pour attester de la surface Carrez s'il s'agit d'un bien en copropriété ou de la surface de plancher pour les maisons de ville ou pavillons. Le professionnel de l'immobilier, rédacteur du présent avis de valeur n'assume aucune responsabilité sur la surface qui serait attestée par le diagnostiqueur et qui servirait de base juridique dans l'avant-contrat et l'acte définitif, et à toutes les conséquences qui y seraient liées. De même le présent document ne vaut ni n'engage la responsabilité du professionnel de l'immobilier quant à la conformité de l'état du bâti face aux divers diagnostics (Amiante, Plomb, Gaz, Électricité, Assainissement, Termites, Mérules).
                         </p>
                     </div>
                 </div>
