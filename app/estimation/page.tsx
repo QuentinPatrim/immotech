@@ -7,7 +7,7 @@ import {
     Home, MapPin, Image as ImageIcon, TrendingUp, CheckCircle, 
     Printer, ArrowRight, ArrowLeft, Plus, Trash2, UploadCloud, FileText,
     List, Edit, X, Leaf, ThumbsUp, ThumbsDown, BarChart3, Loader2, Euro, Building2, Banknote,
-    Sparkles, Shield, Star
+    Sparkles, Shield, Star, Globe, Wand2 // <-- Globe et Wand2 ajoutés ici
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,11 +29,11 @@ const COLORS = {
 // --- LISTE DES COLLABORATEURS ---
 const AGENTS = [
     { id: "quentin", name: "Quentin Delsol", role: "Service Transaction", signatureUrl: "/signatures/signature-quentin.png" },
-    { id: "rebecca", name: "Rebecca Gau", role: "Service Transacrtion", signatureUrl: "/signatures/signature-rebecca.png" },
+    { id: "rebecca", name: "Rebecca Gau", role: "Service Transaction", signatureUrl: "/signatures/signature-rebecca.png" },
     { id: "clement", name: "Clément Monti", role: "Service Transaction", signatureUrl: "/signatures/signature-clement.png" },
-    { id: "julien", name: "Julien Passerini", role: "BOSS", signatureUrl: "/signatures/signature-julien.png" },
+    { id: "julien", name: "Julien Passerini", role: "Service Transaction", signatureUrl: "/signatures/signature-julien.png" },
     { id: "sabri", name: "Sabri Abdesselem", role: "Service Transaction", signatureUrl: "/signatures/signature-sabri.png" },
-    { id: "catherine", name: "Catherine Leloup", role: " Service gestion ", signatureUrl: "/signatures/signature-catherine.png" },
+    { id: "catherine", name: "Catherine Leloup", role: "Service Transaction", signatureUrl: "/signatures/signature-catherine.png" },
 ];
 
 // --- TYPES ---
@@ -128,6 +128,10 @@ export default function EstimationManager() {
     const [newAmenity, setNewAmenity] = useState("");
     const [savedFeedback, setSavedFeedback] = useState(false);
 
+    // --- MODULE D'IMPORTATION WEB ---
+    const [listingUrl, setListingUrl] = useState("");
+    const [isScraping, setIsScraping] = useState(false);
+
     const handleNext = () => setStep(s => s + 1);
     const handleBack = () => setStep(s => s - 1);
 
@@ -190,6 +194,50 @@ export default function EstimationManager() {
     };
 
     const createNew = () => { setCurrentId(null); setData(DEFAULT_DATA); setStep(1); setView("EDIT"); };
+
+    // ─── IMPORTATION WEB (Scraping) ───
+    const handleImportFromUrl = async () => {
+        if (!listingUrl) return alert("Veuillez coller un lien valide.");
+        setIsScraping(true);
+        try {
+            const response = await fetch('/api/scrape', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url: listingUrl })
+            });
+            const result = await response.json();
+            
+            if (result.success) {
+                setData(prev => {
+                    const newData = { ...prev };
+                    
+                    // Préremplissage Adresse & Prix
+                    if (result.title) newData.propertyAddress = result.title;
+                    if (result.price) {
+                        newData.lowPrice = result.price;
+                        newData.highPrice = result.price;
+                    }
+                    
+                    // Aspiration intelligente des photos
+                    if (result.photos && result.photos.length > 0) {
+                        newData.mainPhoto = result.photos[0];
+                        if (result.photos.length > 1) {
+                            newData.extraPhotos = result.photos.slice(1, 9);
+                            // On sécurise les 3 premières pour la page PDF "Prestations"
+                            newData.secondaryPhotos = result.photos.slice(1, 4);
+                        }
+                    }
+                    return newData;
+                });
+                alert("Importation réussie ! Les photos, le prix et l'adresse ont été ajoutés.");
+            } else {
+                alert("Erreur: " + result.error);
+            }
+        } catch (error) {
+            alert("Erreur de connexion lors de l'importation.");
+        }
+        setIsScraping(false);
+    };
 
     // ─── Upload vers Supabase Storage (compression auto avant envoi) ───
     const [uploadingPhotos, setUploadingPhotos] = useState<Record<string, boolean>>({});
@@ -596,6 +644,23 @@ export default function EstimationManager() {
                                         <div>
                                             <p className="text-xs text-zinc-600 uppercase tracking-widest font-semibold">Étape 2 / 4</p>
                                             <h2 className="text-2xl font-bold text-white display-font">Photos du Bien</h2>
+                                        </div>
+                                    </div>
+
+                                    {/* MODULE ASPIRATEUR D'ANNONCE (NOUVEAU) */}
+                                    <div className="bg-gradient-to-r from-[#111114] to-[#1a1a1f] p-6 rounded-3xl border border-white/10 shadow-2xl flex flex-col md:flex-row items-center gap-6 mb-8">
+                                        <div className="flex items-center justify-center w-14 h-14 rounded-full bg-white/5 shrink-0 border border-white/10">
+                                            <Globe className="text-[#d35f52]" size={24}/>
+                                        </div>
+                                        <div className="flex-1 w-full">
+                                            <h2 className="text-sm font-bold text-white mb-1">Aspirateur d'Annonce</h2>
+                                            <p className="text-xs text-zinc-400 mb-3">Collez le lien de votre site pour aspirer les photos (et les infos) directement.</p>
+                                            <div className="flex gap-3 w-full">
+                                                <Input value={listingUrl} onChange={e => setListingUrl(e.target.value)} placeholder="https://www.patrim.fr/..." className="flex-1 bg-black/50 border-white/20 h-12 text-sm text-white focus:border-[#d35f52]"/>
+                                                <Button onClick={handleImportFromUrl} disabled={isScraping} className="h-12 px-6 rounded-xl font-bold bg-white text-black hover:bg-zinc-200 transition-colors">
+                                                    {isScraping ? <Loader2 className="animate-spin" size={18} /> : <Wand2 size={18} className="mr-2" />} Importer
+                                                </Button>
+                                            </div>
                                         </div>
                                     </div>
 
