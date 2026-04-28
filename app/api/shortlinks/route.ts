@@ -2,21 +2,23 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
 /* ============================================================
-   API ROUTE : /api/shortlinks
+   API ROUTE : /api/shortlinks (v2)
    Crée un lien court pour une URL longue.
-   POST body: { targetUrl, estimationId?, kind }
-     - kind: "simulation" | "galerie" | "hub"
-   Renvoie { slug, shortUrl }.
-   Si un lien existe déjà pour ce couple (estimationId, kind),
-   on le réutilise au lieu d'en créer un nouveau.
+
+   POST body: {
+     targetUrl: string,
+     kind: "simulation" | "galerie" | "hub",
+     estimationId?: string,   // si le short_link est pour une estimation
+     qrCodeId?: string,       // OU si le short_link est pour un QR code
+   }
+
+   Logique :
+   - Si un short_link existe déjà pour ce couple (entity, kind), on le réutilise
+   - Sinon, on génère un slug unique et on l'enregistre
    ============================================================ */
 
-// Alphabet volontairement sans caractères ambigus (pas de 0/O/I/1/l)
-// pour que les slugs soient tapables facilement par un humain
 const SLUG_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const SLUG_LENGTH = 4;
-// 32^4 = ~1 million de combinaisons : largement suffisant pour tes biens,
-// et si jamais ça sature un jour, on passera à 5 caractères (33M combinaisons).
 
 function generateSlug(): string {
     let slug = '';
@@ -26,8 +28,6 @@ function generateSlug(): string {
     return slug;
 }
 
-// On initialise Supabase côté serveur avec les variables d'env publiques
-// (suffisantes car les policies RLS permettent l'insertion publique)
 function getSupabase() {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -39,7 +39,7 @@ function getSupabase() {
 
 export async function POST(request: Request) {
     try {
-        const { targetUrl, estimationId, kind } = await request.json();
+        const { targetUrl, estimationId, qrCodeId, kind } = await request.json();
 
         // Validation
         if (!targetUrl || typeof targetUrl !== 'string') {
@@ -48,47 +48,46 @@ export async function POST(request: Request) {
         if (!kind || !['simulation', 'galerie', 'hub'].includes(kind)) {
             return NextResponse.json({ error: 'kind invalide (simulation|galerie|hub)' }, { status: 400 });
         }
+        // Il faut au moins un des deux IDs (estimation ou QR)
+        if (!estimationId && !qrCodeId) {
+            return NextResponse.json({ error: 'estimationId ou qrCodeId requis' }, { status: 400 });
+        }
 
         const supabase = getSupabase();
 
-        // Si on a un estimationId + kind, on vérifie d'abord qu'il n'existe pas déjà un lien.
-        // Comme ça, on n'accumule pas 50 liens pour le même bien à force de cliquer sur "Générer"
+        // --- Recherche d'un short_link existant pour éviter les doublons ---
+        let existingQuery = supabase.from('short_links').select('slug').eq('kind', kind);
         if (estimationId) {
-            const { data: existing } = await supabase
-                .from('short_links')
-                .select('slug')
-                .eq('estimation_id', estimationId)
-                .eq('kind', kind)
-                .limit(1)
-                .maybeSingle();
-
-            if (existing) {
-                return NextResponse.json({
-                    slug: existing.slug,
-                    reused: true,
-                });
-            }
+            existingQuery = existingQuery.eq('estimation_id', estimationId);
+        } else if (qrCodeId) {
+            existingQuery = existingQuery.eq('qr_code_id', qrCodeId);
         }
 
-        // Sinon, on génère un nouveau slug unique
-        // On retry jusqu'à 5 fois en cas de collision improbable (32^4 = 1M combinaisons)
+        const { data: existing } = await existingQuery.limit(1).maybeSingle();
+
+        if (existing) {
+            return NextResponse.json({ slug: existing.slug, reused: true });
+        }
+
+        // --- Création d'un nouveau short_link avec retry en cas de collision ---
         let slug: string | null = null;
         for (let attempt = 0; attempt < 5; attempt++) {
             const candidate = generateSlug();
-            const { error } = await supabase
-                .from('short_links')
-                .insert({
-                    slug: candidate,
-                    target_url: targetUrl,
-                    estimation_id: estimationId || null,
-                    kind,
-                });
+            const insertPayload: any = {
+                slug: candidate,
+                target_url: targetUrl,
+                kind,
+            };
+            if (estimationId) insertPayload.estimation_id = estimationId;
+            if (qrCodeId) insertPayload.qr_code_id = qrCodeId;
+
+            const { error } = await supabase.from('short_links').insert(insertPayload);
 
             if (!error) {
                 slug = candidate;
                 break;
             }
-            // Si erreur de contrainte unique (code 23505), on retry avec un autre slug
+            // 23505 = violation de contrainte unique (slug déjà pris)
             if (error.code !== '23505') {
                 console.error('[shortlinks] Erreur Supabase:', error);
                 return NextResponse.json({ error: 'Erreur lors de la création du lien' }, { status: 500 });

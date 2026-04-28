@@ -8,7 +8,7 @@ import { formatNumber as formatPrice } from "@/lib/formatters";
 import {
     Calculator, Wallet, TrendingUp, AlertCircle, Percent, Clock, Key,
     Sparkles, ArrowUpRight, ArrowDownRight, Home, Coins, Receipt, PiggyBank,
-    Landmark, BadgePercent, Tag, Info, Camera, ArrowRight
+    Landmark, BadgePercent, Tag, Info, Camera, ArrowRight, ArrowLeft
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -82,11 +82,52 @@ export default function SimulateurAcquereur() {
     useEffect(() => {
         if (!estimationId) return;
         const fetchData = async () => {
-            const { data: estim } = await supabase.from('estimations').select('data_json').eq('id', estimationId).single();
+            // --- ÉTAPE 1 : on cherche d'abord dans la table estimations ---
+            // (format historique : toutes les données sont dans data_json)
+            const { data: estim } = await supabase
+                .from('estimations')
+                .select('data_json')
+                .eq('id', estimationId)
+                .maybeSingle();
+
             if (estim && estim.data_json) {
                 setData(estim.data_json);
                 setExpectedRent(estim.data_json.monthlyRent || 0);
+                setLoading(false);
+                return;
             }
+
+            // --- ÉTAPE 2 : sinon, on cherche dans la table qr_codes ---
+            // (nouvelle table : les champs sont à plat en snake_case)
+            // On les normalise pour qu'ils ressemblent au format data_json attendu
+            // par le reste du simulateur (mainPhoto, highPrice, etc.)
+            const { data: qr } = await supabase
+                .from('qr_codes')
+                .select('*')
+                .eq('id', estimationId)
+                .maybeSingle();
+
+            if (qr) {
+                const normalized = {
+                    propertyAddress: qr.address,
+                    propertyType: qr.property_type,
+                    rooms: qr.rooms,
+                    surface: qr.surface,
+                    highPrice: qr.price_fai,
+                    mainPhoto: qr.main_photo,
+                    secondaryPhotos: [], // pas stockés pour les QR
+                    extraPhotos: qr.extra_photos || [],
+                    taxeFonciere: qr.taxe_fonciere,
+                    coproFees: qr.copro_fees,
+                    monthlyRent: qr.monthly_rent,
+                    isCopropriete: (qr.copro_fees || 0) > 0,
+                    // On fusionne le data_json stocké dans qr_codes s'il contient d'autres champs
+                    ...(qr.data_json || {}),
+                };
+                setData(normalized);
+                setExpectedRent(qr.monthly_rent || 0);
+            }
+
             setLoading(false);
         };
         fetchData();
@@ -797,14 +838,21 @@ export default function SimulateurAcquereur() {
                     <div className="absolute inset-0" style={{ background: `linear-gradient(180deg, rgba(0,0,0,0.2) 0%, rgba(0,0,0,0.25) 50%, rgba(0,0,0,0.75) 100%)` }} />
                     <div className="absolute inset-0 mix-blend-overlay opacity-25" style={{ background: `linear-gradient(135deg, ${COLORS.primary}00 0%, ${COLORS.primary}50 100%)` }} />
 
-                    <div className="absolute top-5 left-5 flex items-center gap-2.5 bg-white/90 backdrop-blur-xl p-2.5 pr-4 rounded-2xl border border-white/60 shadow-xl">
+                    <Link
+                        href="/mes-biens"
+                        className="absolute top-5 left-5 flex items-center gap-2.5 bg-white/90 backdrop-blur-xl p-2.5 pr-4 rounded-2xl border border-white/60 shadow-xl hover:bg-white transition-colors group"
+                        title="Retour à Mes biens"
+                    >
+                        <div className="w-6 h-6 rounded-full bg-zinc-100 flex items-center justify-center group-hover:bg-zinc-200 transition-colors">
+                            <ArrowLeft size={12} className="text-zinc-600"/>
+                        </div>
                         <img src="/logo-patrim.png" className="h-7 object-contain" alt="Patrim"/>
                         <div className="h-5 w-px bg-zinc-300"/>
                         <div className="flex flex-col">
                             <span className="text-[8px] uppercase tracking-[0.25em] font-bold text-zinc-500 leading-none">Patrim</span>
                             <span className="text-[9px] uppercase tracking-widest font-black leading-tight" style={{ color: COLORS.primary }}>Simulation</span>
                         </div>
-                    </div>
+                    </Link>
 
                     <div className="absolute top-5 right-5 flex items-center gap-1.5 bg-white/90 backdrop-blur-xl px-3 py-2 rounded-full border border-white/60 shadow-lg">
                         <span className="relative flex h-1.5 w-1.5">
@@ -862,15 +910,22 @@ export default function SimulateurAcquereur() {
                 <div className="absolute inset-0" style={{ background: `linear-gradient(180deg, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0.45) 55%, rgba(0,0,0,0.85) 100%)` }} />
                 <div className="absolute inset-0 mix-blend-overlay opacity-30" style={{ background: `linear-gradient(135deg, ${COLORS.primary}00 0%, ${COLORS.primary}60 100%)` }} />
 
-                {/* Badge logo Patrim */}
-                <div className="absolute top-8 left-8 flex items-center gap-3 bg-white/90 backdrop-blur-xl p-3 pr-5 rounded-2xl border border-white/60 shadow-xl">
+                {/* Badge logo Patrim — cliquable, ramène à Mes biens */}
+                <Link
+                    href="/mes-biens"
+                    className="absolute top-8 left-8 flex items-center gap-3 bg-white/90 backdrop-blur-xl p-3 pr-5 rounded-2xl border border-white/60 shadow-xl hover:bg-white transition-colors group"
+                    title="Retour à Mes biens"
+                >
+                    <div className="w-7 h-7 rounded-full bg-zinc-100 flex items-center justify-center group-hover:bg-zinc-200 transition-colors">
+                        <ArrowLeft size={14} className="text-zinc-600"/>
+                    </div>
                     <img src="/logo-patrim.png" className="h-8 object-contain" alt="Patrim"/>
                     <div className="h-6 w-px bg-zinc-300"/>
                     <div className="flex flex-col">
                         <span className="text-[9px] uppercase tracking-[0.25em] font-bold text-zinc-500 leading-none">Patrim</span>
                         <span className="text-[10px] uppercase tracking-widest font-black leading-tight" style={{ color: COLORS.primary }}>Simulation</span>
                     </div>
-                </div>
+                </Link>
 
                 {/* Badge live */}
                 <div className="absolute top-8 right-8 flex items-center gap-2 bg-white/90 backdrop-blur-xl px-4 py-2.5 rounded-full border border-white/60 shadow-lg">
@@ -1015,7 +1070,7 @@ export default function SimulateurAcquereur() {
             </div>
 
             {/* Style pour la scrollbar sticky du desktop */}
-            <style jsx>{`
+            <style dangerouslySetInnerHTML={{ __html: `
                 .custom-scrollbar::-webkit-scrollbar {
                     width: 6px;
                 }
@@ -1029,7 +1084,7 @@ export default function SimulateurAcquereur() {
                 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
                     background: ${COLORS.secondary}60;
                 }
-            `}</style>
+            `}}/>
         </div>
     );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useSearchParams } from "next/navigation"; // <-- NOUVEAU : Pour lire l'ID
+import { useSearchParams, useRouter } from "next/navigation"; // useRouter pour le bouton retour
 import { supabase } from "@/lib/supabaseClient";
 import {
     QrCode, Image as ImageIcon, Calculator, UploadCloud,
@@ -18,9 +18,12 @@ const COLORS = {
 };
 
 export default function GenerateurQR() {
+    const router = useRouter();
     // --- LECTURE DE L'ID (MÉMOIRE) ---
+    // L'URL accepte ?qr_id=xxx (depuis /mes-biens) pour rouvrir un QR existant.
+    // On garde aussi ?id=xxx comme alias pour rétrocompatibilité.
     const searchParams = useSearchParams();
-    const editId = searchParams.get("id"); 
+    const editId = searchParams.get("qr_id") || searchParams.get("id");
 
     const [loading, setLoading] = useState(false);
     const [generatedId, setGeneratedId] = useState<string | null>(null);
@@ -61,22 +64,31 @@ export default function GenerateurQR() {
         }
     }, [editId]);
 
-    // --- CHARGEMENT DES DONNÉES EXISTANTES ---
+    // --- CHARGEMENT DES DONNÉES EXISTANTES (depuis la table qr_codes) ---
     const loadExistingData = async (id: string) => {
         setLoading(true);
-        const { data, error } = await supabase.from('estimations').select('data_json').eq('id', id).single();
-        if (data && data.data_json) {
-            const d = data.data_json;
-            setAddress(d.propertyAddress || "");
-            setPropertyType(d.propertyType || "Appartement");
-            setRooms(d.rooms || "");
-            setSurface(d.surface || "");
-            setPriceFAI(d.commercialSettings?.sellingPriceFAI || d.highPrice || "");
-            setTaxeFonciere(d.taxeFonciere || "");
-            setCoproFees(d.coproFees || "");
-            setMonthlyRent(d.monthlyRent || "");
-            setMainPhoto(d.mainPhoto || "");
-            setExtraPhotos(d.extraPhotos || []);
+        const { data, error } = await supabase
+            .from('qr_codes')
+            .select('*')
+            .eq('id', id)
+            .single();
+
+        if (data) {
+            // La table qr_codes stocke les champs à plat (plus propre que JSON)
+            setAddress(data.address || "");
+            setPropertyType(data.property_type || "Appartement");
+            setRooms(data.rooms || "");
+            setSurface(data.surface || "");
+            setPriceFAI(data.price_fai || "");
+            setTaxeFonciere(data.taxe_fonciere || "");
+            setCoproFees(data.copro_fees || "");
+            setMonthlyRent(data.monthly_rent || "");
+            setMainPhoto(data.main_photo || "");
+            setExtraPhotos(data.extra_photos || []);
+            setGeneratedId(id);
+
+            // Régénérer les short_links pour pouvoir les retélécharger
+            await createShortLinks(id);
         }
         setLoading(false);
     };
@@ -168,43 +180,56 @@ export default function GenerateurQR() {
         setLoading(true);
 
         const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
+        if (!user) { setLoading(false); return; }
 
-        const payloadJson = {
-            clientName: "Génération Express QR",
-            propertyAddress: address,
-            propertyType,
-            rooms: Number(rooms),
-            surface: Number(surface),
-            highPrice: Number(priceFAI),
-            commercialSettings: { sellingPriceFAI: Number(priceFAI) },
-            taxeFonciere: Number(taxeFonciere),
-            coproFees: Number(coproFees),
-            monthlyRent: Number(monthlyRent),
-            isCopropriete: Number(coproFees) > 0,
-            dpe: "C", ges: "A",
-            mainPhoto, extraPhotos,
+        // Payload pour la table qr_codes (champs à plat, pas dans un JSON)
+        const qrPayload = {
+            user_id: user.id,
+            address: address,
+            price_fai: Number(priceFAI) || null,
+            property_type: propertyType,
+            rooms: Number(rooms) || null,
+            surface: Number(surface) || null,
+            main_photo: mainPhoto || null,
+            extra_photos: extraPhotos,
+            taxe_fonciere: Number(taxeFonciere) || null,
+            copro_fees: Number(coproFees) || null,
+            monthly_rent: Number(monthlyRent) || null,
+            // Conservation d'un data_json pour flexibilité future
+            data_json: {
+                commercialSettings: { sellingPriceFAI: Number(priceFAI) },
+                isCopropriete: Number(coproFees) > 0,
+                dpe: "C", ges: "A",
+            },
         };
 
         if (editId) {
-            // --- MODE ÉDITION : Mise à jour du dossier existant ---
-            const { error } = await supabase.from('estimations').update({ data_json: payloadJson, address: address }).eq('id', editId);
-            
+            // --- MODE ÉDITION : Mise à jour du QR existant ---
+            const { error } = await supabase
+                .from('qr_codes')
+                .update(qrPayload)
+                .eq('id', editId);
+
             if (!error) {
                 setGeneratedId(editId);
                 await createShortLinks(editId);
             } else {
+                console.error(error);
                 alert("Erreur lors de la mise à jour.");
             }
         } else {
-            // --- MODE CRÉATION : Nouveau dossier ---
-            const payload = { user_id: user.id, client_name: "QR Code Express", address: address, data_json: payloadJson };
-            const { data, error } = await supabase.from('estimations').insert(payload).select('id').single();
+            // --- MODE CRÉATION : Nouveau QR code ---
+            const { data, error } = await supabase
+                .from('qr_codes')
+                .insert(qrPayload)
+                .select('id')
+                .single();
 
             if (data) {
                 setGeneratedId(data.id);
                 await createShortLinks(data.id);
             } else {
+                console.error(error);
                 alert("Erreur lors de la génération.");
             }
         }
@@ -212,8 +237,8 @@ export default function GenerateurQR() {
         setLoading(false);
     };
 
-    // --- CRÉATION DES URLS COURTES ---
-    const createShortLinks = async (estimationId: string) => {
+    // --- CRÉATION DES URLS COURTES (pour un QR code) ---
+    const createShortLinks = async (qrCodeId: string) => {
         const origin = domain || (typeof window !== "undefined" ? window.location.origin : "");
 
         const createOne = async (kind: "simulation" | "galerie", targetPath: string) => {
@@ -222,7 +247,8 @@ export default function GenerateurQR() {
                 const res = await fetch('/api/shortlinks', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ targetUrl, estimationId, kind }),
+                    // On passe maintenant qrCodeId (plus estimationId) pour ce générateur
+                    body: JSON.stringify({ targetUrl, qrCodeId, kind }),
                 });
                 const json = await res.json();
                 if (json.slug) {
@@ -234,8 +260,11 @@ export default function GenerateurQR() {
             return undefined;
         };
 
-        const simuTarget = `/simulation/${estimationId}?price=${Number(priceFAI)}`;
-        const galerieTarget = `/galerie/${estimationId}`;
+        // Les URLs longues restent /simulation/[id] et /galerie/[id]
+        // Les pages de simulation/galerie devront apprendre à lire aussi
+        // depuis qr_codes en plus d'estimations (voir Étape 4)
+        const simuTarget = `/simulation/${qrCodeId}?price=${Number(priceFAI)}`;
+        const galerieTarget = `/galerie/${qrCodeId}`;
 
         const [simulation, galerie] = await Promise.all([
             createOne("simulation", simuTarget),
@@ -535,25 +564,46 @@ export default function GenerateurQR() {
     if (loading) return <div className="min-h-screen bg-[#0a0a0c] flex items-center justify-center"><Loader2 className="animate-spin text-[#d35f52] w-10 h-10"/></div>;
 
     return (
-        <div className="min-h-screen bg-[#0a0a0c] text-white font-sans pb-32">
-            <style>{`
-                @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@400;500;700;900&display=swap');
-                .font-serif { font-family: 'Playfair Display', serif; }
-            `}</style>
+        <div className="min-h-screen bg-[#0a0a0c] text-white pb-32">
+            {/* Typos unifiées avec /mes-biens : Fraunces (display) + Inter Tight (body) */}
+            <style dangerouslySetInnerHTML={{ __html: `
+                @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700;9..144,900&family=Inter+Tight:wght@400;500;600;700;800&display=swap');
+                .font-display {
+                    font-family: 'Fraunces', serif;
+                    font-optical-sizing: auto;
+                    font-variation-settings: "SOFT" 50, "WONK" 0;
+                }
+                .font-body { font-family: 'Inter Tight', sans-serif; }
+                .font-sans { font-family: 'Inter Tight', sans-serif; }
+            `}}/>
 
-            <div className="border-b border-white/10 bg-[#111114] sticky top-0 z-50 relative">
-                <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                        <Link href="/mes-biens" className="text-zinc-400 hover:text-white bg-white/5 p-2 rounded-full transition-colors"><ArrowLeft size={20}/></Link>
-                        <div>
-                            <h1 className="text-xl font-bold font-serif flex items-center gap-2"><QrCode size={20} className="text-[#d35f52]"/> {editId ? "Modifier le QR Code" : "Générateur Express"}</h1>
-                            <p className="text-[10px] text-zinc-400 uppercase tracking-widest font-bold">Pour mandats sans estimation</p>
+            {/* Header unifié — mêmes proportions que /mes-biens */}
+            <div className="sticky top-0 z-50 backdrop-blur-xl border-b border-white/5" style={{ backgroundColor: 'rgba(10,10,12,0.85)' }}>
+                <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-3 min-w-0">
+                        <Link
+                            href="/mes-biens"
+                            className="flex items-center gap-2 text-zinc-400 hover:text-white transition-colors flex-shrink-0 font-body text-xs font-semibold"
+                        >
+                            <div className="w-8 h-8 rounded-full bg-white/5 border border-white/10 flex items-center justify-center hover:bg-white/10 transition-colors">
+                                <ArrowLeft size={14}/>
+                            </div>
+                            <span className="hidden sm:inline">Mes biens</span>
+                        </Link>
+                        <div className="h-6 w-px bg-white/10 hidden sm:block"/>
+                        <div className="min-w-0">
+                            <h1 className="font-display text-xl sm:text-2xl text-white flex items-center gap-2 leading-tight truncate" style={{ fontWeight: 500 }}>
+                                <QrCode size={18} className="text-[#d35f52] flex-shrink-0"/>
+                                <span className="truncate">{editId ? "Modifier le QR Code" : "Générateur Express"}</span>
+                            </h1>
+                            <p className="text-[9px] text-zinc-500 uppercase tracking-[0.2em] font-bold font-body">QR Code pour mandat</p>
                         </div>
                     </div>
+                    <img src="/logo-patrim.png" alt="PATRIM" className="h-7 object-contain opacity-80 flex-shrink-0"/>
                 </div>
             </div>
 
-            <div className="max-w-5xl mx-auto px-6 mt-10">
+            <div className="max-w-5xl mx-auto px-6 mt-10 font-body">
                 {!generatedId ? (
                     <div className="animate-in fade-in duration-300 space-y-10">
                         
@@ -677,8 +727,8 @@ export default function GenerateurQR() {
 
                     <div className="max-w-5xl mx-auto animate-in fade-in slide-in-from-bottom-8 duration-500 space-y-12">
                         <div className="text-center">
-                            <h2 className="text-3xl font-serif font-bold">Vos cartes marketing sont prêtes !</h2>
-                            <p className="text-zinc-400 mt-2">Cliquez sur les boutons pour télécharger les PNG haute définition.</p>
+                            <h2 className="font-display text-3xl sm:text-4xl text-white" style={{ fontWeight: 500 }}>Vos cartes marketing sont prêtes !</h2>
+                            <p className="text-zinc-400 mt-2 text-sm">Cliquez sur les boutons pour télécharger les PNG haute définition.</p>
                         </div>
 
                         {(shortLinks.simulation || shortLinks.galerie) && (

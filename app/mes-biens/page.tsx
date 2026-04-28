@@ -1,435 +1,772 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
-import Link from "next/link";
-import { supabase } from "@/lib/supabaseClient";
-import { formatNumber as formatPrice } from "@/lib/formatters";
-import {
-    Search, Calculator, Camera, Copy, Check, MessageCircle, Mail, ImageIcon,
-    MoreVertical, ExternalLink, Home, MapPin, LayoutGrid, List, Sparkles, X,
-    QrCode, Download, Layers, PlusCircle, Edit3, Trash2, Instagram
-} from "lucide-react";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
+/* ============================================================
+   PAGE HUB "MES BIENS" — v2
+   Point d'entrée central de l'app. 2 onglets :
+   - Estimations : biens avec estimation complète
+   - QR Codes    : biens créés via le générateur QR
 
+   Un bien peut apparaître dans les DEUX onglets si :
+   - Il a été créé comme QR puis étendu en estimation
+   - Ou l'inverse (estimation convertie en QR)
+   Un badge "LIÉ" est affiché dans ces cas-là.
+   ============================================================ */
+
+import { useState, useEffect, useMemo } from "react";
+import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabaseClient";
+import {
+    Plus, Search, ChevronRight, QrCode, FileText, Home as HomeIcon,
+    Image as ImageIcon, Calculator, MoreVertical, Trash2, Copy, Check,
+    Sparkles, ArrowUpRight, Link2, Edit3, Wand2, Building2,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+
+// --- CHARTE GRAPHIQUE PATRIM ---
 const COLORS = {
     primary: "#8a0e01",
     secondary: "#d35f52",
-    gray: "#393939",
-    wealth: "#059669",
-    wealthLight: "#10b981",
+    gold: "#c9a84c",
+    darkBg: "#0a0a0c",
+    darkCard: "#111114",
+    darkCardHover: "#1a1a1f",
+    darkBorder: "rgba(255,255,255,0.08)",
 };
 
-type Estimation = {
+// --- TYPES ---
+type TabKey = "estimations" | "qr_codes";
+
+interface EstimationRow {
     id: string;
-    createdAt?: string;
-    data: {
-        clientName?: string;
-        mainPhoto?: string;
-        propertyAddress?: string;
-        propertyType?: string;
-        rooms?: number;
-        highPrice?: number;
-        monthlyRent?: number;
-    };
-};
+    client_name: string;
+    address: string;
+    created_at: string;
+    qr_code_id: string | null;
+    data_json: any;
+}
 
-export default function MesBiens() {
-    const [estimations, setEstimations] = useState<Estimation[]>([]);
+interface QrCodeRow {
+    id: string;
+    address: string;
+    price_fai: number | null;
+    property_type: string | null;
+    rooms: number | null;
+    surface: number | null;
+    main_photo: string | null;
+    extra_photos: string[];
+    estimation_id: string | null;
+    created_at: string;
+}
+
+export default function MesBiensPage() {
+    const router = useRouter();
+    const [activeTab, setActiveTab] = useState<TabKey>("estimations");
     const [loading, setLoading] = useState(true);
-    const [search, setSearch] = useState("");
-    const [copiedId, setCopiedId] = useState<string | null>(null);
+    const [estimations, setEstimations] = useState<EstimationRow[]>([]);
+    const [qrCodes, setQrCodes] = useState<QrCodeRow[]>([]);
+    const [searchQuery, setSearchQuery] = useState("");
     const [openMenuId, setOpenMenuId] = useState<string | null>(null);
-    const [qrModalEstimation, setQrModalEstimation] = useState<Estimation | null>(null);
+    const [copiedId, setCopiedId] = useState<string | null>(null);
 
-    const [baseUrl, setBaseUrl] = useState<string>("");
+    // Détecter origin côté client (pour construire les URLs de partage)
+    const [origin, setOrigin] = useState("");
     useEffect(() => {
-        if (typeof window !== "undefined") setBaseUrl(window.location.origin);
+        if (typeof window !== "undefined") setOrigin(window.location.origin);
     }, []);
 
+    // --- FETCH DES DEUX LISTES ---
     useEffect(() => {
-        const fetchEstimations = async () => {
-            const { data, error } = await supabase
-                .from('estimations')
-                .select('id, created_at, client_name, data_json')
-                .order('created_at', { ascending: false })
-                .limit(40); 
+        fetchAll();
+    }, []);
 
-            if (data && !error) {
-                const normalized: Estimation[] = data.map((row: any) => ({
-                    id: row.id,
-                    createdAt: row.created_at,
-                    data: {
-                        ...row.data_json,
-                        clientName: row.client_name 
-                    },
-                }));
-                setEstimations(normalized);
-            }
+    const fetchAll = async () => {
+        setLoading(true);
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
             setLoading(false);
-        };
-        fetchEstimations();
-    }, []);
-
-    useEffect(() => {
-        const handleClickOutside = () => setOpenMenuId(null);
-        if (openMenuId) {
-            window.addEventListener('click', handleClickOutside);
-            return () => window.removeEventListener('click', handleClickOutside);
+            return;
         }
-    }, [openMenuId]);
 
+        // Fetch en parallèle des deux tables
+        const [estimationsRes, qrCodesRes] = await Promise.all([
+            supabase
+                .from('estimations')
+                .select('*')
+                .eq('user_id', user.id)
+                .order('created_at', { ascending: false }),
+            supabase
+                .from('qr_codes')
+                .select('*')
+                .eq('user_id', user.id)
+                .order('created_at', { ascending: false }),
+        ]);
+
+        if (estimationsRes.data) setEstimations(estimationsRes.data);
+        if (qrCodesRes.data) setQrCodes(qrCodesRes.data);
+        setLoading(false);
+    };
+
+    // --- RECHERCHE FILTRÉE ---
     const filteredEstimations = useMemo(() => {
-        if (!search.trim()) return estimations;
-        const q = search.toLowerCase().trim();
-        return estimations.filter(e => {
-            const addr = (e.data.propertyAddress || "").toLowerCase();
-            const type = (e.data.propertyType || "").toLowerCase();
-            const priceStr = String(e.data.highPrice || "");
-            return addr.includes(q) || type.includes(q) || priceStr.includes(q);
-        });
-    }, [estimations, search]);
+        const q = searchQuery.toLowerCase().trim();
+        if (!q) return estimations;
+        return estimations.filter(e =>
+            (e.address || "").toLowerCase().includes(q) ||
+            (e.client_name || "").toLowerCase().includes(q)
+        );
+    }, [estimations, searchQuery]);
 
-    const buildSimulationUrl = (e: Estimation) => `${baseUrl}/simulation/${e.id}${e.data.highPrice ? `?price=${e.data.highPrice}` : ""}`;
-    const buildGalleryUrl = (e: Estimation) => `${baseUrl}/galerie/${e.id}`;
+    const filteredQrCodes = useMemo(() => {
+        const q = searchQuery.toLowerCase().trim();
+        if (!q) return qrCodes;
+        return qrCodes.filter(qr =>
+            (qr.address || "").toLowerCase().includes(q) ||
+            (qr.property_type || "").toLowerCase().includes(q)
+        );
+    }, [qrCodes, searchQuery]);
 
-    const copyToClipboard = async (url: string, id: string) => {
+    // --- ACTIONS ---
+    const handleCopy = async (text: string, id: string) => {
         try {
-            await navigator.clipboard.writeText(url);
-            setCopiedId(id); setTimeout(() => setCopiedId(null), 2000);
-        } catch {
-            const textarea = document.createElement('textarea');
-            textarea.value = url; document.body.appendChild(textarea);
-            textarea.select(); try { document.execCommand('copy'); } catch {}
-            document.body.removeChild(textarea);
-            setCopiedId(id); setTimeout(() => setCopiedId(null), 2000);
+            await navigator.clipboard.writeText(text);
+            setCopiedId(id);
+            setTimeout(() => setCopiedId(null), 1500);
+        } catch { /* fallback silencieux */ }
+    };
+
+    const deleteItem = async (table: 'estimations' | 'qr_codes', id: string) => {
+        if (!confirm("Supprimer définitivement ce dossier ?")) return;
+        await supabase.from(table).delete().eq('id', id);
+        fetchAll();
+        setOpenMenuId(null);
+    };
+
+    /* ============================================================
+       CONVERSION : QR Code → Estimation complète
+       Le QR reste dans qr_codes, mais on crée une estimation liée
+       en reprenant les infos déjà saisies. Les deux sont ensuite
+       associés via qr_code_id / estimation_id.
+       ============================================================ */
+    const convertQrToEstimation = async (qr: QrCodeRow) => {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        // Si le QR a déjà une estimation liée, on ouvre simplement celle-ci
+        if (qr.estimation_id) {
+            router.push(`/estimation/${qr.estimation_id}`);
+            return;
         }
-    };
 
-    const sendBySMS = (e: Estimation) => {
-        const label = `${e.data.propertyType || "Bien"}${e.data.rooms ? ` T${e.data.rooms}` : ""}${e.data.propertyAddress ? ` (${e.data.propertyAddress})` : ""}`;
-        const body = `Bonjour,\n\nVoici les informations sur ce ${label} :\n\n📸 Photos : ${buildGalleryUrl(e)}\n💰 Simulateur financier : ${buildSimulationUrl(e)}\n\nÀ votre disposition,\nPatrim`;
-        window.location.href = `sms:?body=${encodeURIComponent(body)}`;
-    };
+        // Pré-remplissage de l'estimation avec les données du QR
+        const estimationData = {
+            clientName: "",
+            propertyAddress: qr.address || "",
+            propertyType: qr.property_type || "Appartement",
+            rooms: qr.rooms || 0,
+            surface: qr.surface || 0,
+            highPrice: qr.price_fai || 0,
+            mainPhoto: qr.main_photo || "",
+            extraPhotos: qr.extra_photos || [],
+        };
 
-    const sendByEmail = (e: Estimation) => {
-        const label = `${e.data.propertyType || "Bien"}${e.data.rooms ? ` T${e.data.rooms}` : ""}`;
-        const subject = `${label}${e.data.propertyAddress ? ` - ${e.data.propertyAddress}` : ""}`;
-        const body = `Bonjour,\n\nSuite à notre échange, je vous transmets les informations sur ce ${label} :\n\nGalerie photo : ${buildGalleryUrl(e)}\nSimulateur financier : ${buildSimulationUrl(e)}\n\nJe reste à votre disposition pour toute question.\n\nCordialement,\nPatrim`;
-        window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-    };
+        // Création de l'estimation avec lien vers le QR
+        const { data: newEstim, error } = await supabase
+            .from('estimations')
+            .insert({
+                user_id: user.id,
+                client_name: "Nouveau dossier",
+                address: qr.address || "Adresse à compléter",
+                qr_code_id: qr.id,
+                data_json: estimationData,
+            })
+            .select('id')
+            .single();
 
-    const handleDelete = async (id: string) => {
-        if (window.confirm("Êtes-vous sûr de vouloir supprimer ce bien ? Cette action est irréversible et supprimera l'accès au simulateur et à la galerie pour vos clients.")) {
-            const { error } = await supabase.from('estimations').delete().eq('id', id);
-            if (!error) {
-                setEstimations(prev => prev.filter(e => e.id !== id));
-            } else {
-                alert("Erreur lors de la suppression du bien.");
-            }
+        if (error || !newEstim) {
+            alert("Erreur lors de la création de l'estimation.");
+            return;
         }
+
+        // Mise à jour du QR pour le lier à la nouvelle estimation
+        await supabase
+            .from('qr_codes')
+            .update({ estimation_id: newEstim.id })
+            .eq('id', qr.id);
+
+        // Redirection vers l'estimation fraîchement créée
+        router.push(`/estimation/${newEstim.id}`);
     };
 
-    if (loading) return (
-        <div className="min-h-screen bg-[#faf8f6] flex items-center justify-center">
-            <div className="flex flex-col items-center gap-4">
-                <img src="/logo-patrim.png" className="h-12 object-contain animate-pulse" alt="Patrim"/>
-                <p className="text-zinc-500 text-xs uppercase tracking-[0.3em] font-bold">Chargement de vos biens…</p>
-            </div>
-        </div>
-    );
-
+    // --- RENDU ---
     return (
-        <div className="min-h-screen bg-[#faf8f6] text-zinc-900 font-sans pb-20 selection:bg-[#d35f52]/30 relative overflow-x-hidden">
-            <div className="pointer-events-none fixed top-0 -left-40 w-[500px] h-[500px] rounded-full blur-[120px] opacity-20" style={{ background: `radial-gradient(circle, ${COLORS.secondary} 0%, transparent 70%)` }}/>
-            <div className="pointer-events-none fixed top-40 -right-40 w-[500px] h-[500px] rounded-full blur-[140px] opacity-15" style={{ background: `radial-gradient(circle, ${COLORS.primary} 0%, transparent 70%)` }}/>
+        <div className="min-h-screen" style={{ backgroundColor: COLORS.darkBg }}>
+            {/* Import de la typo Fraunces (élégante) + Inter Tight (body) */}
+            <style dangerouslySetInnerHTML={{ __html: `
+                @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700;9..144,900&family=Inter+Tight:wght@400;500;600;700;800&display=swap');
 
-            <div className="max-w-6xl mx-auto px-5 md:px-8 pt-10 pb-6 relative z-10">
+                .font-display {
+                    font-family: 'Fraunces', serif;
+                    font-optical-sizing: auto;
+                    font-variation-settings: "SOFT" 50, "WONK" 0;
+                }
+                .font-body {
+                    font-family: 'Inter Tight', sans-serif;
+                }
 
-                <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-8 mb-10">
-                    <div>
-                        <div className="flex items-center gap-3 bg-white/90 backdrop-blur-xl p-3 pr-5 rounded-2xl border border-white shadow-sm inline-flex mb-4">
-                            <img src="/logo-patrim.png" className="h-8 object-contain" alt="Patrim"/>
-                            <div className="h-6 w-px bg-zinc-300"/>
-                            <div className="flex flex-col">
-                                <span className="text-[9px] uppercase tracking-[0.25em] font-bold text-zinc-500 leading-none">Patrim</span>
-                                <span className="text-[10px] uppercase tracking-widest font-black leading-tight" style={{ color: COLORS.primary }}>Dashboard</span>
+                @keyframes fadeInUp {
+                    from { opacity: 0; transform: translateY(8px); }
+                    to { opacity: 1; transform: translateY(0); }
+                }
+                .stagger-item {
+                    animation: fadeInUp 0.4s ease-out backwards;
+                }
+            `}}/>
+
+            {/* =================== HEADER ÉDITORIAL =================== */}
+            <header className="relative overflow-hidden border-b border-white/5">
+                {/* Motif décoratif subtil */}
+                <div
+                    className="absolute inset-0 opacity-[0.03]"
+                    style={{
+                        backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)',
+                        backgroundSize: '32px 32px',
+                    }}
+                />
+                {/* Halo rouge d'ambiance */}
+                <div
+                    className="absolute -top-40 -left-40 w-96 h-96 rounded-full opacity-20 blur-3xl pointer-events-none"
+                    style={{ backgroundColor: COLORS.primary }}
+                />
+                <div
+                    className="absolute -top-20 right-20 w-72 h-72 rounded-full opacity-10 blur-3xl pointer-events-none"
+                    style={{ backgroundColor: COLORS.secondary }}
+                />
+
+                <div className="relative max-w-7xl mx-auto px-6 md:px-10 py-8 md:py-12">
+                    <div className="flex items-start justify-between gap-6 mb-6">
+                        <div className="flex items-center gap-4">
+                            <img src="/logo-patrim.png" alt="PATRIM" className="h-10 object-contain"/>
+                            <div className="hidden sm:block h-10 w-px bg-white/10"/>
+                            <div className="hidden sm:block">
+                                <p className="text-[9px] uppercase tracking-[0.3em] text-zinc-500 font-bold font-body">Espace agent</p>
+                                <p className="text-xs text-zinc-300 font-body mt-0.5">Toulouse</p>
                             </div>
                         </div>
-                        <div className="flex items-baseline gap-3">
-                            <h1 className="font-serif text-5xl md:text-6xl font-bold text-zinc-900 tracking-tight">{estimations.length}</h1>
-                            <span className="text-base text-zinc-500 font-semibold">{estimations.length > 1 ? "biens en portefeuille" : "bien en portefeuille"}</span>
+
+                        {/* Boutons de création rapide (desktop) */}
+                        <div className="hidden md:flex items-center gap-3">
+                            <Button
+                                onClick={() => router.push('/generateur-qr')}
+                                className="rounded-full h-11 px-5 font-bold text-sm bg-white/5 hover:bg-white/10 text-white border border-white/10 transition-colors font-body"
+                            >
+                                <QrCode size={15} className="mr-2"/> Nouveau QR Code
+                            </Button>
+                            <Button
+                                onClick={() => router.push('/estimation/new')}
+                                className="rounded-full h-11 px-5 font-bold text-sm text-white shadow-xl transition-transform hover:scale-105 font-body"
+                                style={{ background: `linear-gradient(135deg, ${COLORS.primary}, ${COLORS.secondary})` }}
+                            >
+                                <Plus size={15} className="mr-2"/> Nouvelle estimation
+                            </Button>
                         </div>
                     </div>
 
-                    <div className="flex flex-col sm:flex-row gap-3">
-                        <Link href="/estimation?new=true" className="flex items-center justify-center gap-2 h-12 px-6 rounded-2xl bg-gradient-to-r from-[#8a0e01] to-[#d35f52] text-white font-bold shadow-lg hover:scale-105 transition-transform">
-                            <Sparkles size={18} /> Nouvelle Estimation
-                        </Link>
-                        <Link href="/generateur-qr" className="flex items-center justify-center gap-2 h-12 px-6 rounded-2xl bg-white text-[#8a0e01] border border-white/50 font-bold shadow-md hover:bg-zinc-50 transition-colors">
-                            <QrCode size={18} /> QR Code Express
-                        </Link>
+                    {/* Titre éditorial énorme */}
+                    <div className="flex items-end justify-between gap-6 flex-wrap">
+                        <div>
+                            <p className="text-[10px] uppercase tracking-[0.4em] font-bold mb-2 font-body" style={{ color: COLORS.secondary }}>
+                                Vos dossiers
+                            </p>
+                            <h1 className="font-display text-5xl md:text-7xl text-white tracking-tight leading-[0.95]" style={{ fontWeight: 500 }}>
+                                Mes biens
+                            </h1>
+                        </div>
+                        <div className="text-right">
+                            <div className="flex items-baseline gap-6">
+                                <div>
+                                    <span className="font-display text-3xl font-bold text-white">{estimations.length}</span>
+                                    <span className="text-[10px] uppercase tracking-widest text-zinc-500 ml-1.5 font-body">est.</span>
+                                </div>
+                                <div className="h-10 w-px bg-white/10"/>
+                                <div>
+                                    <span className="font-display text-3xl font-bold text-white">{qrCodes.length}</span>
+                                    <span className="text-[10px] uppercase tracking-widest text-zinc-500 ml-1.5 font-body">QR</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Bouton création mobile (en bas du header) */}
+                    <div className="flex md:hidden gap-3 mt-6">
+                        <Button
+                            onClick={() => router.push('/generateur-qr')}
+                            className="flex-1 rounded-full h-11 font-bold text-xs bg-white/5 hover:bg-white/10 text-white border border-white/10 font-body"
+                        >
+                            <QrCode size={14} className="mr-1.5"/> QR Code
+                        </Button>
+                        <Button
+                            onClick={() => router.push('/estimation/new')}
+                            className="flex-1 rounded-full h-11 font-bold text-xs text-white font-body"
+                            style={{ background: `linear-gradient(135deg, ${COLORS.primary}, ${COLORS.secondary})` }}
+                        >
+                            <Plus size={14} className="mr-1.5"/> Estimation
+                        </Button>
                     </div>
                 </div>
+            </header>
 
-                <div className="mb-8 relative">
-                    <div className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none"><Search size={16} className="text-zinc-400"/></div>
-                    <Input type="text" value={search} onChange={e => setSearch(e.target.value)} className="bg-white/80 backdrop-blur-xl border-white h-14 pl-12 pr-12 text-base rounded-2xl shadow-[0_10px_30px_-10px_rgba(138,14,1,0.1)] focus:ring-2 focus:ring-[#d35f52]/20 transition-all font-semibold" placeholder="Rechercher par adresse, type ou prix…"/>
-                    {search && <button onClick={() => setSearch("")} className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 transition-colors"><X size={18}/></button>}
-                </div>
-
-                {filteredEstimations.length === 0 ? (
-                    <div className="bg-white/60 backdrop-blur-xl p-12 rounded-[32px] border border-white text-center">
-                        <div className="inline-flex items-center justify-center w-16 h-16 rounded-full mb-4" style={{ background: `linear-gradient(135deg, ${COLORS.primary}15, ${COLORS.secondary}20)` }}><Home size={28} style={{ color: COLORS.primary }}/></div>
-                        <p className="text-sm font-black uppercase tracking-widest mb-2 text-zinc-700">{search ? "Aucun bien trouvé" : "Aucun bien pour l'instant"}</p>
-                        <p className="text-xs text-zinc-500 max-w-md mx-auto">Commencez par créer une nouvelle estimation ou générer un QR Code Express pour voir vos biens apparaître ici.</p>
-                    </div>
-                ) : (
-                    <div className="space-y-4">
-                        {filteredEstimations.map(e => (
-                            <EstimationRow 
-                                key={e.id} 
-                                estimation={e} 
-                                simulationUrl={buildSimulationUrl(e)} 
-                                galleryUrl={buildGalleryUrl(e)} 
-                                copiedId={copiedId} 
-                                openMenuId={openMenuId} 
-                                setOpenMenuId={setOpenMenuId} 
-                                onCopy={copyToClipboard} 
-                                onSMS={() => sendBySMS(e)} 
-                                onEmail={() => sendByEmail(e)} 
-                                onOpenQrModal={() => setQrModalEstimation(e)} 
-                                onDelete={handleDelete}
+            {/* =================== BARRE DE NAV (TABS + RECHERCHE) =================== */}
+            <div className="sticky top-0 z-30 backdrop-blur-xl border-b border-white/5" style={{ backgroundColor: 'rgba(10,10,12,0.85)' }}>
+                <div className="max-w-7xl mx-auto px-6 md:px-10">
+                    <div className="flex items-center justify-between gap-6 py-4 flex-wrap">
+                        {/* Tabs */}
+                        <div className="flex items-center gap-1 p-1 rounded-full bg-white/5 border border-white/5">
+                            <TabButton
+                                active={activeTab === "estimations"}
+                                onClick={() => setActiveTab("estimations")}
+                                icon={<FileText size={14}/>}
+                                label="Estimations"
+                                count={estimations.length}
                             />
-                        ))}
-                    </div>
-                )}
+                            <TabButton
+                                active={activeTab === "qr_codes"}
+                                onClick={() => setActiveTab("qr_codes")}
+                                icon={<QrCode size={14}/>}
+                                label="QR Codes"
+                                count={qrCodes.length}
+                            />
+                        </div>
 
-                <div className="text-center mt-12">
-                    <div className="inline-flex flex-col items-center gap-2 px-6 py-4 rounded-2xl bg-white/60 backdrop-blur-md border border-white/80">
-                        <p className="text-[9px] uppercase tracking-[0.25em] font-bold text-zinc-500">Tableau de bord · Patrim Agent</p>
+                        {/* Recherche */}
+                        <div className="relative flex-1 max-w-sm min-w-[200px]">
+                            <Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none"/>
+                            <Input
+                                value={searchQuery}
+                                onChange={e => setSearchQuery(e.target.value)}
+                                placeholder="Rechercher par adresse..."
+                                className="bg-white/5 border-white/10 h-10 pl-10 rounded-full text-sm text-white focus:border-[#d35f52] font-body"
+                            />
+                        </div>
                     </div>
                 </div>
             </div>
 
-            {qrModalEstimation && <QrModal estimation={qrModalEstimation} baseUrl={baseUrl} onClose={() => setQrModalEstimation(null)} />}
+            {/* =================== CONTENU =================== */}
+            <main className="max-w-7xl mx-auto px-6 md:px-10 py-10">
+                {loading ? (
+                    <LoadingState/>
+                ) : activeTab === "estimations" ? (
+                    filteredEstimations.length === 0 ? (
+                        <EmptyState
+                            tab="estimations"
+                            hasSearch={searchQuery.length > 0}
+                            onCreate={() => router.push('/estimation/new')}
+                        />
+                    ) : (
+                        <div className="space-y-3">
+                            {filteredEstimations.map((estim, i) => (
+                                <EstimationCard
+                                    key={estim.id}
+                                    estim={estim}
+                                    origin={origin}
+                                    hasQrLink={!!estim.qr_code_id}
+                                    openMenuId={openMenuId}
+                                    setOpenMenuId={setOpenMenuId}
+                                    copiedId={copiedId}
+                                    onCopy={handleCopy}
+                                    onOpen={() => router.push(`/estimation/${estim.id}`)}
+                                    onDelete={() => deleteItem('estimations', estim.id)}
+                                    delay={i * 0.04}
+                                />
+                            ))}
+                        </div>
+                    )
+                ) : (
+                    filteredQrCodes.length === 0 ? (
+                        <EmptyState
+                            tab="qr_codes"
+                            hasSearch={searchQuery.length > 0}
+                            onCreate={() => router.push('/generateur-qr')}
+                        />
+                    ) : (
+                        <div className="space-y-3">
+                            {filteredQrCodes.map((qr, i) => (
+                                <QrCodeCard
+                                    key={qr.id}
+                                    qr={qr}
+                                    origin={origin}
+                                    hasEstimationLink={!!qr.estimation_id}
+                                    openMenuId={openMenuId}
+                                    setOpenMenuId={setOpenMenuId}
+                                    copiedId={copiedId}
+                                    onCopy={handleCopy}
+                                    onOpen={() => router.push(`/generateur-qr?qr_id=${qr.id}`)}
+                                    onConvertToEstimation={() => convertQrToEstimation(qr)}
+                                    onDelete={() => deleteItem('qr_codes', qr.id)}
+                                    delay={i * 0.04}
+                                />
+                            ))}
+                        </div>
+                    )
+                )}
+            </main>
         </div>
     );
 }
 
-function EstimationRow({ estimation, simulationUrl, galleryUrl, copiedId, openMenuId, setOpenMenuId, onCopy, onSMS, onEmail, onOpenQrModal, onDelete }: any) {
-    const e = estimation;
-    const simCopyId = `sim-${e.id}`;
-    const galCopyId = `gal-${e.id}`;
-    const menuOpen = openMenuId === e.id;
-    const propertyLabel = `${e.data.propertyType || "Bien"}${e.data.rooms ? ` T${e.data.rooms}` : ""}`;
+/* ============================================================
+   SOUS-COMPOSANTS
+   ============================================================ */
+
+function TabButton({ active, onClick, icon, label, count }: {
+    active: boolean; onClick: () => void; icon: React.ReactNode; label: string; count: number;
+}) {
+    return (
+        <button
+            onClick={onClick}
+            className={`relative h-9 px-4 rounded-full flex items-center gap-2 text-sm font-semibold transition-all font-body ${
+                active
+                    ? 'bg-white text-black shadow-lg'
+                    : 'text-zinc-400 hover:text-white'
+            }`}
+        >
+            {icon}
+            <span>{label}</span>
+            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                active ? 'bg-black/10 text-black' : 'bg-white/10 text-zinc-300'
+            }`}>
+                {count}
+            </span>
+        </button>
+    );
+}
+
+function LoadingState() {
+    return (
+        <div className="flex items-center justify-center py-24">
+            <div className="text-center">
+                <div className="inline-block w-8 h-8 border-2 border-white/10 border-t-[#d35f52] rounded-full animate-spin mb-4"/>
+                <p className="text-xs uppercase tracking-widest text-zinc-500 font-body">Chargement…</p>
+            </div>
+        </div>
+    );
+}
+
+function EmptyState({ tab, hasSearch, onCreate }: {
+    tab: TabKey; hasSearch: boolean; onCreate: () => void;
+}) {
+    const isEstim = tab === "estimations";
+    return (
+        <div className="flex flex-col items-center justify-center py-24 text-center max-w-md mx-auto">
+            <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-6" style={{ background: `linear-gradient(135deg, ${COLORS.primary}20, ${COLORS.secondary}20)` }}>
+                {isEstim ? <FileText size={28} className="text-[#d35f52]"/> : <QrCode size={28} className="text-[#d35f52]"/>}
+            </div>
+            <h3 className="font-display text-2xl text-white mb-2" style={{ fontWeight: 500 }}>
+                {hasSearch
+                    ? "Aucun résultat"
+                    : isEstim ? "Aucune estimation" : "Aucun QR Code"}
+            </h3>
+            <p className="text-sm text-zinc-500 mb-6 font-body">
+                {hasSearch
+                    ? "Essayez un autre terme de recherche."
+                    : isEstim
+                        ? "Créez votre première estimation complète pour vos clients."
+                        : "Générez un QR Code pour partager simulateur et galerie d'un bien."}
+            </p>
+            {!hasSearch && (
+                <Button
+                    onClick={onCreate}
+                    className="rounded-full h-11 px-6 font-bold text-sm text-white font-body"
+                    style={{ background: `linear-gradient(135deg, ${COLORS.primary}, ${COLORS.secondary})` }}
+                >
+                    <Plus size={15} className="mr-2"/>
+                    {isEstim ? "Nouvelle estimation" : "Nouveau QR Code"}
+                </Button>
+            )}
+        </div>
+    );
+}
+
+/* --------- CARTE ESTIMATION --------- */
+function EstimationCard({
+    estim, origin, hasQrLink, openMenuId, setOpenMenuId, copiedId, onCopy, onOpen, onDelete, delay,
+}: any) {
+    const mainPhoto = estim.data_json?.mainPhoto;
+    const price = estim.data_json?.highPrice;
+    const surface = estim.data_json?.surface;
+    const rooms = estim.data_json?.rooms;
+    const propertyType = estim.data_json?.propertyType || "Bien";
+
+    const menuOpen = openMenuId === estim.id;
+
+    const formattedDate = new Date(estim.created_at).toLocaleDateString('fr-FR', {
+        day: 'numeric', month: 'short', year: 'numeric'
+    });
 
     return (
-        <div className={`bg-white/80 backdrop-blur-2xl rounded-3xl border border-white shadow-[0_15px_40px_-15px_rgba(138,14,1,0.15)] hover:shadow-[0_20px_50px_-15px_rgba(138,14,1,0.25)] transition-all duration-300 relative ${menuOpen ? 'z-50' : 'z-10'}`}>
-            <div className="flex flex-col md:flex-row md:items-stretch">
+        <div
+            className={`stagger-item group relative rounded-2xl border transition-all hover:border-white/15 ${menuOpen ? 'z-40' : ''}`}
+            style={{
+                backgroundColor: COLORS.darkCard,
+                borderColor: COLORS.darkBorder,
+                animationDelay: `${delay}s`,
+            }}
+        >
+            <div className="flex items-stretch">
+                {/* Photo */}
+                <button onClick={onOpen} className="w-24 sm:w-32 flex-shrink-0 bg-black/30 cursor-pointer overflow-hidden rounded-l-2xl">
+                    {mainPhoto ? (
+                        <img src={mainPhoto} className="w-full h-full object-cover transition-transform group-hover:scale-105" alt=""/>
+                    ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                            <HomeIcon size={24} className="text-white/10"/>
+                        </div>
+                    )}
+                </button>
 
-                <div className="relative w-full md:w-36 h-40 md:h-auto flex-shrink-0 overflow-hidden md:rounded-l-3xl md:rounded-tr-none rounded-t-3xl md:rounded-t-none bg-zinc-100">
-                    {e.data.mainPhoto ? <img src={e.data.mainPhoto} className="w-full h-full object-cover" alt={propertyLabel} /> : <div className="w-full h-full flex items-center justify-center"><ImageIcon size={32} className="text-zinc-300"/></div>}
-                    <div className="absolute top-3 left-3 bg-white/95 backdrop-blur-md px-2.5 py-1 rounded-full border border-white shadow-md">
-                        <span className="text-[9px] uppercase tracking-widest font-black" style={{ color: COLORS.primary }}>{propertyLabel}</span>
+                {/* Infos */}
+                <button onClick={onOpen} className="flex-1 min-w-0 text-left p-4 sm:p-5">
+                    <div className="flex items-center gap-2 mb-1.5">
+                        <span className="text-[9px] uppercase tracking-[0.2em] font-bold text-zinc-500 font-body">{propertyType}</span>
+                        {hasQrLink && (
+                            <span
+                                className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider font-body"
+                                style={{ background: COLORS.secondary + '20', color: COLORS.secondary }}
+                            >
+                                <Link2 size={9}/> Lié QR
+                            </span>
+                        )}
                     </div>
-                </div>
+                    <p className="font-display text-white text-lg leading-tight truncate" style={{ fontWeight: 500 }}>
+                        {estim.address}
+                    </p>
+                    {estim.client_name && estim.client_name !== "Dossier Sans Nom" && (
+                        <p className="text-xs text-zinc-400 mt-0.5 truncate font-body">{estim.client_name}</p>
+                    )}
+                    <div className="flex items-center gap-3 mt-2 text-[11px] text-zinc-500 font-body">
+                        {rooms > 0 && <span>{rooms} pièces</span>}
+                        {surface > 0 && <><span>·</span><span>{surface} m²</span></>}
+                        {price > 0 && (
+                            <>
+                                <span>·</span>
+                                <span className="font-bold" style={{ color: COLORS.secondary }}>
+                                    {Number(price).toLocaleString('fr-FR')} €
+                                </span>
+                            </>
+                        )}
+                    </div>
+                </button>
 
-                <div className="flex-1 px-5 py-4 md:py-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div className="flex-1 min-w-0">
-                        {e.data.propertyAddress && (
-                            <div className="flex items-start gap-2 mb-2">
-                                <MapPin size={14} className="text-zinc-400 mt-0.5 flex-shrink-0"/>
-                                <p className="text-sm font-bold text-zinc-800 leading-tight truncate">{e.data.propertyAddress}</p>
+                {/* Actions */}
+                <div className="flex items-center gap-2 pr-4 pl-2">
+                    <div className="hidden sm:block text-right pr-2">
+                        <p className="text-[10px] uppercase tracking-widest text-zinc-600 font-bold font-body">{formattedDate}</p>
+                    </div>
+                    <button
+                        onClick={onOpen}
+                        className="hidden md:flex items-center gap-1.5 h-9 px-4 rounded-full text-xs font-bold text-white transition-colors font-body"
+                        style={{ backgroundColor: COLORS.primary }}
+                    >
+                        Ouvrir <ArrowUpRight size={13}/>
+                    </button>
+
+                    {/* Menu mobile / secondaire */}
+                    <div className="relative">
+                        <button
+                            onClick={(e) => { e.stopPropagation(); setOpenMenuId(menuOpen ? null : estim.id); }}
+                            className="w-9 h-9 rounded-full flex items-center justify-center text-zinc-400 hover:text-white hover:bg-white/5 transition-colors"
+                        >
+                            <MoreVertical size={16}/>
+                        </button>
+                        {menuOpen && (
+                            <div
+                                className="absolute top-full right-0 mt-2 w-52 rounded-2xl border shadow-2xl overflow-hidden z-50"
+                                style={{ backgroundColor: COLORS.darkCardHover, borderColor: COLORS.darkBorder }}
+                            >
+                                <button onClick={onOpen} className="w-full px-4 py-3 text-left text-xs text-white hover:bg-white/5 transition-colors flex items-center gap-2 font-body md:hidden">
+                                    <Edit3 size={13}/> Ouvrir le dossier
+                                </button>
+                                <button
+                                    onClick={() => onCopy(`${origin}/simulation/${estim.id}`, estim.id + '-sim')}
+                                    className="w-full px-4 py-3 text-left text-xs text-white hover:bg-white/5 transition-colors flex items-center gap-2 font-body"
+                                >
+                                    {copiedId === estim.id + '-sim' ? <><Check size={13}/> Lien simu copié</> : <><Calculator size={13}/> Copier lien simulateur</>}
+                                </button>
+                                <button
+                                    onClick={() => onCopy(`${origin}/galerie/${estim.id}`, estim.id + '-gal')}
+                                    className="w-full px-4 py-3 text-left text-xs text-white hover:bg-white/5 transition-colors flex items-center gap-2 font-body"
+                                >
+                                    {copiedId === estim.id + '-gal' ? <><Check size={13}/> Lien galerie copié</> : <><ImageIcon size={13}/> Copier lien galerie</>}
+                                </button>
+                                <div className="h-px bg-white/5"/>
+                                <button
+                                    onClick={onDelete}
+                                    className="w-full px-4 py-3 text-left text-xs hover:bg-red-500/10 transition-colors flex items-center gap-2 font-body"
+                                    style={{ color: '#ff6b6b' }}
+                                >
+                                    <Trash2 size={13}/> Supprimer
+                                </button>
                             </div>
                         )}
-                        <div className="flex items-baseline gap-3 flex-wrap">
-                            <p className="text-2xl font-black tracking-tight" style={{ color: COLORS.primary }}>
-                                {formatPrice(Math.round(e.data.highPrice || 0))} <span className="text-sm ml-1 opacity-70">€</span>
-                            </p>
-                            {e.data.monthlyRent && e.data.monthlyRent > 0 && (
-                                <span className="text-xs text-zinc-500 font-semibold">Loyer est. : <span className="font-black text-emerald-700">{formatPrice(e.data.monthlyRent)} €/m</span></span>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* MODIFICATION RESPONSIVE : w-full md:w-auto, justify-end, mt-2 md:mt-0 */}
-                    <div className="flex flex-wrap items-center justify-end gap-2 flex-shrink-0 w-full md:w-auto mt-2 md:mt-0">
-                        <ActionButton icon={copiedId === simCopyId ? <Check size={13}/> : <Calculator size={13}/>} label={copiedId === simCopyId ? "Copié !" : "Simulateur"} onClick={(event: { stopPropagation: () => void; }) => { event.stopPropagation(); onCopy(simulationUrl, simCopyId); }} variant={copiedId === simCopyId ? "success" : "primary"} title="Copier le lien du simulateur"/>
-                        <ActionButton icon={copiedId === galCopyId ? <Check size={13}/> : <Camera size={13}/>} label={copiedId === galCopyId ? "Copié !" : "Galerie"} onClick={(event: { stopPropagation: () => void; }) => { event.stopPropagation(); onCopy(galleryUrl, galCopyId); }} variant={copiedId === galCopyId ? "success" : "secondary"} title="Copier le lien de la galerie"/>
-
-                        <div className="relative">
-                            <button onClick={(event) => { event.stopPropagation(); setOpenMenuId(menuOpen ? null : e.id); }} className={`h-9 w-9 flex items-center justify-center rounded-xl transition-colors ${menuOpen ? 'bg-zinc-800 text-white' : 'bg-zinc-100 hover:bg-zinc-200 text-zinc-600'}`}>
-                                {menuOpen ? <X size={15}/> : <MoreVertical size={15}/>}
-                            </button>
-
-                            {/* MODIFICATION DU MENU DÉROULANT : bottom-full mb-3 sur mobile pour s'ouvrir vers le haut */}
-                            {menuOpen && (
-                                <div className="absolute right-0 bottom-full mb-3 md:bottom-auto md:top-full md:mt-3 w-56 bg-white rounded-2xl border border-zinc-200 shadow-[0_20px_50px_-10px_rgba(0,0,0,0.2)] overflow-hidden z-[100] animate-in slide-in-from-bottom-2 md:slide-in-from-top-2 fade-in duration-200 origin-bottom-right md:origin-top-right" onClick={(event) => event.stopPropagation()}>
-                                    <Link 
-                                        href={`/social?id=${e.id}`} 
-                                        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-fuchsia-50 transition-colors text-left border-b border-zinc-100"
-                                    >
-                                        <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-fuchsia-100">
-                                            <Instagram size={14} className="text-fuchsia-700"/>
-                                        </div>
-                                        <div className="flex-1">
-                                            <p className="text-xs font-black text-fuchsia-900">Post Réseaux Sociaux</p>
-                                            <p className="text-[10px] text-fuchsia-600">Visuels & Texte IA</p>
-                                        </div>
-                                    </Link>
-                                    
-                                    <Link 
-                                        href={e.data.clientName === "QR Code Express" || e.data.clientName === "Génération Express QR" ? `/generateur-qr?id=${e.id}` : `/estimation`} 
-                                        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-blue-50 transition-colors text-left border-b border-zinc-100"
-                                    >
-                                        <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-blue-100">
-                                            <Edit3 size={14} className="text-blue-700"/>
-                                        </div>
-                                        <div className="flex-1">
-                                            <p className="text-xs font-black text-blue-900">Éditer les données</p>
-                                            <p className="text-[10px] text-blue-600">Modifier prix, photos...</p>
-                                        </div>
-                                    </Link>
-
-                                    <button onClick={() => { onOpenQrModal(); setOpenMenuId(null); }} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-rose-50 transition-colors text-left border-b border-zinc-100">
-                                        <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-rose-100"><QrCode size={14} className="text-rose-700"/></div>
-                                        <div className="flex-1"><p className="text-xs font-black text-[#8a0e01]">Cartes QR Codes</p><p className="text-[10px] text-[#d35f52]">Générer les visuels</p></div>
-                                    </button>
-                                    <button onClick={() => { onSMS(); setOpenMenuId(null); }} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-zinc-50 transition-colors text-left">
-                                        <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-emerald-100"><MessageCircle size={14} className="text-emerald-700"/></div>
-                                        <div className="flex-1"><p className="text-xs font-black text-zinc-800">Envoyer par SMS</p><p className="text-[10px] text-zinc-500">Les deux liens</p></div>
-                                    </button>
-                                    <button onClick={() => { onEmail(); setOpenMenuId(null); }} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-zinc-50 transition-colors text-left border-t border-zinc-100">
-                                        <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: `${COLORS.secondary}15` }}><Mail size={14} style={{ color: COLORS.primary }}/></div>
-                                        <div className="flex-1"><p className="text-xs font-black text-zinc-800">Envoyer par email</p><p className="text-[10px] text-zinc-500">Message pré-rempli</p></div>
-                                    </button>
-                                    
-                                    <div className="border-t border-zinc-100 bg-zinc-50/50">
-                                        <Link href={simulationUrl} target="_blank" onClick={() => setOpenMenuId(null)} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-zinc-100 transition-colors">
-                                            <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-white border border-zinc-200"><ExternalLink size={14} className="text-zinc-600"/></div>
-                                            <div className="flex-1"><p className="text-xs font-black text-zinc-800">Simulateur</p><p className="text-[10px] text-zinc-500">Nouvel onglet</p></div>
-                                        </Link>
-                                        <Link href={galleryUrl} target="_blank" onClick={() => setOpenMenuId(null)} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-zinc-100 transition-colors border-t border-zinc-100 border-b">
-                                            <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-white border border-zinc-200"><ExternalLink size={14} className="text-zinc-600"/></div>
-                                            <div className="flex-1"><p className="text-xs font-black text-zinc-800">Galerie</p><p className="text-[10px] text-zinc-500">Nouvel onglet</p></div>
-                                        </Link>
-
-                                        <button onClick={() => { onDelete(e.id); setOpenMenuId(null); }} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-red-50 transition-colors text-left bg-red-50/30">
-                                            <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-red-100"><Trash2 size={14} className="text-red-600"/></div>
-                                            <div className="flex-1"><p className="text-xs font-black text-red-600">Supprimer le bien</p><p className="text-[10px] text-red-400">Action irréversible</p></div>
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
                     </div>
                 </div>
             </div>
+
+            {/* Barre latérale décorative */}
+            <div
+                className="absolute left-0 top-0 bottom-0 w-[3px] opacity-0 group-hover:opacity-100 transition-opacity rounded-l-2xl pointer-events-none"
+                style={{ background: `linear-gradient(to bottom, ${COLORS.primary}, ${COLORS.secondary})` }}
+            />
         </div>
     );
 }
 
-function QrModal({ estimation, baseUrl, onClose }: any) {
-    const e = estimation;
-    const simuUrl = `${baseUrl}/simulation/${e.id}${e.data.highPrice ? `?price=${e.data.highPrice}` : ''}`;
-    const galerieUrl = `${baseUrl}/galerie/${e.id}`;
-    const address = e.data.propertyAddress || "";
+/* --------- CARTE QR CODE --------- */
+function QrCodeCard({
+    qr, origin, hasEstimationLink, openMenuId, setOpenMenuId, copiedId, onCopy, onOpen, onConvertToEstimation, onDelete, delay,
+}: any) {
+    const menuOpen = openMenuId === qr.id;
 
-    const drawCardOnContext = async (ctx: CanvasRenderingContext2D, xOffset: number, yOffset: number, type: "SIMULATION" | "GALERIE", qrUrl: string) => {
-        const cardWidth = 1000; const cardHeight = 450;
-        const isSimu = type === "SIMULATION";
-        const mainColor = isSimu ? COLORS.primary : COLORS.secondary;
-        const titleL1 = isSimu ? "SIMULATEUR" : "GALERIE";
-        const titleL2 = isSimu ? "DE PRÊT" : "PHOTOS";
-        const subL1 = isSimu ? "SIMULEZ VOTRE CRÉDIT ET" : "FLASHEZ POUR VISITER LE";
-        const subL2 = isSimu ? "CALCULEZ VOTRE RENTABILITÉ" : "BIEN AVEC NOS PHOTOS";
-
-        ctx.fillStyle = "#ffffff"; ctx.fillRect(xOffset, yOffset, cardWidth, cardHeight);
-        ctx.fillStyle = mainColor; ctx.fillRect(xOffset, yOffset, cardWidth, 30);
-        ctx.textAlign = "left"; ctx.fillStyle = "#111111"; ctx.font = "900 70px Arial, sans-serif";
-        ctx.fillText(titleL1, xOffset + 420, yOffset + 160); ctx.fillText(titleL2, xOffset + 420, yOffset + 240);
-        ctx.fillStyle = mainColor; ctx.font = "bold 30px Arial, sans-serif";
-        ctx.fillText(subL1, xOffset + 425, yOffset + 330); ctx.fillText(subL2, xOffset + 425, yOffset + 375);
-
-        if (address) { ctx.textAlign = "right"; ctx.fillStyle = "#888888"; ctx.font = "italic 16px Arial, sans-serif"; ctx.fillText(address, xOffset + 970, yOffset + 430); }
-
-        const img = new Image(); img.crossOrigin = "Anonymous";
-        img.src = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(qrUrl)}&margin=0`;
-
-        return new Promise<void>((resolve, reject) => { img.onload = () => { ctx.drawImage(img, xOffset + 70, yOffset + 70, 310, 310); resolve(); }; img.onerror = reject; });
-    };
-
-    const downloadSingleQR = async (qrDataUrl: string, type: "SIMULATION" | "GALERIE") => {
-        const canvas = document.createElement("canvas"); canvas.width = 1000; canvas.height = 450;
-        const ctx = canvas.getContext("2d"); if (!ctx) return;
-        await drawCardOnContext(ctx, 0, 0, type, qrDataUrl);
-        const link = document.createElement("a"); link.download = `Patrim_QR_${type}.png`; link.href = canvas.toDataURL("image/png"); link.click();
-    };
-
-    const downloadCombinedQR = async () => {
-        const canvas = document.createElement("canvas"); canvas.width = 2050; canvas.height = 450;
-        const ctx = canvas.getContext("2d"); if (!ctx) return;
-        ctx.fillStyle = "#f4f4f5"; ctx.fillRect(0, 0, canvas.width, canvas.height);
-        await drawCardOnContext(ctx, 0, 0, "SIMULATION", simuUrl); await drawCardOnContext(ctx, 1050, 0, "GALERIE", galerieUrl);
-        const link = document.createElement("a"); link.download = `Patrim_QR_COMBINE.png`; link.href = canvas.toDataURL("image/png"); link.click();
-    };
+    const formattedDate = new Date(qr.created_at).toLocaleDateString('fr-FR', {
+        day: 'numeric', month: 'short', year: 'numeric'
+    });
 
     return (
-        <div className="fixed inset-0 z-50 bg-[#0a0a0c]/80 backdrop-blur-md flex items-center justify-center p-4 md:p-10 animate-in fade-in duration-200" onClick={onClose}>
-            <div className="bg-[#0a0a0c] text-white w-full max-w-5xl rounded-[32px] shadow-2xl border border-white/10 flex flex-col max-h-full overflow-hidden" onClick={e => e.stopPropagation()}>
-                <div className="flex items-center justify-between p-6 border-b border-white/10 bg-[#111114]">
-                    <div><h2 className="text-xl font-serif font-bold flex items-center gap-2"><QrCode className="text-[#d35f52]"/> Cartes QR Marketing</h2><p className="text-xs text-zinc-400 mt-1">{address || "Pour ce bien"}</p></div>
-                    <button onClick={onClose} className="w-10 h-10 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center transition-colors"><X size={20}/></button>
-                </div>
-                <div className="p-6 md:p-10 overflow-y-auto">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                        <div className="flex flex-col gap-3">
-                            <div className="bg-white rounded-xl overflow-hidden shadow-2xl flex border border-zinc-200 relative h-[180px]">
-                                <div className="absolute top-0 left-0 right-0 h-2 bg-[#8a0e01]"></div>
-                                <div className="w-[42%] flex items-center justify-center p-4 pt-6"><img src={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(simuUrl)}&margin=0`} className="w-full h-auto object-contain" alt="QR"/></div>
-                                <div className="w-[58%] flex flex-col justify-center pr-5 pt-2 relative text-black">
-                                    <h3 className="text-2xl font-black leading-tight mb-2">SIMULATEUR<br/>DE PRÊT</h3>
-                                    <p className="text-[10px] font-bold text-[#8a0e01] uppercase tracking-wide leading-snug">SIMULEZ VOTRE CRÉDIT ET<br/>CALCULEZ VOTRE RENTABILITÉ</p>
-                                    {address && <span className="absolute bottom-2 right-4 text-[9px] italic text-zinc-500 font-medium truncate max-w-[90%]">{address}</span>}
-                                </div>
-                            </div>
-                            <Button onClick={() => downloadSingleQR(simuUrl, "SIMULATION")} className="w-full h-11 rounded-xl bg-white text-black hover:bg-zinc-200 font-bold text-xs border border-zinc-200"><Download size={16} className="mr-2"/> Télécharger Carte Simulation</Button>
+        <div
+            className={`stagger-item group relative rounded-2xl border transition-all hover:border-white/15 ${menuOpen ? 'z-40' : ''}`}
+            style={{
+                backgroundColor: COLORS.darkCard,
+                borderColor: COLORS.darkBorder,
+                animationDelay: `${delay}s`,
+            }}
+        >
+            <div className="flex items-stretch">
+                {/* Photo */}
+                <button onClick={onOpen} className="w-24 sm:w-32 flex-shrink-0 bg-black/30 cursor-pointer overflow-hidden relative rounded-l-2xl">
+                    {qr.main_photo ? (
+                        <img src={qr.main_photo} className="w-full h-full object-cover transition-transform group-hover:scale-105" alt=""/>
+                    ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                            <QrCode size={24} className="text-white/10"/>
                         </div>
-                        <div className="flex flex-col gap-3">
-                            <div className="bg-white rounded-xl overflow-hidden shadow-2xl flex border border-zinc-200 relative h-[180px]">
-                                <div className="absolute top-0 left-0 right-0 h-2 bg-[#d35f52]"></div>
-                                <div className="w-[42%] flex items-center justify-center p-4 pt-6"><img src={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(galerieUrl)}&margin=0`} className="w-full h-auto object-contain" alt="QR"/></div>
-                                <div className="w-[58%] flex flex-col justify-center pr-5 pt-2 relative text-black">
-                                    <h3 className="text-2xl font-black leading-tight mb-2">GALERIE<br/>PHOTOS</h3>
-                                    <p className="text-[10px] font-bold text-[#d35f52] uppercase tracking-wide leading-snug">FLASHEZ POUR VISITER LE<br/>BIEN AVEC NOS PHOTOS</p>
-                                    {address && <span className="absolute bottom-2 right-4 text-[9px] italic text-zinc-500 font-medium truncate max-w-[90%]">{address}</span>}
-                                </div>
-                            </div>
-                            <Button onClick={() => downloadSingleQR(galerieUrl, "GALERIE")} className="w-full h-11 rounded-xl bg-white text-black hover:bg-zinc-200 font-bold text-xs border border-zinc-200"><Download size={16} className="mr-2"/> Télécharger Carte Galerie</Button>
-                        </div>
+                    )}
+                    {/* Icône QR overlay */}
+                    <div className="absolute top-2 left-2 w-6 h-6 rounded-md bg-black/60 backdrop-blur-sm flex items-center justify-center">
+                        <QrCode size={11} className="text-white"/>
                     </div>
-                    <div className="mt-10 bg-[#111114] p-8 rounded-[24px] border border-white/5 text-center shadow-lg">
-                        <h3 className="text-xl font-bold font-serif mb-2">Le Pack Marketing Complet</h3>
-                        <p className="text-zinc-400 mb-6 max-w-xl mx-auto text-sm">Une seule image large réunissant les deux cartes côte à côte. Le format idéal pour la fin d'un carrousel photo (LeBonCoin, SeLoger).</p>
-                        <Button onClick={downloadCombinedQR} size="lg" className="rounded-full px-10 h-14 font-bold text-lg bg-gradient-to-r from-[#8a0e01] to-[#d35f52] shadow-xl hover:scale-105 transition-transform"><Layers className="mr-2"/> Télécharger l'Image Combinée (2-en-1)</Button>
+                </button>
+
+                {/* Infos */}
+                <button onClick={onOpen} className="flex-1 min-w-0 text-left p-4 sm:p-5">
+                    <div className="flex items-center gap-2 mb-1.5">
+                        <span className="text-[9px] uppercase tracking-[0.2em] font-bold text-zinc-500 font-body">
+                            {qr.property_type || "QR Code"}
+                        </span>
+                        {hasEstimationLink && (
+                            <span
+                                className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider font-body"
+                                style={{ background: COLORS.secondary + '20', color: COLORS.secondary }}
+                            >
+                                <Link2 size={9}/> Aussi estimation
+                            </span>
+                        )}
+                    </div>
+                    <p className="font-display text-white text-lg leading-tight truncate" style={{ fontWeight: 500 }}>
+                        {qr.address || "Adresse non renseignée"}
+                    </p>
+                    <div className="flex items-center gap-3 mt-2 text-[11px] text-zinc-500 font-body">
+                        {qr.rooms > 0 && <span>{qr.rooms} pièces</span>}
+                        {qr.surface > 0 && <><span>·</span><span>{qr.surface} m²</span></>}
+                        {qr.price_fai > 0 && (
+                            <>
+                                <span>·</span>
+                                <span className="font-bold" style={{ color: COLORS.secondary }}>
+                                    {Number(qr.price_fai).toLocaleString('fr-FR')} €
+                                </span>
+                            </>
+                        )}
+                    </div>
+                </button>
+
+                {/* Actions */}
+                <div className="flex items-center gap-2 pr-4 pl-2">
+                    <div className="hidden sm:block text-right pr-2">
+                        <p className="text-[10px] uppercase tracking-widest text-zinc-600 font-bold font-body">{formattedDate}</p>
+                    </div>
+                    <button
+                        onClick={onOpen}
+                        className="hidden md:flex items-center gap-1.5 h-9 px-4 rounded-full text-xs font-bold text-white transition-colors font-body"
+                        style={{ backgroundColor: COLORS.primary }}
+                    >
+                        Rouvrir <ArrowUpRight size={13}/>
+                    </button>
+
+                    {/* Menu */}
+                    <div className="relative">
+                        <button
+                            onClick={(e) => { e.stopPropagation(); setOpenMenuId(menuOpen ? null : qr.id); }}
+                            className="w-9 h-9 rounded-full flex items-center justify-center text-zinc-400 hover:text-white hover:bg-white/5 transition-colors"
+                        >
+                            <MoreVertical size={16}/>
+                        </button>
+                        {menuOpen && (
+                            <div
+                                className="absolute top-full right-0 mt-2 w-64 rounded-2xl border shadow-2xl overflow-hidden z-50"
+                                style={{ backgroundColor: COLORS.darkCardHover, borderColor: COLORS.darkBorder }}
+                            >
+                                <button onClick={onOpen} className="w-full px-4 py-3 text-left text-xs text-white hover:bg-white/5 transition-colors flex items-center gap-2 font-body md:hidden">
+                                    <Edit3 size={13}/> Rouvrir le QR
+                                </button>
+                                {!hasEstimationLink && (
+                                    <button
+                                        onClick={onConvertToEstimation}
+                                        className="w-full px-4 py-3 text-left text-xs hover:bg-white/5 transition-colors flex items-center gap-2 font-body"
+                                        style={{ color: COLORS.secondary }}
+                                    >
+                                        <Wand2 size={13}/> Faire l'estimation complète
+                                    </button>
+                                )}
+                                {hasEstimationLink && (
+                                    <button
+                                        onClick={onConvertToEstimation}
+                                        className="w-full px-4 py-3 text-left text-xs text-white hover:bg-white/5 transition-colors flex items-center gap-2 font-body"
+                                    >
+                                        <FileText size={13}/> Ouvrir l'estimation liée
+                                    </button>
+                                )}
+                                <div className="h-px bg-white/5"/>
+                                <button
+                                    onClick={() => onCopy(`${origin}/simulation/${qr.id}`, qr.id + '-sim')}
+                                    className="w-full px-4 py-3 text-left text-xs text-white hover:bg-white/5 transition-colors flex items-center gap-2 font-body"
+                                >
+                                    {copiedId === qr.id + '-sim' ? <><Check size={13}/> Lien simu copié</> : <><Calculator size={13}/> Copier lien simulateur</>}
+                                </button>
+                                <button
+                                    onClick={() => onCopy(`${origin}/galerie/${qr.id}`, qr.id + '-gal')}
+                                    className="w-full px-4 py-3 text-left text-xs text-white hover:bg-white/5 transition-colors flex items-center gap-2 font-body"
+                                >
+                                    {copiedId === qr.id + '-gal' ? <><Check size={13}/> Lien galerie copié</> : <><ImageIcon size={13}/> Copier lien galerie</>}
+                                </button>
+                                <div className="h-px bg-white/5"/>
+                                <button
+                                    onClick={onDelete}
+                                    className="w-full px-4 py-3 text-left text-xs hover:bg-red-500/10 transition-colors flex items-center gap-2 font-body"
+                                    style={{ color: '#ff6b6b' }}
+                                >
+                                    <Trash2 size={13}/> Supprimer le QR
+                                </button>
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
-        </div>
-    );
-}
 
-function ActionButton({ icon, label, onClick, variant = "primary", title }: any) {
-    const getStyle = () => {
-        if (variant === "success") return { background: `linear-gradient(135deg, ${COLORS.wealth}, ${COLORS.wealthLight})`, color: "white", border: "transparent" };
-        if (variant === "secondary") return { background: "white", color: COLORS.primary, border: `${COLORS.secondary}40` };
-        return { background: `linear-gradient(135deg, ${COLORS.primary}, ${COLORS.secondary})`, color: "white", border: "transparent" };
-    };
-    const s = getStyle();
-    return (
-        <button onClick={onClick} title={title} className="flex items-center gap-1.5 h-9 px-3 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all hover:scale-105 hover:shadow-md active:scale-100 border whitespace-nowrap" style={{ background: s.background, color: s.color, borderColor: s.border }}>
-            {icon}{label}
-        </button>
+            {/* Barre latérale décorative */}
+            <div
+                className="absolute left-0 top-0 bottom-0 w-[3px] opacity-0 group-hover:opacity-100 transition-opacity rounded-l-2xl pointer-events-none"
+                style={{ background: `linear-gradient(to bottom, ${COLORS.primary}, ${COLORS.secondary})` }}
+            />
+        </div>
     );
 }

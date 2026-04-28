@@ -7,7 +7,7 @@ import {
     Home, MapPin, Image as ImageIcon, TrendingUp, CheckCircle, 
     Printer, ArrowRight, ArrowLeft, Plus, Trash2, UploadCloud, FileText,
     List, Edit, X, Leaf, ThumbsUp, ThumbsDown, BarChart3, Loader2, Euro, Building2, Banknote,
-    Sparkles, Shield, Star, Globe, Wand2 // <-- Globe et Wand2 ajoutés ici
+    Sparkles, Shield, Star, Globe, Wand2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,8 +37,8 @@ const AGENTS = [
 ];
 
 // --- TYPES ---
-interface Comparable { id: string; address: string; surface: number; price: number; photoUrl: string; }
-interface EstimationData {
+export interface Comparable { id: string; address: string; surface: number; price: number; photoUrl: string; }
+export interface EstimationData {
     clientName: string; propertyAddress: string; clientAddress: string; propertyType: "Appartement" | "Maison" | "Autre";
     surface: number; rooms: number;
     floor: string; buildYear: number; hasElevator: boolean;
@@ -69,7 +69,7 @@ const ALL_AMENITIES = [
     { id: "piscine",   label: "Piscine",   icon: "🏊" },
 ];
 
-const DEFAULT_DATA: EstimationData = {
+export const DEFAULT_DATA: EstimationData = {
     clientName: "", propertyAddress: "", clientAddress: "", propertyType: "Appartement",
     surface: 0, rooms: 0, floor: "", buildYear: 0, hasElevator: false,
     plotSurface: 0, gardenSurface: 0,
@@ -115,87 +115,77 @@ const getDisplayFloor = (f: string) => {
     return f;
 };
 
-export default function EstimationManager() {
+// ============================================================
+// COMPOSANT : EstimationEditor
+// ------------------------------------------------------------
+// Éditeur d'estimation réutilisable (EDIT + PRINT).
+// Utilisé par :
+//  - /app/estimation/new/page.tsx  (initialData = DEFAULT_DATA, existingId = null)
+//  - /app/estimation/[id]/page.tsx (initialData = data fetchée, existingId = id)
+// ============================================================
+export interface EstimationEditorProps {
+    initialData: EstimationData;
+    existingId: string | null;
+    initialView?: "EDIT" | "PRINT";
+}
+
+export default function EstimationEditor({
+    initialData,
+    existingId,
+    initialView = "EDIT",
+}: EstimationEditorProps) {
     const router = useRouter();
-    const [view, setView] = useState<"LIST" | "EDIT" | "PRINT">("LIST");
+    const [view, setView] = useState<"EDIT" | "PRINT">(initialView);
     const [step, setStep] = useState(1);
-    const [loading, setLoading] = useState(true);
-    const [savedEstimations, setSavedEstimations] = useState<any[]>([]);
-    const [currentId, setCurrentId] = useState<string | null>(null);
-    const [data, setData] = useState<EstimationData>(DEFAULT_DATA);
+    const [currentId, setCurrentId] = useState<string | null>(existingId);
+    const [data, setData] = useState<EstimationData>(initialData);
     const [newStrength, setNewStrength] = useState("");
     const [newWeakness, setNewWeakness] = useState("");
     const [newAmenity, setNewAmenity] = useState("");
     const [savedFeedback, setSavedFeedback] = useState(false);
 
-    // --- MODULE D'IMPORTATION WEB ---
+    // --- IMPORT WEB & AUTO-GÉNÉRATION ---
     const [listingUrl, setListingUrl] = useState("");
     const [isScraping, setIsScraping] = useState(false);
+    const [isGeneratingComps, setIsGeneratingComps] = useState(false);
+    const [dvfRadius, setDvfRadius] = useState<number>(500); // Rayon de recherche DVF en mètres
 
     const handleNext = () => setStep(s => s + 1);
     const handleBack = () => setStep(s => s - 1);
 
-    useEffect(() => { fetchEstimations(); }, []);
-
-    const fetchEstimations = async () => {
-        setLoading(true);
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-            const { data: estims } = await supabase.from('estimations').select('*').eq('user_id', user.id).order('created_at', { ascending: false });
-            if (estims) setSavedEstimations(estims);
-        }
-        setLoading(false);
-    };
+    // Helper pour retourner à /mes-biens
+    const goToMesBiens = () => router.push('/mes-biens');
 
     const handleSave = async (isDraft = false) => {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
         const payload = { user_id: user.id, client_name: data.clientName || "Dossier Sans Nom", address: data.propertyAddress || "Adresse non renseignée", data_json: data };
+        let savedId = currentId;
         if (currentId) {
             await supabase.from('estimations').update(payload).eq('id', currentId);
         } else {
             const { data: inserted } = await supabase.from('estimations').insert(payload).select('id').single();
-            if (inserted) setCurrentId(inserted.id);
+            if (inserted) {
+                setCurrentId(inserted.id);
+                savedId = inserted.id;
+                // Si on vient de /estimation/new, on met à jour l'URL en remplacement pour
+                // que le bouton "retour" du navigateur ne ramène pas sur /new orphelin
+                router.replace(`/estimation/${inserted.id}`);
+            }
         }
         if (!isDraft) {
-            setView("PRINT"); fetchEstimations();
+            setView("PRINT");
         } else {
             setSavedFeedback(true);
             setTimeout(() => setSavedFeedback(false), 2000);
-            fetchEstimations();
         }
     };
 
-    const deleteEstimation = async (id: string) => {
-        if (!confirm("Supprimer ce dossier ?")) return;
-        await supabase.from('estimations').delete().eq('id', id);
-        fetchEstimations();
-    };
+    // Note : deleteEstimation, openEstimation et createNew ont été retirés.
+    // La liste/suppression/création-depuis-liste est gérée dans /mes-biens.
 
-    const openEstimation = (estim: any) => { 
-        setCurrentId(estim.id); 
-        setData({ 
-            ...DEFAULT_DATA, 
-            ...estim.data_json, 
-            amenities: estim.data_json?.amenities ?? [], 
-            floor: estim.data_json?.floor ?? "", 
-            buildYear: estim.data_json?.buildYear ?? 0, 
-            hasElevator: estim.data_json?.hasElevator ?? false, 
-            extraPhotos: estim.data_json?.extraPhotos ?? [], 
-            plotSurface: estim.data_json?.plotSurface ?? 0, 
-            gardenSurface: estim.data_json?.gardenSurface ?? 0,
-            isRented: estim.data_json?.isRented ?? false,
-            lowPriceRented: estim.data_json?.lowPriceRented ?? 0,
-            highPriceRented: estim.data_json?.highPriceRented ?? 0,
-            agentId: estim.data_json?.agentId ?? ""
-        }); 
-        setStep(1); 
-        setView("EDIT"); 
-    };
 
-    const createNew = () => { setCurrentId(null); setData(DEFAULT_DATA); setStep(1); setView("EDIT"); };
-
-    // ─── IMPORTATION WEB (Scraping) ───
+    // ─── IMPORTATION WEB (Scraping Photos) ───
     const handleImportFromUrl = async () => {
         if (!listingUrl) return alert("Veuillez coller un lien valide.");
         setIsScraping(true);
@@ -210,36 +200,60 @@ export default function EstimationManager() {
             if (result.success) {
                 setData(prev => {
                     const newData = { ...prev };
-                    
-                    // Préremplissage Adresse & Prix
-                    if (result.title) newData.propertyAddress = result.title;
-                    if (result.price) {
+                    if (result.title && !prev.propertyAddress) newData.propertyAddress = result.title;
+                    if (result.price && prev.lowPrice === 0) {
                         newData.lowPrice = result.price;
                         newData.highPrice = result.price;
                     }
-                    
-                    // Aspiration intelligente des photos
                     if (result.photos && result.photos.length > 0) {
                         newData.mainPhoto = result.photos[0];
                         if (result.photos.length > 1) {
                             newData.extraPhotos = result.photos.slice(1, 9);
-                            // On sécurise les 3 premières pour la page PDF "Prestations"
                             newData.secondaryPhotos = result.photos.slice(1, 4);
                         }
                     }
                     return newData;
                 });
-                alert("Importation réussie ! Les photos, le prix et l'adresse ont été ajoutés.");
+                alert("Importation réussie !");
             } else {
                 alert("Erreur: " + result.error);
             }
         } catch (error) {
-            alert("Erreur de connexion lors de l'importation.");
+            alert("Erreur de connexion.");
         }
         setIsScraping(false);
     };
 
-    // ─── Upload vers Supabase Storage (compression auto avant envoi) ───
+    // ─── AUTO-GÉNÉRATION COMPARABLES DVF ───
+    const handleAutoGenerateDVF = async () => {
+        if (!data.propertyAddress || !data.surface) {
+            return alert("Veuillez renseigner l'adresse du bien et sa surface (Étape 1) avant de générer.");
+        }
+        setIsGeneratingComps(true);
+        try {
+            const response = await fetch('/api/comparables', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                // On passe le rayon sélectionné à l'API
+                body: JSON.stringify({ address: data.propertyAddress, surface: data.surface, propertyType: data.propertyType, radius: dvfRadius })
+            });
+            const result = await response.json();
+            
+            if (result.success) {
+                setData(prev => ({
+                    ...prev,
+                    soldComparables: [...prev.soldComparables, ...result.comparables]
+                }));
+            } else {
+                alert(result.error); // Affiche "Aucun bien trouvé, élargissez le rayon"
+            }
+        } catch (error) {
+            alert("Erreur de connexion au serveur DVF.");
+        }
+        setIsGeneratingComps(false);
+    };
+
+    // ─── Upload vers Supabase Storage ───
     const [uploadingPhotos, setUploadingPhotos] = useState<Record<string, boolean>>({});
 
     const compressImage = (file: File, maxWidthPx = 1600, quality = 0.82): Promise<Blob> =>
@@ -316,83 +330,6 @@ export default function EstimationManager() {
         });
     };
 
-    // =========================================================================
-    // VUE 1 : DASHBOARD
-    // =========================================================================
-    if (view === "LIST") {
-        return (
-            <div className="min-h-screen font-sans" style={{ backgroundColor: COLORS.darkBg, color: "white" }}>
-                <style>{`
-                    @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@300;400;500;600;700&display=swap');
-                    .dash-font { font-family: 'DM Sans', sans-serif; }
-                    .display-font { font-family: 'Playfair Display', serif; }
-                    .card-hover { transition: all 0.3s cubic-bezier(0.4,0,0.2,1); }
-                    .card-hover:hover { transform: translateY(-3px); border-color: rgba(211,95,82,0.4) !important; box-shadow: 0 20px 60px -15px rgba(138,14,1,0.25); }
-                    .noise-bg::before { content: ''; position: fixed; inset: 0; background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E"); pointer-events: none; z-index: 0; }
-                `}</style>
-
-                <div className="noise-bg relative z-10 p-8 md:p-12 max-w-6xl mx-auto dash-font">
-                    {/* Header */}
-                    <div className="flex justify-between items-end mb-12">
-                        <div>
-                            <div className="flex items-center gap-3 mb-2">
-                                <div className="w-1 h-8 rounded-full" style={{ background: `linear-gradient(to bottom, ${COLORS.secondary}, ${COLORS.primary})` }}></div>
-                                <span className="text-xs font-semibold tracking-[0.35em] uppercase" style={{ color: COLORS.secondary }}>Agence Patrim</span>
-                            </div>
-                            <h1 className="text-5xl font-black tracking-tight display-font" style={{ background: `linear-gradient(135deg, #fff 0%, rgba(255,255,255,0.6) 100%)`, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-                                Mes Estimations
-                            </h1>
-                            <p className="text-zinc-500 mt-2 text-sm">Gérez vos avis de valeur clients</p>
-                        </div>
-                        <Button onClick={createNew} className="h-12 px-7 rounded-2xl font-bold text-sm shadow-2xl transition-all hover:scale-105"
-                            style={{ background: `linear-gradient(135deg, ${COLORS.primary}, ${COLORS.secondary})`, color: "white", boxShadow: `0 8px 32px -8px rgba(138,14,1,0.5)` }}>
-                            <Plus className="mr-2" size={18}/> Nouveau Dossier
-                        </Button>
-                    </div>
-
-                    {loading ? (
-                        <div className="flex justify-center py-24"><Loader2 className="animate-spin" size={36} style={{ color: COLORS.secondary }}/></div>
-                    ) : savedEstimations.length === 0 ? (
-                        <div className="text-center py-24 rounded-3xl border" style={{ borderColor: COLORS.darkBorder, backgroundColor: COLORS.darkCard }}>
-                            <FileText size={48} className="mx-auto mb-4 text-zinc-700"/>
-                            <p className="text-zinc-500 font-medium">Aucun dossier pour le moment</p>
-                            <p className="text-zinc-700 text-sm mt-1">Créez votre premier avis de valeur</p>
-                        </div>
-                    ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                            {savedEstimations.map(est => (
-                                <div key={est.id} className="card-hover rounded-3xl p-6 border flex flex-col"
-                                    style={{ backgroundColor: COLORS.darkCard, borderColor: COLORS.darkBorder }}>
-                                    <div className="flex items-start justify-between mb-5">
-                                        <div className="w-11 h-11 rounded-2xl flex items-center justify-center" style={{ background: `linear-gradient(135deg, ${COLORS.primary}30, ${COLORS.secondary}20)`, border: `1px solid ${COLORS.primary}30` }}>
-                                            <Home size={20} style={{ color: COLORS.secondary }}/>
-                                        </div>
-                                        <span className="text-xs font-mono text-zinc-600 bg-zinc-900 px-3 py-1 rounded-full border border-white/5">
-                                            {new Date(est.created_at).toLocaleDateString('fr-FR')}
-                                        </span>
-                                    </div>
-                                    <h3 className="font-bold text-lg mb-1 truncate">{est.client_name}</h3>
-                                    <p className="text-zinc-500 text-sm line-clamp-2 flex-1">{est.address}</p>
-                                    <div className="flex gap-2 mt-5 pt-4 border-t" style={{ borderColor: COLORS.darkBorder }}>
-                                        <Button variant="ghost" onClick={() => openEstimation(est)} className="flex-1 rounded-xl h-9 text-sm font-semibold hover:bg-white/5 text-zinc-300 hover:text-white">
-                                            Ouvrir
-                                        </Button>
-                                        <Button variant="ghost" onClick={() => { setCurrentId(est.id); setData({ ...DEFAULT_DATA, ...est.data_json, amenities: est.data_json?.amenities ?? [], extraPhotos: est.data_json?.extraPhotos ?? [], isRented: est.data_json?.isRented ?? false, lowPriceRented: est.data_json?.lowPriceRented ?? 0, highPriceRented: est.data_json?.highPriceRented ?? 0, agentId: est.data_json?.agentId ?? "" }); setView("PRINT"); }} 
-                                            className="flex-1 rounded-xl h-9 text-sm font-semibold hover:bg-white/5 text-zinc-300 hover:text-white">
-                                            PDF
-                                        </Button>
-                                        <Button variant="ghost" onClick={() => deleteEstimation(est.id)} className="px-3 rounded-xl h-9 hover:bg-red-500/10 hover:text-red-400 text-zinc-600 transition-colors">
-                                            <Trash2 size={16}/>
-                                        </Button>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </div>
-            </div>
-        );
-    }
 
     // =========================================================================
     // VUE 2 : ÉDITEUR WIZARD
@@ -415,8 +352,8 @@ export default function EstimationManager() {
                 {/* Nav Bar */}
                 <div className="fixed top-4 left-1/2 -translate-x-1/2 w-[95%] max-w-4xl z-50 flex justify-between items-center px-6 py-3 rounded-full border shadow-2xl dash-font"
                     style={{ backgroundColor: 'rgba(17,17,20,0.85)', backdropFilter: 'blur(24px)', borderColor: COLORS.darkBorder }}>
-                    <Button variant="ghost" onClick={() => setView("LIST")} className="text-zinc-400 hover:text-white rounded-full gap-2 text-sm">
-                        <ArrowLeft size={16}/> Quitter
+                    <Button variant="ghost" onClick={goToMesBiens} className="text-zinc-400 hover:text-white rounded-full gap-2 text-sm">
+                        <ArrowLeft size={16}/> Mes biens
                     </Button>
                     <div className="flex gap-1.5">
                         {[1,2,3,4].map(i => (
@@ -647,14 +584,14 @@ export default function EstimationManager() {
                                         </div>
                                     </div>
 
-                                    {/* MODULE ASPIRATEUR D'ANNONCE (NOUVEAU) */}
+                                    {/* MODULE ASPIRATEUR D'ANNONCE */}
                                     <div className="bg-gradient-to-r from-[#111114] to-[#1a1a1f] p-6 rounded-3xl border border-white/10 shadow-2xl flex flex-col md:flex-row items-center gap-6 mb-8">
                                         <div className="flex items-center justify-center w-14 h-14 rounded-full bg-white/5 shrink-0 border border-white/10">
                                             <Globe className="text-[#d35f52]" size={24}/>
                                         </div>
                                         <div className="flex-1 w-full">
                                             <h2 className="text-sm font-bold text-white mb-1">Aspirateur d'Annonce</h2>
-                                            <p className="text-xs text-zinc-400 mb-3">Collez le lien de votre site pour aspirer les photos (et les infos) directement.</p>
+                                            <p className="text-xs text-zinc-400 mb-3">Si le bien est déjà en ligne, collez le lien pour importer automatiquement les photos (et le prix).</p>
                                             <div className="flex gap-3 w-full">
                                                 <Input value={listingUrl} onChange={e => setListingUrl(e.target.value)} placeholder="https://www.patrim.fr/..." className="flex-1 bg-black/50 border-white/20 h-12 text-sm text-white focus:border-[#d35f52]"/>
                                                 <Button onClick={handleImportFromUrl} disabled={isScraping} className="h-12 px-6 rounded-xl font-bold bg-white text-black hover:bg-zinc-200 transition-colors">
@@ -734,13 +671,34 @@ export default function EstimationManager() {
                                     {(['sold', 'forSale'] as const).map(type => (
                                         <div key={type}>
                                             <div className="flex justify-between items-center mb-4">
-                                                <h3 className="text-base font-bold text-zinc-200">{type === 'sold' ? '🟢 Biens Vendus' : '🟡 En Vente actuellement'}</h3>
+                                                <div className="flex items-center gap-3">
+                                                    <h3 className="text-base font-bold text-zinc-200">{type === 'sold' ? '🟢 Biens Vendus' : '🟡 En Vente actuellement'}</h3>
+                                                    {/* NOUVEAU BOUTON MAGIQUE */}
+                                                    {type === 'sold' && (
+                                                        <div className="flex items-center gap-2 bg-white/5 rounded-xl p-1 border border-white/10">
+                                                            <select 
+                                                                value={dvfRadius} 
+                                                                onChange={e => setDvfRadius(Number(e.target.value))}
+                                                                className="bg-transparent text-xs text-white outline-none pl-2 pr-1 h-7 cursor-pointer"
+                                                            >
+                                                                <option value={100} className="bg-zinc-800 text-white">100m</option>
+                                                                <option value={250} className="bg-zinc-800 text-white">250m</option>
+                                                                <option value={500} className="bg-zinc-800 text-white">500m</option>
+                                                                <option value={1000} className="bg-zinc-800 text-white">1 km</option>
+                                                                <option value={2000} className="bg-zinc-800 text-white">2 km</option>
+                                                            </select>
+                                                            <Button onClick={handleAutoGenerateDVF} disabled={isGeneratingComps} size="sm" className="bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 rounded-lg h-7 px-3 text-xs font-bold transition-all">
+                                                                {isGeneratingComps ? <Loader2 size={12} className="animate-spin mr-1.5" /> : <Wand2 size={12} className="mr-1.5" />} Auto-Générer
+                                                            </Button>
+                                                        </div>
+                                                    )}
+                                                </div>
                                                 <Button onClick={() => {
                                                     const newComp: Comparable = { id: Date.now().toString(), address: "", surface: 0, price: 0, photoUrl: "" };
                                                     setData(prev => type === 'sold'
                                                         ? { ...prev, soldComparables: [...prev.soldComparables, newComp] }
                                                         : { ...prev, forSaleComparables: [...prev.forSaleComparables, newComp] });
-                                                }} variant="outline" size="sm" className="border-white/10 hover:bg-white/5 text-white rounded-xl">
+                                                }} variant="outline" size="sm" className="border-white/10 hover:bg-white/5 text-white rounded-xl h-8">
                                                     <Plus size={15} className="mr-1"/> Ajouter
                                                 </Button>
                                             </div>
@@ -770,6 +728,11 @@ export default function EstimationManager() {
                                                     </div>
                                                     );
                                                 })}
+                                                {type === 'sold' && data.soldComparables.length === 0 && (
+                                                    <div className="text-center py-6 text-sm text-zinc-500 italic border border-dashed border-white/10 rounded-2xl">
+                                                        Cliquez sur Auto-Générer ou ajoutez manuellement.
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
                                     ))}
@@ -955,7 +918,7 @@ export default function EstimationManager() {
 
     return (
         <>
-            <style jsx global>{`
+            <style dangerouslySetInnerHTML={{ __html: `
                 @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=DM+Sans:wght@300;400;500;600;700&display=swap');
 
                 @media print {
@@ -1020,7 +983,7 @@ export default function EstimationManager() {
                         font-family: 'DM Sans', sans-serif;
                     }
                 }
-            `}</style>
+            `}}/>
 
             {/* Floating Action Bar */}
             <div className="fixed bottom-10 left-1/2 -translate-x-1/2 text-white px-8 py-4 rounded-full flex items-center gap-5 shadow-2xl z-50 print-hidden border"
@@ -1029,8 +992,8 @@ export default function EstimationManager() {
                     <Edit size={15}/> Modifier
                 </Button>
                 <div className="w-px h-5 bg-white/10"></div>
-                <Button variant="ghost" onClick={() => setView("LIST")} className="text-zinc-400 hover:text-white rounded-full gap-2 text-sm">
-                    <List size={15}/> Dossiers
+                <Button variant="ghost" onClick={goToMesBiens} className="text-zinc-400 hover:text-white rounded-full gap-2 text-sm">
+                    <List size={15}/> Mes biens
                 </Button>
                 <div className="w-px h-5 bg-white/10"></div>
                 <Button 
