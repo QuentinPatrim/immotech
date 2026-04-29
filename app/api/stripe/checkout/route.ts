@@ -1,48 +1,44 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
-import { authenticateRequest } from "@/lib/authGuard";
 
-// Initialisation Stripe
+// Initialise Stripe avec ta clé secrète (à mettre dans ton fichier .env)
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  // @ts-ignore : Correction du problème apiVersion
-  apiVersion: "2023-10-16", 
 });
 
-export const dynamic = 'force-dynamic';
 export async function POST(req: Request) {
-  // Vérification de l'authentification côté serveur
-  const auth = await authenticateRequest(req);
-  if (auth.error) return auth.error;
-
   try {
-    const { email } = await req.json();
+    const { email, packType } = await req.json();
 
-    // Vérification des données — on utilise l'ID de l'utilisateur authentifié, PAS celui du body
-    if (!email) {
-        return NextResponse.json({ error: "Email manquant" }, { status: 400 });
-    }
+    // Associe les packs aux IDs de prix que tu as copiés sur Stripe
+    let priceId = "";
+    if (packType === "token_1") priceId = "price_1TRAiGPqbFP5dfksyVwfDeIv";
+    else if (packType === "tokens_5") priceId = "price_1TRAisPqbFP5dfksnnEcjIm1";
+    else if (packType === "tokens_100") priceId = "price_1TRAjbPqbFP5dfksQCdcyGV7";
+    else return NextResponse.json({ error: "Pack invalide" }, { status: 400 });
 
+    // Création de la session de paiement Stripe
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
+      customer_email: email,
       line_items: [
         {
-          price: "price_1T1r4ZPqbFP5dfks28pR6D8u", 
+          price: priceId,
           quantity: 1,
         },
       ],
-      mode: "subscription",
-      success_url: `${process.env.NEXT_PUBLIC_BASE_URL}/?success=true`,
-      cancel_url: `${process.env.NEXT_PUBLIC_BASE_URL}/tarifs`,
-      customer_email: email,
+      mode: "payment", // "payment" car c'est un achat unique, pas "subscription"
+      success_url: `${process.env.NEXT_PUBLIC_BASE_URL}/parametres?success=true`,
+      cancel_url: `${process.env.NEXT_PUBLIC_BASE_URL}/parametres?canceled=true`,
+      // IMPORTANT : On passe le packType et l'email dans les métadonnées pour le webhook
       metadata: {
-        userId: auth.user.id, // ✅ Utilise l'ID authentifié côté serveur
+        email: email,
+        packType: packType,
       },
     });
 
     return NextResponse.json({ url: session.url });
-  } catch (err: any) {
-    console.error("Stripe Error:", err.message);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+  } catch (error: any) {
+    console.error("Erreur Stripe :", error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
-

@@ -15,7 +15,8 @@ import {
   LayoutDashboard, FolderOpen, PieChart, TrendingUp,
   Building, Sparkles, ArrowRight, Check, ChevronDown, 
   ChevronRight, Menu, X, Lock, ShieldCheck, Zap, Cookie,
-  Search, Lightbulb, Wallet, LineChart, Brain
+  Search, Lightbulb, Wallet, LineChart, Brain,
+  Coins, Gift, Star
 } from "lucide-react";
 import { NexusLogo } from "@/components/NexusLogo";
 
@@ -274,20 +275,57 @@ export default function HomePage() {
           <div className="max-w-6xl mx-auto">
             <SectionHeader
               kicker="Tarifs"
-              title="Simple. Honnête. Sans engagement."
-              subtitle="Commencez gratuitement. Passez à Pro quand vos ambitions grandissent."
+              title="Le logiciel est gratuit. Payez uniquement l'export."
+              subtitle="Toutes les fonctionnalités sont 100% gratuites. Vous achetez des jetons uniquement quand vous générez un PDF officiel pour la banque ou les impôts."
             />
-            <div className="mt-14 grid md:grid-cols-2 gap-5 max-w-4xl mx-auto">
-              <PricingCard
-                tier="Découverte" price="0" period="à vie" desc="Pour comprendre votre patrimoine, en toute sérénité."
-                features={["Tableau de bord 360°", "Suivi des actifs financiers", "Allocation visuelle", "Chiffrement AES‑256", "Hébergement UE"]}
-                cta="Démarrer gratuitement" ctaHref="/login"
+
+            {/* Bannière 3 jetons offerts */}
+            <div className="mt-10 max-w-3xl mx-auto rounded-2xl bg-emerald-500/[0.05] border border-emerald-500/20 p-4 flex flex-col sm:flex-row items-center gap-4 text-center sm:text-left backdrop-blur-sm relative overflow-hidden">
+              <div className="absolute -top-8 -right-8 w-32 h-32 rounded-full blur-[40px] bg-emerald-500/15 pointer-events-none" />
+              <div className="relative w-11 h-11 rounded-xl bg-emerald-500/15 border border-emerald-500/25 flex items-center justify-center shrink-0">
+                <Gift size={18} className="text-emerald-300" />
+              </div>
+              <div className="relative flex-1">
+                <h4 className="text-emerald-300 font-bold text-sm flex items-center gap-2 justify-center sm:justify-start flex-wrap">
+                  3 jetons offerts à l'inscription
+                  <span className="text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md bg-emerald-500/20 border border-emerald-500/30">Sans CB</span>
+                </h4>
+                <p className="text-emerald-200/60 text-xs mt-0.5 leading-relaxed">
+                  Créez votre compte et testez nos exports gratuitement. Aucune carte bancaire requise.
+                </p>
+              </div>
+            </div>
+
+            {/* 3 packs de jetons */}
+            <div className="mt-10 grid md:grid-cols-3 gap-5 max-w-5xl mx-auto">
+              <TokenPackCard
+                kicker="Besoin ponctuel" price="0,99" tokens={1} pricePerToken={null}
+                desc="Idéal pour un export unique sans engagement."
+                features={["1 export PDF au choix", "Dossier bancaire ou rapport fiscal"]}
+                cta="Acheter 1 jeton" ctaHref="/tarifs" accent="zinc"
               />
-              <PricingCard
-                tier="Patrimoine Pro" price="9" period="/ mois" desc="L'arsenal complet pour piloter et optimiser."
-                features={["Projection sur 40 ans (5 enveloppes)", "Budget base zéro", "Simulateur Immo & Fiscal", "Suivi illimité d'actifs", "Support prioritaire"]}
-                cta="Essayer 14 jours" ctaHref="/login" highlighted
+              <TokenPackCard
+                kicker="Investisseur" price="4,49" tokens={5} pricePerToken="0,89"
+                desc="Parfait pour comparer plusieurs scénarios avec votre banquier."
+                features={["5 exports PDF au choix", "Multiples dossiers bancaires", "Bilan patrimonial FIRE"]}
+                cta="Acheter 5 jetons" ctaHref="/tarifs" accent="purple" highlighted badge="Populaire"
               />
+              <TokenPackCard
+                kicker="Multi-propriétaire" price="49,99" tokens={100} pricePerToken="0,49"
+                desc="L'arsenal complet pour enchaîner les acquisitions sans se brider."
+                features={["100 exports PDF", "Sérénité absolue", "Jetons valables à vie"]}
+                cta="Acheter 100 jetons" ctaHref="/tarifs" accent="emerald"
+              />
+            </div>
+
+            {/* Note du bas */}
+            <div className="mt-10 max-w-2xl mx-auto text-center">
+              <p className="text-xs text-zinc-500 leading-relaxed">
+                Jetons valables à vie · Aucun abonnement · Aucune expiration · TVA incluse
+              </p>
+              <p className="text-xs text-zinc-600 mt-2">
+                Économie moyenne par rapport à un abonnement annuel : <span className="text-emerald-300 font-bold">~95%</span>
+              </p>
             </div>
           </div>
         </section>
@@ -970,20 +1008,120 @@ function SectionHeader({ kicker, title, subtitle }: { kicker: string; title: str
   );
 }
 
-function PricingCard({ tier, price, period, desc, features, cta, ctaHref, highlighted = false }: any) {
+function TokenPackCard({
+  kicker, price, tokens, pricePerToken, desc, features, cta, ctaHref, accent, highlighted = false, badge,
+}: {
+  kicker: string; price: string; tokens: number; pricePerToken: string | null;
+  desc: string; features: string[]; cta: string; ctaHref: string;
+  accent: "zinc" | "purple" | "emerald"; highlighted?: boolean; badge?: string;
+}) {
+  const colors = {
+    zinc:    { hex: "#71717a" },
+    purple:  { hex: "#a855f7" },
+    emerald: { hex: "#10b981" },
+  }[accent];
+
   return (
-    <div className={`rounded-3xl p-8 border transition-all ${highlighted ? "bg-emerald-950/20 border-emerald-500/30 shadow-[0_10px_40px_rgba(16,185,129,0.15)]" : "bg-zinc-950/40 border-white/10"}`}>
-      <h3 className="text-white font-bold">{tier}</h3>
-      <div className="mt-4 flex items-end gap-1">
-        <span className="text-5xl font-black text-white">{price}€</span>
-        <span className="text-zinc-600 text-sm mb-2">{period}</span>
-      </div>
-      <p className="text-zinc-500 text-sm mt-3">{desc}</p>
-      <Link href={ctaHref} className={`mt-6 w-full h-12 rounded-xl flex items-center justify-center font-bold text-sm transition-transform active:scale-95 hover:scale-[1.02] ${highlighted ? "bg-white text-black" : "bg-white/5 text-white"}`}>{cta}</Link>
-      <div className="mt-7 space-y-3">
-        {features.map((f: string, i: number) => (
-          <div key={i} className="flex gap-2 text-sm text-zinc-400"><Check size={14} className="text-emerald-500 shrink-0 mt-0.5" />{f}</div>
-        ))}
+    <div className={`relative rounded-3xl flex flex-col overflow-hidden transition-all ${highlighted ? "md:scale-[1.03] order-first md:order-none" : ""}`}>
+      {/* Badge "Populaire" */}
+      {highlighted && badge && (
+        <div className="absolute -top-3 left-1/2 -translate-x-1/2 z-30">
+          <div
+            className="flex items-center gap-1.5 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-[0.22em] text-black"
+            style={{ background: `linear-gradient(135deg, ${colors.hex}, #c084fc)`, boxShadow: `0 0 24px -4px ${colors.hex}` }}
+          >
+            <Star size={10} fill="currentColor" />
+            {badge}
+          </div>
+        </div>
+      )}
+
+      {/* Liseré dégradé top */}
+      <div
+        className="absolute inset-x-0 top-0 h-px z-10"
+        style={{
+          background: highlighted
+            ? `linear-gradient(90deg, transparent, ${colors.hex}, transparent)`
+            : "linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent)",
+        }}
+      />
+
+      {/* Fond verre dépoli */}
+      {highlighted ? (
+        <>
+          <div className="absolute inset-0 bg-gradient-to-br from-purple-950/50 via-zinc-950/60 to-indigo-950/30 backdrop-blur-md" />
+          <div className="absolute inset-0 rounded-3xl border" style={{ borderColor: `${colors.hex}40` }} />
+          <div className="absolute -top-20 -right-20 w-72 h-72 rounded-full blur-[80px] pointer-events-none" style={{ backgroundColor: `${colors.hex}30` }} />
+        </>
+      ) : (
+        <>
+          <div className="absolute inset-0 bg-zinc-950/60 backdrop-blur-sm" />
+          <div className="absolute inset-0 border border-white/8 rounded-3xl" />
+          <div className="absolute -top-12 -right-12 w-32 h-32 rounded-full blur-[50px] pointer-events-none opacity-30" style={{ backgroundColor: colors.hex }} />
+        </>
+      )}
+
+      {/* Contenu */}
+      <div className="relative z-10 p-7 md:p-8 flex flex-col h-full">
+        <p className="text-[10px] font-black uppercase tracking-[0.28em] mb-4" style={{ color: colors.hex }}>
+          {kicker}
+        </p>
+
+        {/* Prix */}
+        <div className="flex items-baseline gap-1.5 mb-3">
+          <span className="text-5xl font-black text-white tracking-tighter tabular-nums">
+            {price}<span className="text-2xl">€</span>
+          </span>
+        </div>
+
+        {/* Badge jetons */}
+        <div
+          className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold w-fit mb-2"
+          style={{ backgroundColor: `${colors.hex}15`, border: `1px solid ${colors.hex}30`, color: colors.hex }}
+        >
+          <Coins size={12} />
+          {tokens} jeton{tokens > 1 ? "s" : ""}
+        </div>
+
+        {pricePerToken && (
+          <p className="text-[10px] font-black uppercase tracking-[0.22em] mt-2" style={{ color: colors.hex }}>
+            Soit {pricePerToken}€ / jeton
+          </p>
+        )}
+
+        <p className="text-zinc-400 text-xs mt-4 leading-relaxed font-light">{desc}</p>
+
+        {/* Filet horizontal */}
+        <div className="h-px my-6" style={{ background: `linear-gradient(90deg, ${colors.hex}40, transparent)` }} />
+
+        {/* Features */}
+        <ul className="space-y-3 mb-7 flex-1">
+          {features.map((f, i) => (
+            <li key={i} className="flex items-start gap-2.5">
+              <div className="p-1 rounded-full shrink-0 mt-0.5" style={{ backgroundColor: `${colors.hex}25`, color: colors.hex }}>
+                <Check size={9} strokeWidth={3} />
+              </div>
+              <span className="text-zinc-300 text-sm leading-relaxed">{f}</span>
+            </li>
+          ))}
+        </ul>
+
+        {/* CTA */}
+        <Link
+          href={ctaHref}
+          className={`group/btn relative w-full h-12 font-black uppercase tracking-[0.22em] text-[10px] rounded-xl transition-all hover:scale-[1.02] active:scale-95 overflow-hidden flex items-center justify-center gap-2 ${
+            highlighted
+              ? "bg-white text-black hover:bg-zinc-100 shadow-[0_8px_30px_-8px_rgba(255,255,255,0.5)]"
+              : "text-white"
+          }`}
+          style={!highlighted ? { backgroundColor: `${colors.hex}10`, border: `1px solid ${colors.hex}30` } : undefined}
+        >
+          {highlighted && (
+            <span className="absolute inset-0 bg-gradient-to-r from-transparent via-zinc-300/40 to-transparent -translate-x-full group-hover/btn:translate-x-full transition-transform duration-1000" />
+          )}
+          <span className="relative">{cta}</span>
+          {highlighted && <ArrowRight size={12} className="relative" />}
+        </Link>
       </div>
     </div>
   );
@@ -1070,10 +1208,13 @@ const STEPS = [
 const VALUES = [
   { icon: Lock, title: "Chiffrement AES-256", desc: "Vos chiffres ne transitent jamais en clair. Vos données vous appartiennent intégralement." },
   { icon: ShieldCheck, title: "Conforme RGPD", desc: "Hébergement strict en Europe, droit à l'oubli instantané et respect total de votre vie privée." },
-  { icon: Zap, title: "Zéro revente de données", desc: "Notre seul revenu est votre abonnement. Pas de publicité, pas de tiers, aucune monétisation cachée." },
+  { icon: Zap, title: "Zéro revente de données", desc: "Notre seul revenu vient de vos achats de jetons. Pas de publicité, pas de tiers, aucune monétisation cachée." },
 ];
 
 const FAQ = [
+  { q: "Combien coûte vraiment Nexus ?", a: "Le logiciel est intégralement gratuit : simulations, projections, budget, dashboard, suivi en temps réel — tout est libre d'accès. Vous n'achetez des jetons (à partir de 0,99€) qu'au moment où vous voulez générer un PDF officiel pour la banque ou les impôts. Pour 99% des utilisateurs, le coût annuel se situe entre 0€ et 9€." },
+  { q: "Pourquoi pas un abonnement mensuel comme tout le monde ?", a: "Parce que nous trouvons malhonnête de facturer chaque mois un service utilisé peut-être 2 fois par an. Avec les jetons, vous payez uniquement la valeur livrée. Aucun renouvellement à oublier d'annuler, aucune expiration, aucun engagement." },
+  { q: "Les jetons expirent-ils ?", a: "Jamais. Achetez 100 jetons aujourd'hui, utilisez-les sur 10 ans si vous voulez. C'est notre engagement écrit dans nos CGV." },
   { q: "Dois-je connecter ma banque ?", a: "Non. Nexus est volontairement déconnecté pour garantir votre souveraineté. Vous pouvez synchroniser manuellement ou utiliser nos imports sécurisés." },
   { q: "Mes données sont-elles vraiment privées ?", a: "Oui. Aucun employé de Nexus ne peut consulter vos montants grâce au chiffrement côté client. L'architecture est pensée Zero-Knowledge." },
   { q: "Quelles enveloppes sont simulées dans les projections ?", a: "Nous gérons nativement le PEA, CTO, Assurance-Vie, PER, Livrets réglementés et Immobilier (Physique & Papier) avec la fiscalité française à jour." },
