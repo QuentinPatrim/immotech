@@ -1326,9 +1326,9 @@ export default function ProjectionPage() {
                             <RechartsTooltip
                               contentStyle={{ backgroundColor: "#09090b", border: "1px solid #27272a", borderRadius: "12px", fontSize: "11px", padding: "12px 14px" }}
                               itemStyle={{ color: "#e4e4e7", fontWeight: 600 }}
-                              formatter={(v: any, name: string | undefined) => {
+                              formatter={(v: any, name: any) => {
                                 const env = ENVS.find(e => e.key === name);
-                                return [fmt(Number(v)), env?.label || name || ""];
+                                return [fmt(Number(v)), env?.label || String(name) || ""];
                               }}
                               labelStyle={{ color: "#71717a", fontSize: "10px", marginBottom: "6px" }}
                             />
