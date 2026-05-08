@@ -7,7 +7,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
 
 export async function POST(req: Request) {
   try {
-    const { email, packType } = await req.json();
+    const { email, userId, packType } = await req.json();
 
     // Associe les packs aux IDs de prix que tu as copiés sur Stripe
     let priceId = "";
@@ -32,6 +32,7 @@ export async function POST(req: Request) {
       // IMPORTANT : On passe le packType et l'email dans les métadonnées pour le webhook
       metadata: {
         email: email,
+        userId: userId,
         packType: packType,
       },
     });

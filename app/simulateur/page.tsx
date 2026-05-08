@@ -513,7 +513,7 @@ export default function SimulateurPage() {
 
       <div className="fixed inset-0 pointer-events-none z-0 opacity-[0.025]" style={{ backgroundImage: "linear-gradient(rgba(255,255,255,0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.5) 1px, transparent 1px)", backgroundSize: "64px 64px" }} />
 
-      <main className="md:ml-64 flex-1 w-full md:w-auto min-w-0 p-3 sm:p-4 md:p-8 relative z-10 overflow-x-hidden">
+      <main className="md:ml-64 print:ml-0 print:p-0 print:overflow-visible flex-1 w-full md:w-auto min-w-0 p-3 sm:p-4 md:p-8 relative z-10 overflow-x-hidden">
 
         {/* PDFs cachés (impression uniquement) */}
         <DossierBancairePro refProp={componentRef} data={printData} />

@@ -116,6 +116,7 @@ export default function Tarifs() {
         headers: { "Content-Type": "application/json", ...authHeaders },
         body: JSON.stringify({
           email: session.user.email,
+          userId: session.user.id,
           packType: packType,
         }),
       });
