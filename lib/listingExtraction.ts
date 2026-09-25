@@ -100,7 +100,7 @@ Règles :
 - Le bien estimé sert seulement à écrire highlight, pros, cons et relevance. Une information absente de l'annonce n'est ni un avantage ni un inconvénient.
 - isForSale = false pour les locations (loyer, « /mois », « charges comprises »), publicités, agences, programmes neufs sans prix, liens de navigation.
 - Prix, surfaces : nombres sans espace ni symbole (295000, 68.5).
-- Date de capture : ${day}. Convertis les dates relatives (« aujourd'hui », « hier », « il y a 3 jours », « publiée le 12 septembre ») en AAAA-MM-JJ.
+- Date de capture : ${day}. Convertis les dates relatives (« aujourd'hui », « hier », « il y a 3 jours », « publiée le 12 septembre ») en AAAA-MM-JJ. Sans année indiquée, prends la date passée la plus proche de la date de capture (jamais dans le futur).
 - previousPrice uniquement si un ancien prix ou une baisse est explicitement affiché ; sinon null.
 - Analyse en français, concise et utile pour argumenter une estimation (prestations en plus ou en moins, état, étage, extérieur, stationnement, DPE, emplacement).`;
 }
@@ -141,6 +141,19 @@ function alignCards<T extends { card: number | null }>(rs: T[], ids: number[]): 
     if (valid) return rs;
     if (rs.length === ids.length) return rs.map((r, k) => ({ ...r, card: ids[k] }));
     return rs.filter(r => r.card !== null && ids.includes(r.card));
+}
+
+/** « DPE non précisé », « pas d'ascenseur mentionné » : une absence d'information n'est pas un argument */
+const UNKNOWN = /non (précisé|mentionné|indiqué|renseigné|communiqué)|pas .*mentionné|inconnu/i;
+
+/** Date de parution plausible : jamais dans le futur */
+function plausibleDate(v: string | null | undefined, capturedAt: string): string | null {
+    if (!v || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return null;
+    const day = capturedAt.slice(0, 10);
+    let date = v;
+    // Date sans année lue dans le futur (« 28 décembre » capturé en janvier) : année précédente
+    if (date > day) date = `${Number(date.slice(0, 4)) - 1}${date.slice(4)}`;
+    return date > day ? null : date;
 }
 
 /** Le modèle écrit parfois « null », « N/A » ou « non précisé » au lieu de null */
@@ -247,9 +260,9 @@ Texte de la page : ${clip(payload.text, 12000)}`;
             description: cleanText(r.description),
             relevance: Math.max(0, Math.min(100, Math.round(r.relevance || 0))),
             features: (r.features || []).slice(0, 6),
-            pros: (r.pros || []).slice(0, 3),
-            cons: (r.cons || []).slice(0, 3),
-            publishedAt: /^\d{4}-\d{2}-\d{2}$/.test(r.publishedAt || "") ? r.publishedAt : null,
+            pros: (r.pros || []).filter(x => !UNKNOWN.test(x)).slice(0, 3),
+            cons: (r.cons || []).filter(x => !UNKNOWN.test(x)).slice(0, 3),
+            publishedAt: plausibleDate(r.publishedAt, payload.capturedAt),
         });
     }
     return out;
