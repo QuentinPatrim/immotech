@@ -156,3 +156,124 @@ input[type=number] {
   background-color: #27272a;
   border-radius: 99px;
 }
+/* =====================================================================
+   ESPACE AGENT PATRIM (estimation, Mes biens, capture d'annonces)
+   Thème sombre / clair : <html data-patrim-theme="light|dark">, choisi
+   par l'agent (bouton soleil / lune) et mémorisé sur le poste.
+   Hors @layer : ces règles passent devant les utilitaires Tailwind.
+   ===================================================================== */
+.patrim-ui {
+  --p-bg: #0d0d0f;
+  --p-card: #141417;
+  --p-card-2: #1a1a1e;
+  --p-sunken: #111114;
+  --p-field: #0a0a0c;
+  --p-line: rgba(255, 255, 255, 0.07);
+  --p-line-strong: rgba(255, 255, 255, 0.14);
+  --p-hover: rgba(255, 255, 255, 0.05);
+  --p-fg: #f4f1ec;
+  --p-fg-2: #d6d0c8;
+  --p-muted: #928b83;
+  --p-faint: #615b55;
+  --p-glass: rgba(20, 20, 23, 0.84);
+  --p-accent: #d35f52;
+  --p-accent-strong: #8a0e01;
+  --p-accent-soft: rgba(211, 95, 82, 0.12);
+  --p-invert-bg: #f4f1ec;
+  --p-invert-fg: #121212;
+  --p-shadow: 0 40px 80px -30px rgba(0, 0, 0, 0.75);
+  --p-positive: #34d399;
+  --p-warning: #fbbf24;
+  --p-negative: #fb7185;
+  background-color: var(--p-bg);
+  color: var(--p-fg);
+  color-scheme: dark;
+}
+
+html[data-patrim-theme="light"] .patrim-ui {
+  --p-bg: #f3f0eb;
+  --p-card: #ffffff;
+  --p-card-2: #fbf9f6;
+  --p-sunken: #f8f6f2;
+  --p-field: #ffffff;
+  --p-line: #e9e3db;
+  --p-line-strong: #d8d0c6;
+  --p-hover: rgba(40, 28, 16, 0.05);
+  --p-fg: #1e1a16;
+  --p-fg-2: #3d3731;
+  --p-muted: #7c746b;
+  --p-faint: #aaa196;
+  --p-glass: rgba(255, 255, 255, 0.86);
+  --p-accent: #a93a2b;
+  --p-accent-strong: #8a0e01;
+  --p-accent-soft: rgba(138, 14, 1, 0.07);
+  --p-invert-bg: #1e1a16;
+  --p-invert-fg: #ffffff;
+  --p-shadow: 0 30px 70px -40px rgba(70, 45, 20, 0.28);
+  --p-positive: #047857;
+  --p-warning: #b45309;
+  --p-negative: #be123c;
+  color-scheme: light;
+}
+
+html[data-patrim-theme="light"] body:has(.patrim-ui) {
+  background-color: #f3f0eb !important;
+  color: #1e1a16 !important;
+}
+
+/* Champs, boutons et interrupteurs des composants partagés */
+.patrim-ui [data-slot="input"],
+.patrim-ui textarea,
+.patrim-ui select {
+  background-color: var(--p-field);
+  color: var(--p-fg);
+}
+.patrim-ui [data-slot="input"]:not(:focus),
+.patrim-ui textarea:not(:focus),
+.patrim-ui select:not(:focus) {
+  border-color: var(--p-line-strong);
+}
+.patrim-ui [data-slot="input"]:focus,
+.patrim-ui textarea:focus,
+.patrim-ui select:focus {
+  border-color: var(--p-accent);
+  box-shadow: 0 0 0 3px var(--p-accent-soft);
+}
+.patrim-ui [data-slot="input"]::placeholder,
+.patrim-ui textarea::placeholder {
+  color: var(--p-faint);
+}
+.patrim-ui select option {
+  background-color: var(--p-card);
+  color: var(--p-fg);
+}
+.patrim-ui [data-slot="button"][data-variant="outline"] {
+  background-color: transparent;
+  border-color: var(--p-line-strong);
+  color: var(--p-fg);
+}
+.patrim-ui [data-slot="button"][data-variant="outline"]:hover:not(:disabled),
+.patrim-ui [data-slot="button"][data-variant="ghost"]:hover:not(:disabled) {
+  background-color: var(--p-hover);
+  color: var(--p-fg);
+}
+.patrim-ui button[role="switch"][data-state="checked"] {
+  background-color: var(--p-accent);
+}
+.patrim-ui button[role="switch"][data-state="unchecked"] {
+  background-color: var(--p-line-strong);
+}
+
+/* Couleurs d'état lisibles sur fond clair */
+html[data-patrim-theme="light"] .patrim-ui .text-emerald-300,
+html[data-patrim-theme="light"] .patrim-ui .text-emerald-400 { color: #047857; }
+html[data-patrim-theme="light"] .patrim-ui .text-amber-200,
+html[data-patrim-theme="light"] .patrim-ui .text-amber-300 { color: #b45309; }
+html[data-patrim-theme="light"] .patrim-ui .text-rose-300,
+html[data-patrim-theme="light"] .patrim-ui .text-rose-400 { color: #be123c; }
+html[data-patrim-theme="light"] .patrim-ui .text-sky-300 { color: #0369a1; }
+/* Couleurs de statut (pensées pour le sombre) assombries sur fond clair */
+html[data-patrim-theme="light"] .patrim-ui .p-tint { filter: brightness(0.66) saturate(1.35); }
+
+html[data-patrim-theme="light"] .patrim-ui ::-webkit-scrollbar { background-color: #f3f0eb; }
+html[data-patrim-theme="light"] .patrim-ui ::-webkit-scrollbar-thumb { background-color: #d8d0c6; }

@@ -28,16 +28,17 @@ import {
     DOSSIER_STATUSES, DossierStatus, statusMeta, needsFollowUp, daysSince, followUpBase,
     centralPrice, formatSurface, formatEuroShort, completeness, PATRIM_AGENTS,
 } from "@/lib/dossier";
+import ThemeToggle from "@/components/estimation/ThemeToggle";
 
 // --- CHARTE GRAPHIQUE PATRIM ---
 const COLORS = {
     primary: "#8a0e01",
     secondary: "#d35f52",
     gold: "#c9a84c",
-    darkBg: "#0a0a0c",
-    darkCard: "#111114",
-    darkCardHover: "#1a1a1f",
-    darkBorder: "rgba(255,255,255,0.08)",
+    darkBg: "var(--p-bg)",
+    darkCard: "var(--p-card)",
+    darkCardHover: "var(--p-card-2)",
+    darkBorder: "var(--p-line)",
 };
 
 // --- TYPES ---
@@ -321,7 +322,7 @@ export default function MesBiensPage() {
 
     // --- RENDU ---
     return (
-        <div className="min-h-screen" style={{ backgroundColor: COLORS.darkBg }}>
+        <div className="patrim-ui min-h-screen" style={{ backgroundColor: "var(--p-bg)" }}>
             {/* Import de la typo Fraunces (élégante) + Inter Tight (body) */}
             <style dangerouslySetInnerHTML={{ __html: `
                 @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700;9..144,900&family=Inter+Tight:wght@400;500;600;700;800&display=swap');
@@ -347,12 +348,12 @@ export default function MesBiensPage() {
             `}}/>
 
             {/* =================== HEADER ÉDITORIAL =================== */}
-            <header className="relative overflow-hidden border-b border-white/5">
+            <header className="relative overflow-hidden border-b border-[var(--p-line)]">
                 {/* Motif décoratif subtil */}
                 <div
                     className="absolute inset-0 opacity-[0.03]"
                     style={{
-                        backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)',
+                        backgroundImage: 'radial-gradient(circle at 1px 1px, var(--p-fg) 1px, transparent 0)',
                         backgroundSize: '32px 32px',
                     }}
                 />
@@ -370,28 +371,31 @@ export default function MesBiensPage() {
                     <div className="flex items-start justify-between gap-6 mb-6">
                         <div className="flex items-center gap-4">
                             <img src="/logo-patrim.png" alt="PATRIM" className="h-10 object-contain"/>
-                            <div className="hidden sm:block h-10 w-px bg-white/10"/>
+                            <div className="hidden sm:block h-10 w-px bg-[var(--p-line-strong)]"/>
                             <div className="hidden sm:block">
-                                <p className="text-[9px] uppercase tracking-[0.3em] text-zinc-500 font-bold font-body">Espace agent</p>
-                                <p className="text-xs text-zinc-300 font-body mt-0.5">Toulouse</p>
+                                <p className="text-[9px] uppercase tracking-[0.3em] text-[var(--p-muted)] font-bold font-body">Espace agent</p>
+                                <p className="text-xs text-[var(--p-fg-2)] font-body mt-0.5">Toulouse</p>
                             </div>
                         </div>
 
+                        <div className="flex items-center gap-3">
+                        <ThemeToggle/>
                         {/* Boutons de création rapide (desktop) */}
                         <div className="hidden md:flex items-center gap-3">
                             <Button
                                 onClick={() => router.push('/generateur-qr')}
-                                className="rounded-full h-11 px-5 font-bold text-sm bg-white/5 hover:bg-white/10 text-white border border-white/10 transition-colors font-body"
+                                className="rounded-full h-11 px-5 font-bold text-sm bg-[var(--p-card)] hover:bg-[var(--p-card-2)] text-[var(--p-fg)] border border-[var(--p-line-strong)] transition-colors font-body"
                             >
                                 <QrCode size={15} className="mr-2"/> Nouveau QR Code
                             </Button>
                             <Button
                                 onClick={() => router.push('/estimation/new')}
-                                className="rounded-full h-11 px-5 font-bold text-sm text-white shadow-xl transition-transform hover:scale-105 font-body"
+                                className="rounded-full h-11 px-5 font-bold text-sm text-[#fff] shadow-xl transition-transform hover:scale-105 font-body"
                                 style={{ background: `linear-gradient(135deg, ${COLORS.primary}, ${COLORS.secondary})` }}
                             >
                                 <Plus size={15} className="mr-2"/> Nouvelle estimation
                             </Button>
+                        </div>
                         </div>
                     </div>
 
@@ -401,7 +405,7 @@ export default function MesBiensPage() {
                             <p className="text-[10px] uppercase tracking-[0.4em] font-bold mb-2 font-body" style={{ color: COLORS.secondary }}>
                                 Vos dossiers
                             </p>
-                            <h1 className="font-display text-5xl md:text-7xl text-white tracking-tight leading-[0.95]" style={{ fontWeight: 500 }}>
+                            <h1 className="font-display text-5xl md:text-7xl text-[var(--p-fg)] tracking-tight leading-[0.95]" style={{ fontWeight: 500 }}>
                                 Mes biens
                             </h1>
                         </div>
@@ -437,13 +441,13 @@ export default function MesBiensPage() {
                     <div className="flex md:hidden gap-3 mt-6">
                         <Button
                             onClick={() => router.push('/generateur-qr')}
-                            className="flex-1 rounded-full h-11 font-bold text-xs bg-white/5 hover:bg-white/10 text-white border border-white/10 font-body"
+                            className="flex-1 rounded-full h-11 font-bold text-xs bg-[var(--p-card)] hover:bg-[var(--p-card-2)] text-[var(--p-fg)] border border-[var(--p-line-strong)] font-body"
                         >
                             <QrCode size={14} className="mr-1.5"/> QR Code
                         </Button>
                         <Button
                             onClick={() => router.push('/estimation/new')}
-                            className="flex-1 rounded-full h-11 font-bold text-xs text-white font-body"
+                            className="flex-1 rounded-full h-11 font-bold text-xs text-[#fff] font-body"
                             style={{ background: `linear-gradient(135deg, ${COLORS.primary}, ${COLORS.secondary})` }}
                         >
                             <Plus size={14} className="mr-1.5"/> Estimation
@@ -453,11 +457,11 @@ export default function MesBiensPage() {
             </header>
 
             {/* =================== BARRE DE NAV (TABS + RECHERCHE) =================== */}
-            <div className="sticky top-0 z-30 backdrop-blur-xl border-b border-white/5" style={{ backgroundColor: 'rgba(10,10,12,0.85)' }}>
+            <div className="sticky top-0 z-30 backdrop-blur-xl border-b border-[var(--p-line)]" style={{ backgroundColor: 'var(--p-glass)' }}>
                 <div className="max-w-7xl mx-auto px-6 md:px-10">
                     <div className="flex items-center justify-between gap-6 py-4 flex-wrap">
                         {/* Tabs */}
-                        <div className="flex items-center gap-1 p-1 rounded-full bg-white/5 border border-white/5">
+                        <div className="flex items-center gap-1 p-1 rounded-full bg-[var(--p-hover)] border border-[var(--p-line)]">
                             <TabButton
                                 active={activeTab === "estimations"}
                                 onClick={() => setActiveTab("estimations")}
@@ -476,12 +480,12 @@ export default function MesBiensPage() {
 
                         {/* Recherche */}
                         <div className="relative flex-1 max-w-sm min-w-[200px]">
-                            <Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none"/>
+                            <Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--p-muted)] pointer-events-none"/>
                             <Input
                                 value={searchQuery}
                                 onChange={e => setSearchQuery(e.target.value)}
                                 placeholder={activeTab === "estimations" ? "Adresse, client, collaborateur…" : "Rechercher par adresse..."}
-                                className="bg-white/5 border-white/10 h-10 pl-10 rounded-full text-sm text-white focus:border-[#d35f52] font-body"
+                                className="bg-[var(--p-hover)] border-[var(--p-line-strong)] h-10 pl-10 rounded-full text-sm text-[var(--p-fg)] focus:border-[var(--p-accent)] font-body"
                             />
                         </div>
                     </div>
@@ -502,13 +506,13 @@ export default function MesBiensPage() {
                                 ))}
                             </div>
                             <div className="relative shrink-0">
-                                <ArrowUpDown size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none"/>
+                                <ArrowUpDown size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--p-muted)] pointer-events-none"/>
                                 <select value={sortBy} onChange={e => setSortBy(e.target.value as SortKey)}
-                                    className="appearance-none bg-white/5 border border-white/10 h-8 pl-8 pr-3 rounded-full text-xs text-zinc-300 outline-none cursor-pointer font-body">
-                                    <option value="recent" className="bg-zinc-900">Plus récents</option>
-                                    <option value="ancien" className="bg-zinc-900">Plus anciens</option>
-                                    <option value="prix" className="bg-zinc-900">Prix décroissant</option>
-                                    <option value="client" className="bg-zinc-900">Client A → Z</option>
+                                    className="appearance-none bg-[var(--p-hover)] border border-[var(--p-line-strong)] h-8 pl-8 pr-3 rounded-full text-xs text-[var(--p-fg-2)] outline-none cursor-pointer font-body">
+                                    <option value="recent">Plus récents</option>
+                                    <option value="ancien" >Plus anciens</option>
+                                    <option value="prix" >Prix décroissant</option>
+                                    <option value="client" >Client A → Z</option>
                                 </select>
                             </div>
                         </div>
@@ -597,14 +601,14 @@ function TabButton({ active, onClick, icon, label, count }: {
             onClick={onClick}
             className={`relative h-9 px-4 rounded-full flex items-center gap-2 text-sm font-semibold transition-all font-body ${
                 active
-                    ? 'bg-white text-black shadow-lg'
-                    : 'text-zinc-400 hover:text-white'
+                    ? 'bg-[var(--p-invert-bg)] text-[var(--p-invert-fg)] shadow-lg'
+                    : 'text-[var(--p-muted)] hover:text-[var(--p-fg)]'
             }`}
         >
             {icon}
             <span>{label}</span>
             <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
-                active ? 'bg-black/10 text-black' : 'bg-white/10 text-zinc-300'
+                active ? 'bg-[var(--p-invert-fg)]/15 text-[var(--p-invert-fg)]' : 'bg-[var(--p-hover)] text-[var(--p-fg-2)]'
             }`}>
                 {count}
             </span>
@@ -616,8 +620,8 @@ function LoadingState() {
     return (
         <div className="flex items-center justify-center py-24">
             <div className="text-center">
-                <div className="inline-block w-8 h-8 border-2 border-white/10 border-t-[#d35f52] rounded-full animate-spin mb-4"/>
-                <p className="text-xs uppercase tracking-widest text-zinc-500 font-body">Chargement…</p>
+                <div className="inline-block w-8 h-8 border-2 border-[var(--p-line-strong)] border-t-[#d35f52] rounded-full animate-spin mb-4"/>
+                <p className="text-xs uppercase tracking-widest text-[var(--p-muted)] font-body">Chargement…</p>
             </div>
         </div>
     );
@@ -632,12 +636,12 @@ function EmptyState({ tab, hasSearch, onCreate }: {
             <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-6" style={{ background: `linear-gradient(135deg, ${COLORS.primary}20, ${COLORS.secondary}20)` }}>
                 {isEstim ? <FileText size={28} className="text-[#d35f52]"/> : <QrCode size={28} className="text-[#d35f52]"/>}
             </div>
-            <h3 className="font-display text-2xl text-white mb-2" style={{ fontWeight: 500 }}>
+            <h3 className="font-display text-2xl text-[var(--p-fg)] mb-2" style={{ fontWeight: 500 }}>
                 {hasSearch
                     ? "Aucun résultat"
                     : isEstim ? "Aucune estimation" : "Aucun QR Code"}
             </h3>
-            <p className="text-sm text-zinc-500 mb-6 font-body">
+            <p className="text-sm text-[var(--p-muted)] mb-6 font-body">
                 {hasSearch
                     ? "Essayez un autre filtre ou terme de recherche."
                     : isEstim
@@ -647,7 +651,7 @@ function EmptyState({ tab, hasSearch, onCreate }: {
             {!hasSearch && (
                 <Button
                     onClick={onCreate}
-                    className="rounded-full h-11 px-6 font-bold text-sm text-white font-body"
+                    className="rounded-full h-11 px-6 font-bold text-sm text-[#fff] font-body"
                     style={{ background: `linear-gradient(135deg, ${COLORS.primary}, ${COLORS.secondary})` }}
                 >
                     <Plus size={15} className="mr-2"/>
@@ -666,12 +670,12 @@ function KpiTile({ label, value, hint, accent, onClick }: {
     return (
         <Tag
             onClick={onClick}
-            className={`text-left rounded-2xl border px-4 py-3 min-w-[128px] transition-colors ${onClick ? 'hover:bg-white/[0.06] cursor-pointer' : ''}`}
-            style={{ backgroundColor: 'rgba(255,255,255,0.03)', borderColor: accent ? accent + '55' : COLORS.darkBorder }}
+            className={`text-left rounded-2xl border px-4 py-3 min-w-[128px] transition-colors ${onClick ? 'hover:bg-[var(--p-hover)] cursor-pointer' : ''}`}
+            style={{ backgroundColor: 'var(--p-card)', borderColor: accent ? accent + '55' : "var(--p-line)" }}
         >
-            <p className="text-[9px] uppercase tracking-[0.2em] font-bold font-body" style={{ color: accent || '#71717a' }}>{label}</p>
-            <p className="font-display text-2xl text-white mt-0.5 leading-none" style={{ fontWeight: 600 }}>{value}</p>
-            {hint && <p className="text-[10px] text-zinc-500 mt-1 font-body truncate">{hint}</p>}
+            <p className="p-tint text-[9px] uppercase tracking-[0.2em] font-bold font-body" style={{ color: accent || 'var(--p-muted)' }}>{label}</p>
+            <p className="font-display text-2xl text-[var(--p-fg)] mt-0.5 leading-none" style={{ fontWeight: 600 }}>{value}</p>
+            {hint && <p className="text-[10px] text-[var(--p-muted)] mt-1 font-body truncate">{hint}</p>}
         </Tag>
     );
 }
@@ -683,12 +687,12 @@ function FilterChip({ active, onClick, label, count, color, icon }: {
     return (
         <button
             onClick={onClick}
-            className={`shrink-0 h-8 px-3 rounded-full flex items-center gap-1.5 text-xs font-semibold border transition-all font-body ${active ? 'text-white' : 'text-zinc-400 hover:text-white border-transparent hover:bg-white/5'}`}
-            style={active ? { backgroundColor: (color || '#ffffff') + '22', borderColor: (color || '#ffffff') + '66' } : {}}
+            className={`shrink-0 h-8 px-3 rounded-full flex items-center gap-1.5 text-xs font-semibold border transition-all font-body ${active ? 'text-[var(--p-fg)]' : 'text-[var(--p-muted)] hover:text-[var(--p-fg)] border-transparent hover:bg-[var(--p-hover)]'}`}
+            style={active ? { backgroundColor: (color || '#9a8f85') + '22', borderColor: (color || '#9a8f85') + '66' } : {}}
         >
             {icon ?? (color && <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: color }}/>)}
             {label}
-            <span className="text-[10px] text-zinc-500">{count}</span>
+            <span className="text-[10px] text-[var(--p-muted)]">{count}</span>
         </button>
     );
 }
@@ -721,25 +725,25 @@ function EstimationCard({
         day: 'numeric', month: 'short', year: 'numeric'
     });
 
-    const itemClass = "w-full px-4 py-2.5 text-left text-xs text-white hover:bg-white/5 transition-colors flex items-center gap-2 font-body";
+    const itemClass = "w-full px-4 py-2.5 text-left text-xs text-[var(--p-fg)] hover:bg-[var(--p-hover)] transition-colors flex items-center gap-2 font-body";
 
     return (
         <div
-            className={`stagger-item group relative rounded-2xl border transition-all hover:border-white/15 ${menuOpen || statusMenuOpen ? 'z-40' : ''}`}
+            className={`stagger-item group relative rounded-2xl border transition-all hover:border-[var(--p-line-strong)] ${menuOpen || statusMenuOpen ? 'z-40' : ''}`}
             style={{
-                backgroundColor: COLORS.darkCard,
-                borderColor: relance ? 'rgba(251,191,36,0.35)' : COLORS.darkBorder,
+                backgroundColor: "var(--p-card)",
+                borderColor: relance ? 'rgba(251,191,36,0.35)' : "var(--p-line)",
                 animationDelay: `${delay}s`,
             }}
         >
             <div className="flex items-stretch">
                 {/* Photo */}
-                <button onClick={onOpen} className="w-24 sm:w-32 flex-shrink-0 bg-black/30 cursor-pointer overflow-hidden rounded-l-2xl relative">
+                <button onClick={onOpen} className="w-24 sm:w-32 flex-shrink-0 bg-[var(--p-sunken)] cursor-pointer overflow-hidden rounded-l-2xl relative">
                     {mainPhoto ? (
                         <img src={mainPhoto} className="w-full h-full object-cover transition-transform group-hover:scale-105" alt=""/>
                     ) : (
                         <div className="w-full h-full flex items-center justify-center">
-                            <HomeIcon size={24} className="text-white/10"/>
+                            <HomeIcon size={24} className="text-[var(--p-line-strong)]"/>
                         </div>
                     )}
                 </button>
@@ -751,7 +755,7 @@ function EstimationCard({
                         <div className="relative">
                             <button
                                 onClick={(e) => { e.stopPropagation(); setOpenMenuId(statusMenuOpen ? null : estim.id + '-status'); }}
-                                className="inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider font-body border transition-colors hover:brightness-125"
+                                className="p-tint inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider font-body border transition-colors hover:brightness-125"
                                 style={{ color: meta.color, borderColor: meta.color + '55', backgroundColor: meta.color + '14' }}
                             >
                                 <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: meta.color }}/>
@@ -760,7 +764,7 @@ function EstimationCard({
                             </button>
                             {statusMenuOpen && (
                                 <div onClick={e => e.stopPropagation()} className="absolute top-full left-0 mt-2 w-56 rounded-2xl border shadow-2xl overflow-hidden z-50"
-                                    style={{ backgroundColor: COLORS.darkCardHover, borderColor: COLORS.darkBorder }}>
+                                    style={{ backgroundColor: "var(--p-card-2)", borderColor: "var(--p-line)" }}>
                                     {DOSSIER_STATUSES.flatMap(st => st.id === "mandat"
                                         ? (["simple", "exclusif"] as const).map(mt => (
                                             <button key={`mandat-${mt}`} onClick={() => onChangeStatus("mandat", mt)} className={itemClass}>
@@ -779,7 +783,7 @@ function EstimationCard({
                                 </div>
                             )}
                         </div>
-                        <span className="text-[9px] uppercase tracking-[0.2em] font-bold text-zinc-500 font-body">{propertyType}</span>
+                        <span className="text-[9px] uppercase tracking-[0.2em] font-bold text-[var(--p-muted)] font-body">{propertyType}</span>
                         {relance && (
                             <button onClick={(e) => { e.stopPropagation(); onFollowedUp(); }}
                                 title="Marquer comme relancé (le compteur repart à zéro)"
@@ -797,13 +801,13 @@ function EstimationCard({
                         )}
                     </div>
                     <button onClick={onOpen} className="block w-full text-left">
-                        <p className="font-display text-white text-lg leading-tight truncate" style={{ fontWeight: 500 }}>
+                        <p className="font-display text-[var(--p-fg)] text-lg leading-tight truncate" style={{ fontWeight: 500 }}>
                             {(estim.address || "").trim()}
                         </p>
                         {estim.client_name && estim.client_name !== "Dossier Sans Nom" && (
-                            <p className="text-xs text-zinc-400 mt-0.5 truncate font-body">{estim.client_name}</p>
+                            <p className="text-xs text-[var(--p-muted)] mt-0.5 truncate font-body">{estim.client_name}</p>
                         )}
-                        <div className="flex items-center gap-x-3 gap-y-1 mt-2 text-[11px] text-zinc-500 font-body flex-wrap">
+                        <div className="flex items-center gap-x-3 gap-y-1 mt-2 text-[11px] text-[var(--p-muted)] font-body flex-wrap">
                             {rooms > 0 && <span>{rooms} pièce{rooms > 1 ? "s" : ""}</span>}
                             {surface > 0 && <><span>·</span><span>{formatSurface(surface)} m²</span></>}
                             {central > 0 && (
@@ -816,21 +820,21 @@ function EstimationCard({
                                                 : `${formatEuroShort(low)} – ${formatEuroShort(high)}`)
                                             : `${Number(central).toLocaleString('fr-FR')} €`}
                                     </span>
-                                    {surface > 0 && <span className="text-zinc-600">({Math.round(central / surface).toLocaleString('fr-FR')} €/m²)</span>}
+                                    {surface > 0 && <span className="text-[var(--p-faint)]">({Math.round(central / surface).toLocaleString('fr-FR')} €/m²)</span>}
                                 </>
                             )}
                         </div>
                         {d.followUpNote && (
-                            <p className="text-[11px] text-zinc-400 mt-2 italic truncate font-body flex items-center gap-1.5">
-                                <StickyNote size={11} className="shrink-0 text-zinc-600"/> {d.followUpNote}
+                            <p className="text-[11px] text-[var(--p-muted)] mt-2 italic truncate font-body flex items-center gap-1.5">
+                                <StickyNote size={11} className="shrink-0 text-[var(--p-faint)]"/> {d.followUpNote}
                             </p>
                         )}
                         {score < 100 && status === "en_cours" && (
                             <div className="flex items-center gap-2 mt-2.5">
-                                <div className="h-1 w-24 rounded-full bg-white/5 overflow-hidden">
+                                <div className="h-1 w-24 rounded-full bg-[var(--p-hover)] overflow-hidden">
                                     <div className="h-full rounded-full" style={{ width: `${score}%`, backgroundColor: COLORS.secondary }}/>
                                 </div>
-                                <span className="text-[10px] text-zinc-600 font-body truncate">À compléter : {missing.join(', ')}</span>
+                                <span className="text-[10px] text-[var(--p-faint)] font-body truncate">À compléter : {missing.join(', ')}</span>
                             </div>
                         )}
                     </button>
@@ -839,19 +843,19 @@ function EstimationCard({
                 {/* Actions */}
                 <div className="flex items-center gap-2 pr-4 pl-2">
                     <div className="hidden sm:flex flex-col items-end pr-2 gap-1">
-                        <p className="text-[10px] uppercase tracking-widest text-zinc-600 font-bold font-body">{formattedDate}</p>
+                        <p className="text-[10px] uppercase tracking-widest text-[var(--p-faint)] font-bold font-body">{formattedDate}</p>
                         {statusDays !== null && status !== "en_cours" && (
-                            <p className="text-[10px] text-zinc-600 font-body">{meta.short} {statusDays === 0 ? "aujourd'hui" : `il y a ${statusDays} j`}</p>
+                            <p className="text-[10px] text-[var(--p-faint)] font-body">{meta.short} {statusDays === 0 ? "aujourd'hui" : `il y a ${statusDays} j`}</p>
                         )}
                         {agent && (
-                            <span title={agent.name} className="text-[9px] font-bold text-zinc-400 bg-white/5 border border-white/10 rounded-full px-1.5 py-0.5 font-body">
+                            <span title={agent.name} className="text-[9px] font-bold text-[var(--p-muted)] bg-[var(--p-hover)] border border-[var(--p-line-strong)] rounded-full px-1.5 py-0.5 font-body">
                                 {agent.name.split(' ').map((p: string) => p[0]).join('')}
                             </span>
                         )}
                     </div>
                     <button
                         onClick={onOpen}
-                        className="hidden md:flex items-center gap-1.5 h-9 px-4 rounded-full text-xs font-bold text-white transition-colors font-body"
+                        className="hidden md:flex items-center gap-1.5 h-9 px-4 rounded-full text-xs font-bold text-[#fff] transition-colors font-body"
                         style={{ backgroundColor: COLORS.primary }}
                     >
                         Ouvrir <ArrowUpRight size={13}/>
@@ -861,7 +865,7 @@ function EstimationCard({
                     <div className="relative">
                         <button
                             onClick={(e) => { e.stopPropagation(); setOpenMenuId(menuOpen ? null : estim.id); }}
-                            className="w-9 h-9 rounded-full flex items-center justify-center text-zinc-400 hover:text-white hover:bg-white/5 transition-colors"
+                            className="w-9 h-9 rounded-full flex items-center justify-center text-[var(--p-muted)] hover:text-[var(--p-fg)] hover:bg-[var(--p-hover)] transition-colors"
                         >
                             <MoreVertical size={16}/>
                         </button>
@@ -869,7 +873,7 @@ function EstimationCard({
                             <div
                                 onClick={e => e.stopPropagation()}
                                 className="absolute top-full right-0 mt-2 w-60 rounded-2xl border shadow-2xl overflow-hidden z-50"
-                                style={{ backgroundColor: COLORS.darkCardHover, borderColor: COLORS.darkBorder }}
+                                style={{ backgroundColor: "var(--p-card-2)", borderColor: "var(--p-line)" }}
                             >
                                 <button onClick={onOpen} className={`${itemClass} md:hidden`}>
                                     <Edit3 size={13}/> Ouvrir le dossier
@@ -891,7 +895,7 @@ function EstimationCard({
                                 <button onClick={onDuplicate} className={itemClass}>
                                     <CopyPlus size={13}/> Dupliquer (même immeuble)
                                 </button>
-                                <div className="h-px bg-white/5"/>
+                                <div className="h-px bg-[var(--p-line)]"/>
                                 <button
                                     onClick={() => onCopy(`${origin}/simulation/${estim.id}`, estim.id + '-sim')}
                                     className={itemClass}
@@ -904,7 +908,7 @@ function EstimationCard({
                                 >
                                     {copiedId === estim.id + '-gal' ? <><Check size={13}/> Lien galerie copié</> : <><ImageIcon size={13}/> Copier lien galerie</>}
                                 </button>
-                                <div className="h-px bg-white/5"/>
+                                <div className="h-px bg-[var(--p-line)]"/>
                                 <button
                                     onClick={onDelete}
                                     className="w-full px-4 py-2.5 text-left text-xs hover:bg-red-500/10 transition-colors flex items-center gap-2 font-body"
@@ -939,33 +943,33 @@ function QrCodeCard({
 
     return (
         <div
-            className={`stagger-item group relative rounded-2xl border transition-all hover:border-white/15 ${menuOpen ? 'z-40' : ''}`}
+            className={`stagger-item group relative rounded-2xl border transition-all hover:border-[var(--p-line-strong)] ${menuOpen ? 'z-40' : ''}`}
             style={{
-                backgroundColor: COLORS.darkCard,
-                borderColor: COLORS.darkBorder,
+                backgroundColor: "var(--p-card)",
+                borderColor: "var(--p-line)",
                 animationDelay: `${delay}s`,
             }}
         >
             <div className="flex items-stretch">
                 {/* Photo */}
-                <button onClick={onOpen} className="w-24 sm:w-32 flex-shrink-0 bg-black/30 cursor-pointer overflow-hidden relative rounded-l-2xl">
+                <button onClick={onOpen} className="w-24 sm:w-32 flex-shrink-0 bg-[var(--p-sunken)] cursor-pointer overflow-hidden relative rounded-l-2xl">
                     {qr.main_photo ? (
                         <img src={qr.main_photo} className="w-full h-full object-cover transition-transform group-hover:scale-105" alt=""/>
                     ) : (
                         <div className="w-full h-full flex items-center justify-center">
-                            <QrCode size={24} className="text-white/10"/>
+                            <QrCode size={24} className="text-[var(--p-line-strong)]"/>
                         </div>
                     )}
                     {/* Icône QR overlay */}
-                    <div className="absolute top-2 left-2 w-6 h-6 rounded-md bg-black/60 backdrop-blur-sm flex items-center justify-center">
-                        <QrCode size={11} className="text-white"/>
+                    <div className="absolute top-2 left-2 w-6 h-6 rounded-md bg-[rgba(0,0,0,0.6)] backdrop-blur-sm flex items-center justify-center">
+                        <QrCode size={11} className="text-[#fff]"/>
                     </div>
                 </button>
 
                 {/* Infos */}
                 <button onClick={onOpen} className="flex-1 min-w-0 text-left p-4 sm:p-5">
                     <div className="flex items-center gap-2 mb-1.5">
-                        <span className="text-[9px] uppercase tracking-[0.2em] font-bold text-zinc-500 font-body">
+                        <span className="text-[9px] uppercase tracking-[0.2em] font-bold text-[var(--p-muted)] font-body">
                             {qr.property_type || "QR Code"}
                         </span>
                         {hasEstimationLink && (
@@ -977,10 +981,10 @@ function QrCodeCard({
                             </span>
                         )}
                     </div>
-                    <p className="font-display text-white text-lg leading-tight truncate" style={{ fontWeight: 500 }}>
+                    <p className="font-display text-[var(--p-fg)] text-lg leading-tight truncate" style={{ fontWeight: 500 }}>
                         {qr.address || "Adresse non renseignée"}
                     </p>
-                    <div className="flex items-center gap-3 mt-2 text-[11px] text-zinc-500 font-body">
+                    <div className="flex items-center gap-3 mt-2 text-[11px] text-[var(--p-muted)] font-body">
                         {qr.rooms > 0 && <span>{qr.rooms} pièces</span>}
                         {qr.surface > 0 && <><span>·</span><span>{qr.surface} m²</span></>}
                         {qr.price_fai > 0 && (
@@ -997,11 +1001,11 @@ function QrCodeCard({
                 {/* Actions */}
                 <div className="flex items-center gap-2 pr-4 pl-2">
                     <div className="hidden sm:block text-right pr-2">
-                        <p className="text-[10px] uppercase tracking-widest text-zinc-600 font-bold font-body">{formattedDate}</p>
+                        <p className="text-[10px] uppercase tracking-widest text-[var(--p-faint)] font-bold font-body">{formattedDate}</p>
                     </div>
                     <button
                         onClick={onOpen}
-                        className="hidden md:flex items-center gap-1.5 h-9 px-4 rounded-full text-xs font-bold text-white transition-colors font-body"
+                        className="hidden md:flex items-center gap-1.5 h-9 px-4 rounded-full text-xs font-bold text-[#fff] transition-colors font-body"
                         style={{ backgroundColor: COLORS.primary }}
                     >
                         Rouvrir <ArrowUpRight size={13}/>
@@ -1011,22 +1015,22 @@ function QrCodeCard({
                     <div className="relative">
                         <button
                             onClick={(e) => { e.stopPropagation(); setOpenMenuId(menuOpen ? null : qr.id); }}
-                            className="w-9 h-9 rounded-full flex items-center justify-center text-zinc-400 hover:text-white hover:bg-white/5 transition-colors"
+                            className="w-9 h-9 rounded-full flex items-center justify-center text-[var(--p-muted)] hover:text-[var(--p-fg)] hover:bg-[var(--p-hover)] transition-colors"
                         >
                             <MoreVertical size={16}/>
                         </button>
                         {menuOpen && (
                             <div
                                 className="absolute top-full right-0 mt-2 w-64 rounded-2xl border shadow-2xl overflow-hidden z-50"
-                                style={{ backgroundColor: COLORS.darkCardHover, borderColor: COLORS.darkBorder }}
+                                style={{ backgroundColor: "var(--p-card-2)", borderColor: "var(--p-line)" }}
                             >
-                                <button onClick={onOpen} className="w-full px-4 py-3 text-left text-xs text-white hover:bg-white/5 transition-colors flex items-center gap-2 font-body md:hidden">
+                                <button onClick={onOpen} className="w-full px-4 py-3 text-left text-xs text-[var(--p-fg)] hover:bg-[var(--p-hover)] transition-colors flex items-center gap-2 font-body md:hidden">
                                     <Edit3 size={13}/> Rouvrir le QR
                                 </button>
                                 {!hasEstimationLink && (
                                     <button
                                         onClick={onConvertToEstimation}
-                                        className="w-full px-4 py-3 text-left text-xs hover:bg-white/5 transition-colors flex items-center gap-2 font-body"
+                                        className="w-full px-4 py-3 text-left text-xs hover:bg-[var(--p-hover)] transition-colors flex items-center gap-2 font-body"
                                         style={{ color: COLORS.secondary }}
                                     >
                                         <Wand2 size={13}/> Faire l'estimation complète
@@ -1035,25 +1039,25 @@ function QrCodeCard({
                                 {hasEstimationLink && (
                                     <button
                                         onClick={onConvertToEstimation}
-                                        className="w-full px-4 py-3 text-left text-xs text-white hover:bg-white/5 transition-colors flex items-center gap-2 font-body"
+                                        className="w-full px-4 py-3 text-left text-xs text-[var(--p-fg)] hover:bg-[var(--p-hover)] transition-colors flex items-center gap-2 font-body"
                                     >
                                         <FileText size={13}/> Ouvrir l'estimation liée
                                     </button>
                                 )}
-                                <div className="h-px bg-white/5"/>
+                                <div className="h-px bg-[var(--p-line)]"/>
                                 <button
                                     onClick={() => onCopy(`${origin}/simulation/${qr.id}`, qr.id + '-sim')}
-                                    className="w-full px-4 py-3 text-left text-xs text-white hover:bg-white/5 transition-colors flex items-center gap-2 font-body"
+                                    className="w-full px-4 py-3 text-left text-xs text-[var(--p-fg)] hover:bg-[var(--p-hover)] transition-colors flex items-center gap-2 font-body"
                                 >
                                     {copiedId === qr.id + '-sim' ? <><Check size={13}/> Lien simu copié</> : <><Calculator size={13}/> Copier lien simulateur</>}
                                 </button>
                                 <button
                                     onClick={() => onCopy(`${origin}/galerie/${qr.id}`, qr.id + '-gal')}
-                                    className="w-full px-4 py-3 text-left text-xs text-white hover:bg-white/5 transition-colors flex items-center gap-2 font-body"
+                                    className="w-full px-4 py-3 text-left text-xs text-[var(--p-fg)] hover:bg-[var(--p-hover)] transition-colors flex items-center gap-2 font-body"
                                 >
                                     {copiedId === qr.id + '-gal' ? <><Check size={13}/> Lien galerie copié</> : <><ImageIcon size={13}/> Copier lien galerie</>}
                                 </button>
-                                <div className="h-px bg-white/5"/>
+                                <div className="h-px bg-[var(--p-line)]"/>
                                 <button
                                     onClick={onDelete}
                                     className="w-full px-4 py-3 text-left text-xs hover:bg-red-500/10 transition-colors flex items-center gap-2 font-body"

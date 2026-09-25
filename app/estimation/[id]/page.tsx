@@ -26,6 +26,7 @@ export default function EditEstimationPage() {
     const [loading, setLoading] = useState(true);
     const [data, setData] = useState<EstimationData | null>(null);
     const [initialView, setInitialView] = useState<"EDIT" | "PRINT">("EDIT");
+    const [initialStep, setInitialStep] = useState(1);
 
     useEffect(() => {
         if (!id) {
@@ -35,7 +36,11 @@ export default function EditEstimationPage() {
 
         const fetchEstimation = async () => {
             setLoading(true);
-            if (new URLSearchParams(window.location.search).get("view") === "print") setInitialView("PRINT");
+            const query = new URLSearchParams(window.location.search);
+            if (query.get("view") === "print") setInitialView("PRINT");
+            // ?step=3 : ouverture directe d'une étape (ex. après une capture d'annonces)
+            const step = Number(query.get("step"));
+            if (step >= 1 && step <= 4) setInitialStep(step);
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) {
                 router.replace(`/login?next=${encodeURIComponent(`/estimation/${id}`)}`);
@@ -81,10 +86,10 @@ export default function EditEstimationPage() {
     // --- Skeleton de chargement (cohérent avec la charte sombre) ---
     if (loading || !data) {
         return (
-            <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: "#0a0a0c" }}>
+            <div className="patrim-ui min-h-screen flex items-center justify-center">
                 <div className="text-center">
-                    <Loader2 size={32} className="animate-spin mx-auto mb-4" style={{ color: "#d35f52" }}/>
-                    <p className="text-[10px] uppercase tracking-[0.3em] text-zinc-500 font-bold">
+                    <Loader2 size={32} className="animate-spin mx-auto mb-4" style={{ color: "var(--p-accent)" }}/>
+                    <p className="text-[10px] uppercase tracking-[0.3em] text-[var(--p-muted)] font-bold">
                         Chargement du dossier…
                     </p>
                 </div>
@@ -97,6 +102,7 @@ export default function EditEstimationPage() {
             initialData={data}
             existingId={id!}
             initialView={initialView}
+            initialStep={initialStep}
         />
     );
 }

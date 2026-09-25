@@ -77,21 +77,21 @@ export default function AddressInput({ value, onChange, onSelect, placeholder, c
                 className={className}
                 placeholder={placeholder}
             />
-            {loading && <Loader2 size={14} className="absolute right-4 top-1/2 -translate-y-1/2 animate-spin text-zinc-500"/>}
+            {loading && <Loader2 size={14} className="absolute right-4 top-1/2 -translate-y-1/2 animate-spin text-[var(--p-muted)]"/>}
             {open && suggestions.length > 0 && (
-                <div className="absolute left-0 right-0 top-full mt-1.5 z-50 rounded-2xl border border-white/10 bg-[#16161a] shadow-2xl overflow-hidden">
+                <div className="absolute left-0 right-0 top-full mt-1.5 z-50 rounded-2xl border border-[var(--p-line-strong)] bg-[var(--p-card)] shadow-2xl overflow-hidden">
                     {suggestions.map((s, i) => (
                         <button
                             key={`${s.label}-${i}`}
                             type="button"
                             onMouseDown={e => { e.preventDefault(); choose(s); }}
                             onMouseEnter={() => setActive(i)}
-                            className={`w-full flex items-center gap-2.5 px-4 py-2.5 text-left text-sm transition-colors ${i === active ? "bg-white/10 text-white" : "text-zinc-300"}`}>
+                            className={`w-full flex items-center gap-2.5 px-4 py-2.5 text-left text-sm transition-colors ${i === active ? "bg-[var(--p-hover)] text-[var(--p-fg)]" : "text-[var(--p-fg-2)]"}`}>
                             <MapPin size={14} className="shrink-0 text-[#d35f52]"/>
                             <span className="truncate">{s.label}</span>
                         </button>
                     ))}
-                    <p className="px-4 py-1.5 text-[10px] text-zinc-600 border-t border-white/5">Base Adresse Nationale · IGN</p>
+                    <p className="px-4 py-1.5 text-[10px] text-[var(--p-faint)] border-t border-[var(--p-line)]">Base Adresse Nationale · IGN</p>
                 </div>
             )}
         </div>
