@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { extractListings, type SubjectProperty } from "@/lib/listingExtraction";
 import type { CapturePayload } from "@/lib/marketListings";
+import { geocodePoint, listingDistances } from "@/lib/listingArea";
 
 // TEMPORAIRE : validation du jugement « même quartier » (préproduction uniquement)
 export const maxDuration = 60;
@@ -27,6 +28,7 @@ const payload: CapturePayload = {
 
 export async function GET() {
     if (process.env.VERCEL_ENV !== "preview") return NextResponse.json({ error: "Introuvable" }, { status: 404 });
-    const r = await extractListings(payload, subject);
-    return NextResponse.json(r.map(x => `${x.district || x.city} → ${x.sameArea}`));
+    const [r, p] = await Promise.all([extractListings(payload, subject), geocodePoint(subject.address)]);
+    const km = await listingDistances(p, "Toulouse", r);
+    return NextResponse.json({ subject: p, list: r.map((x, i) => `${x.district} / ${x.city} → ${km[i]} km (IA : ${x.sameArea})`) });
 }

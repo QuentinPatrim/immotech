@@ -26,7 +26,7 @@ const REASONS: Record<SkippedListing["reason"], string> = {
     type: "autre type de bien",
     surface: "surface trop différente",
     "pièces": "nombre de pièces",
-    quartier: "autre quartier",
+    quartier: "trop loin",
     prix: "prix au m² incohérent",
 };
 
@@ -178,7 +178,7 @@ export default function CapturePage() {
                             <span>
                                 <span className="block text-sm font-semibold text-[var(--p-fg)]">Seulement les biens similaires</span>
                                 <span className="block text-xs text-[var(--p-muted)] mt-0.5">
-                                    Surface ± 20 %, pièces ± 1, même quartier ou quartier voisin, prix au m² cohérent (± 25 %). Les autres annonces sont écartées.
+                                    Surface ± 20 %, pièces ± 1, à moins de 2 km (même quartier ou quartier voisin), prix au m² cohérent (± 25 %). Les autres annonces sont écartées.
                                 </span>
                             </span>
                         </button>
@@ -245,7 +245,7 @@ export default function CapturePage() {
                                     <ul className="text-xs text-[var(--p-muted)] space-y-1">
                                         {skipped.map((k, i) => (
                                             <li key={i} className="flex gap-2 flex-wrap">
-                                                <span className="text-[var(--p-fg-2)]">{k.price ? `${formatNumber(k.price)} €` : "Prix ?"} · {k.surface ? `${formatNumber(k.surface)} m²` : "surface ?"}{k.district ? ` · ${k.district}` : ""}</span>
+                                                <span className="text-[var(--p-fg-2)]">{k.price ? `${formatNumber(k.price)} €` : "Prix ?"} · {k.surface ? `${formatNumber(k.surface)} m²` : "surface ?"}{k.district ? ` · ${k.district}` : ""}{k.distanceKm !== null ? ` · à ${String(k.distanceKm).replace(".", ",")} km` : ""}</span>
                                                 <span>— {REASONS[k.reason]}</span>
                                             </li>
                                         ))}

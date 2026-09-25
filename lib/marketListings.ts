@@ -36,6 +36,7 @@ export interface MarketListing {
     cons: string[];               // − par rapport au bien estimé
     relevance?: number;           // 0–100 : comparabilité avec le bien estimé
     sameArea?: boolean;           // même quartier ou limitrophe (analyse IA)
+    distanceKm?: number;          // distance au bien estimé (quartier géolocalisé)
     description?: string;
     selected: boolean;            // retenue dans l'avis de valeur
 }
@@ -158,6 +159,7 @@ export function rowToListing(row: { id: string; url: string; portal: string | nu
         cons: d.cons ?? [],
         relevance: d.relevance,
         sameArea: d.sameArea,
+        distanceKm: typeof d.distanceKm === "number" ? d.distanceKm : undefined,
         description: d.description,
         selected: row.selected,
     };

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { extractListings, type ExtractedListing, type SubjectProperty } from '@/lib/listingExtraction';
+import { geocodePoint, listingDistances } from '@/lib/listingArea';
 import { portalFromUrl, rowToListing, type CapturePayload, type MarketListing, type PriceEvent } from '@/lib/marketListings';
 
 /* ============================================================
@@ -61,7 +62,7 @@ function extractedFields(ex: ExtractedListing): Partial<MarketListing> {
 
 /* ---------- Tri des annonces similaires au bien estimé ---------- */
 
-const SIMILAR = { surfacePct: 0.2, roomsGap: 1, sqmPct: 0.25 };
+const SIMILAR = { surfacePct: 0.2, roomsGap: 1, sqmPct: 0.25, areaKm: 2 };
 
 type SkipReason = 'type' | 'surface' | 'pièces' | 'quartier' | 'prix';
 
@@ -69,20 +70,21 @@ type SkipReason = 'type' | 'surface' | 'pièces' | 'quartier' | 'prix';
 function referenceSqm(subject: SubjectProperty, candidates: ExtractedListing[]): number | null {
     if (subject.surface && subject.lowPrice && subject.highPrice) return (subject.lowPrice + subject.highPrice) / 2 / subject.surface;
     const sqms = candidates
-        .filter(ex => ex.price && ex.surface && ex.sameArea !== false)
+        .filter(ex => ex.price && ex.surface)
         .map(ex => ex.price! / ex.surface!)
         .sort((a, b) => a - b);
     if (sqms.length < 3) return null;
     return sqms[Math.floor(sqms.length / 2)];
 }
 
-function whyNotSimilar(ex: ExtractedListing, subject: SubjectProperty, refSqm: number | null): SkipReason | null {
+function whyNotSimilar(ex: ExtractedListing, subject: SubjectProperty, refSqm: number | null, km: number | null): SkipReason | null {
     if (subject.propertyType && ex.propertyType && ex.propertyType !== 'Autre' && ex.propertyType !== subject.propertyType) return 'type';
     if (subject.surface) {
         if (!ex.surface || Math.abs(ex.surface - subject.surface) / subject.surface > SIMILAR.surfacePct) return 'surface';
     }
     if (subject.rooms && ex.rooms && Math.abs(ex.rooms - subject.rooms) > SIMILAR.roomsGap) return 'pièces';
-    if (ex.sameArea === false) return 'quartier';
+    // Distance mesurée si le quartier a pu être localisé ; sinon avis de l'IA, seulement pour une autre commune
+    if (km !== null ? km > SIMILAR.areaKm : ex.sameArea === false && !!ex.city && norm(ex.city) !== norm(subject.city)) return 'quartier';
     if (refSqm && ex.price && ex.surface && Math.abs(ex.price / ex.surface - refSqm) / refSqm > SIMILAR.sqmPct) return 'prix';
     return null;
 }
@@ -129,7 +131,7 @@ export async function POST(request: Request) {
         surface: Number(d.surface) || 0,
         rooms: Number(d.rooms) || 0,
         address: String(d.propertyAddress || estimation.address || ''),
-        city: String(d.propertyAddress || estimation.address || '').split(/\s\d{5}\s/).pop() || '',
+        city: (String(d.propertyAddress || estimation.address || '').match(/\d{5}\s+([^,]+)/)?.[1] || '').trim(),
         features: Array.isArray(d.amenities) ? (d.amenities as string[]) : [],
         dpe: d.dpe ? String(d.dpe) : undefined,
         floor: d.floor ? String(d.floor) : undefined,
@@ -150,13 +152,19 @@ export async function POST(request: Request) {
 
     // Seulement les biens comparables (surface, pièces, quartier, prix cohérent).
     // Une annonce déjà dans le dossier reste suivie (mise à jour de son prix).
-    const skipped: { title: string; price: number | null; surface: number | null; district: string | null; reason: SkipReason }[] = [];
+    const subjectPoint = Number(d.propertyLat) && Number(d.propertyLon)
+        ? { lat: Number(d.propertyLat), lon: Number(d.propertyLon) }
+        : subject.address ? await geocodePoint(subject.address) : null;
+    const distances = await listingDistances(subjectPoint, subject.city, extracted);
+    const km = new Map(extracted.map((ex, i) => [ex, distances[i]]));
+
+    const skipped: { title: string; price: number | null; surface: number | null; district: string | null; distanceKm: number | null; reason: SkipReason }[] = [];
     if (onlySimilar) {
         const refSqm = referenceSqm(subject, extracted);
         extracted = extracted.filter(ex => {
             if (rows.some(r => r.url === ex.url)) return true;
-            const reason = whyNotSimilar(ex, subject, refSqm);
-            if (reason) skipped.push({ title: ex.title, price: ex.price, surface: ex.surface, district: ex.district || ex.city, reason });
+            const reason = whyNotSimilar(ex, subject, refSqm, km.get(ex) ?? null);
+            if (reason) skipped.push({ title: ex.title, price: ex.price, surface: ex.surface, district: ex.district || ex.city, distanceKm: km.get(ex) ?? null, reason });
             return !reason;
         });
     }
@@ -174,6 +182,8 @@ export async function POST(request: Request) {
     for (const ex of extracted) {
         const portal = portalFromUrl(ex.url);
         const fields = extractedFields(ex);
+        const dist = km.get(ex);
+        if (dist !== null && dist !== undefined) fields.distanceKm = dist;
 
         // 1) Annonce déjà capturée pour ce dossier
         const same = rows.find(r => r.url === ex.url);

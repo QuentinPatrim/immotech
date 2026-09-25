@@ -79,6 +79,7 @@ export default function ListingCard({ listing: l, refSqm, onToggle, onDelete, bu
                     {l.rooms ? <span>· {l.rooms} p.</span> : null}
                     {l.floor ? <span>· {l.floor}</span> : null}
                     {(l.district || l.city) && <span className="text-[var(--p-muted)]">· {l.district || l.city}</span>}
+                    {l.distanceKm !== undefined && <span className="text-[var(--p-muted)]" title="Distance approximative au bien estimé (quartier de l'annonce)">· à {String(l.distanceKm).replace(".", ",")} km</span>}
                     {dpe && DPE_COLORS[dpe] && (
                         <span className="ml-auto text-[10px] font-black rounded px-1.5 py-0.5" style={{ backgroundColor: DPE_COLORS[dpe], color: "CDE".includes(dpe) ? "#1a1a1a" : "#fff" }}>DPE {dpe}</span>
                     )}

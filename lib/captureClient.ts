@@ -42,6 +42,7 @@ export interface SkippedListing {
     price: number | null;
     surface: number | null;
     district: string | null;
+    distanceKm: number | null;
     reason: "type" | "surface" | "pièces" | "quartier" | "prix";
 }
 
