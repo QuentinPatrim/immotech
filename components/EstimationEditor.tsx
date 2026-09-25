@@ -3,11 +3,12 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { 
-    Home, MapPin, Image as ImageIcon, TrendingUp, CheckCircle, 
+import {
+    Home, MapPin, Image as ImageIcon, TrendingUp, CheckCircle,
     Printer, ArrowRight, ArrowLeft, Plus, Trash2, UploadCloud, FileText,
     List, Edit, X, Leaf, ThumbsUp, ThumbsDown, BarChart3, Loader2, Euro, Building2, Banknote,
-    Sparkles, Shield, Star, Globe, Wand2, Search, Target, AlertCircle, Check
+    Sparkles, Star, Globe, Wand2, Search, Target, AlertCircle, Check,
+    Camera, Satellite, RefreshCw, User, KeyRound, ArrowUpDown
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +16,8 @@ import { Switch } from "@/components/ui/switch";
 import { supabase } from "@/lib/supabaseClient";
 import { formatNumber as formatPrice } from "@/lib/formatters";
 import { DossierStatus, formatSurface, formatMonthYear, median, centralPrice, PATRIM_AGENTS } from "@/lib/dossier";
+import { fetchAddressPhoto, type AddressSuggestion } from "@/lib/addressClient";
+import AddressInput from "@/components/estimation/AddressInput";
 
 // --- CHARTE GRAPHIQUE AGENCE PATRIM ---
 const COLORS = {
@@ -31,12 +34,19 @@ const COLORS = {
 const AGENTS = PATRIM_AGENTS;
 
 // --- TYPES ---
+/** Photo trouvée automatiquement à partir de l'adresse (vue de rue Panoramax ou vue aérienne IGN) */
+export interface AutoPhotoInfo {
+    variant: number;        // n° de la vue (bouton « Autre vue »)
+    credit: string;         // mention de la source, reprise dans le PDF
+}
 export interface Comparable {
     id: string; address: string; surface: number; price: number; photoUrl: string;
     soldDate?: string;      // date de vente (DVF ou saisie manuelle)
     distance?: number;      // mètres depuis le bien (DVF)
     rooms?: number;
     source?: "dvf" | "manual";
+    lat?: number; lon?: number;
+    photoAuto?: AutoPhotoInfo | null;
 }
 export interface MarketStats {
     count: number; median: number; p25: number; p75: number;
@@ -66,6 +76,10 @@ export interface EstimationData {
     followUpNote?: string;
     // Référence marché DVF (dernière recherche)
     marketStats?: MarketStats | null;
+    // Localisation du bien (adresse choisie dans les suggestions) et photo de couverture automatique
+    propertyLat?: number;
+    propertyLon?: number;
+    mainPhotoAuto?: AutoPhotoInfo | null;
 }
 
 const ALL_AMENITIES = [
@@ -113,6 +127,7 @@ const STEPS = [
 interface DvfSaleResult {
     id: string; date: string; price: number; surface: number; rooms: number; address: string;
     city: string; distance: number; pricePerSqm: number; dependances: number; landSurface: number; photoUrl: string;
+    lat?: number; lon?: number;
 }
 
 // Champs de suivi gérés depuis "Mes biens" : l'éditeur ne les écrase jamais
@@ -149,6 +164,113 @@ const getDisplayFloor = (f: string) => {
     }
     return f;
 };
+
+// --- BRIQUES D'INTERFACE DE L'ÉDITEUR ---
+const StepHeader = ({ n, icon, title, subtitle }: { n: number; icon: React.ReactNode; title: string; subtitle?: string }) => (
+    <div className="flex items-center gap-3 mb-2">
+        <div className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0" style={{ background: `linear-gradient(135deg, ${COLORS.primary}, ${COLORS.secondary})` }}>
+            {icon}
+        </div>
+        <div>
+            <p className="text-xs text-zinc-600 uppercase tracking-widest font-semibold">Étape {n} / 4</p>
+            <h2 className="text-2xl font-bold text-white display-font">{title}</h2>
+            {subtitle && <p className="text-xs text-zinc-500 mt-0.5">{subtitle}</p>}
+        </div>
+    </div>
+);
+
+const Section = ({ icon, title, hint, action, children }: { icon: React.ReactNode; title: string; hint?: string; action?: React.ReactNode; children: React.ReactNode }) => (
+    <section className="rounded-2xl border p-5 md:p-6 space-y-4" style={{ backgroundColor: 'rgba(0,0,0,0.28)', borderColor: COLORS.darkBorder }}>
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div>
+                <h3 className="text-sm font-bold uppercase tracking-widest flex items-center gap-2" style={{ color: COLORS.secondary }}>{icon} {title}</h3>
+                {hint && <p className="text-xs text-zinc-500 mt-1">{hint}</p>}
+            </div>
+            {action}
+        </div>
+        {children}
+    </section>
+);
+
+const Field = ({ label, className, children }: { label: string; className?: string; children: React.ReactNode }) => (
+    <div className={`space-y-2 ${className ?? ""}`}>
+        <label className="text-[11px] font-semibold text-zinc-500 uppercase tracking-widest">{label}</label>
+        {children}
+    </div>
+);
+
+const ToggleTile = ({ label, icon, checked, onChange }: { label: string; icon?: React.ReactNode; checked: boolean; onChange: (v: boolean) => void }) => (
+    <div className="flex items-center justify-between gap-3 bg-black/30 px-4 h-14 rounded-2xl border" style={{ borderColor: checked ? `${COLORS.secondary}66` : COLORS.darkBorder }}>
+        <span className="text-sm font-semibold text-white flex items-center gap-2">{icon}{label}</span>
+        <Switch checked={checked} onCheckedChange={onChange}/>
+    </div>
+);
+
+/** Choix d'une option parmi quelques-unes (type de bien…) */
+const Segmented = <T extends string>({ options, value, onChange }: { options: { value: T; label: string; icon?: React.ReactNode }[]; value: T; onChange: (v: T) => void }) => (
+    <div className="grid gap-1 p-1 rounded-2xl bg-black/40 border border-white/5" style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}>
+        {options.map(o => (
+            <button key={o.value} type="button" onClick={() => onChange(o.value)}
+                className={`h-11 rounded-xl flex items-center justify-center gap-2 text-sm font-semibold transition-all ${value === o.value ? 'bg-white text-black shadow-lg' : 'text-zinc-400 hover:text-white'}`}>
+                {o.icon}{o.label}
+            </button>
+        ))}
+    </div>
+);
+
+/** Étiquette énergétique A → G en un clic */
+const LetterPicker = ({ value, onChange }: { value: string; onChange: (v: string) => void }) => (
+    <div className="flex items-end gap-1 h-14">
+        {["A", "B", "C", "D", "E", "F", "G"].map(l => {
+            const selected = value === l;
+            return (
+                <button key={l} type="button" onClick={() => onChange(l)} title={`Classe ${l}`}
+                    className={`flex-1 rounded-lg font-black text-white transition-all ${selected ? 'h-14 text-lg ring-2 ring-white/80 shadow-lg' : 'h-9 text-xs opacity-40 hover:opacity-80'}`}
+                    style={{ backgroundColor: DPE_COLORS[l] }}>
+                    {l}
+                </button>
+            );
+        })}
+    </div>
+);
+
+// --- SUGGESTIONS DE POINTS FORTS / FAIBLES (un clic pour les ajouter) ---
+const floorNumber = (f: string) => {
+    const m = (f || "").match(/\d+/);
+    return m ? Number(m[0]) : /rdc|rez/i.test(f || "") ? 0 : null;
+};
+
+function suggestStrengths(d: EstimationData): string[] {
+    const am = d.amenities ?? [];
+    const list: string[] = [];
+    if (["A", "B", "C"].includes(d.dpe)) list.push(`DPE ${d.dpe} : faible consommation`);
+    if (d.hasElevator && d.propertyType !== "Maison") list.push("Immeuble avec ascenseur");
+    if (am.some(a => ["balcon", "terrasse", "loggia"].includes(a))) list.push("Extérieur privatif");
+    if (am.includes("jardin")) list.push("Jardin");
+    if (am.some(a => ["garage", "parking"].includes(a))) list.push("Stationnement privatif");
+    if (am.some(a => ["cave", "cellier"].includes(a))) list.push("Rangements annexes");
+    if (am.includes("piscine")) list.push("Piscine");
+    if (d.buildYear >= 2012) list.push("Construction récente");
+    list.push("Lumineux", "Sans vis-à-vis", "Bon état général", "Proche commerces et transports", "Quartier recherché", "Calme", "Double exposition", "Belle hauteur sous plafond");
+    return list.filter(s => !d.strengths.includes(s));
+}
+
+function suggestWeaknesses(d: EstimationData): string[] {
+    const am = d.amenities ?? [];
+    const floor = floorNumber(d.floor);
+    const list: string[] = [];
+    if (["F", "G"].includes(d.dpe)) list.push(`DPE ${d.dpe} : rénovation énergétique à prévoir`);
+    if (d.dpe === "E") list.push("DPE E : travaux énergétiques à anticiper");
+    if (d.propertyType !== "Maison" && !d.hasElevator && floor !== null && floor >= 3) list.push("Étage élevé sans ascenseur");
+    if (d.propertyType !== "Maison" && floor === 0) list.push("Rez-de-chaussée");
+    if (d.isCopropriete && d.coproFees >= 250) list.push("Charges de copropriété élevées");
+    if (!am.some(a => ["balcon", "terrasse", "loggia", "jardin"].includes(a))) list.push("Pas d'extérieur");
+    if (!am.some(a => ["garage", "parking"].includes(a))) list.push("Pas de stationnement");
+    list.push("Travaux de rafraîchissement", "Vis-à-vis", "Rue passante", "Cuisine à rénover", "Salle de bains à rénover", "Orientation nord");
+    return list.filter(s => !d.weaknesses.includes(s));
+}
+
+const LAST_AGENT_KEY = "patrim:lastAgentId";
 
 // ============================================================
 // COMPOSANT : EstimationEditor
@@ -368,6 +490,7 @@ export default function EstimationEditor({
                     }
                     if (result.photos && result.photos.length > 0) {
                         newData.mainPhoto = result.photos[0];
+                        newData.mainPhotoAuto = null;
                         if (result.photos.length > 1) {
                             newData.extraPhotos = result.photos.slice(1, 9);
                             newData.secondaryPhotos = result.photos.slice(1, 4);
@@ -461,10 +584,14 @@ export default function EstimationEditor({
             distance: s.distance,
             rooms: s.rooms,
             source: "dvf",
+            lat: s.lat,
+            lon: s.lon,
         }));
         setData(prev => ({ ...prev, soldComparables: [...prev.soldComparables, ...comps] }));
         setDvfResults(null);
         setDvfSelected(new Set());
+        // Photo de chaque vente ajoutée, sans capture d'écran
+        void fillComparablePhotos(comps.map(comp => ({ type: 'sold' as const, comp })));
     };
 
     // ─── Upload vers Supabase Storage ───
@@ -498,16 +625,26 @@ export default function EstimationEditor({
         return urlData.publicUrl;
     };
 
-    const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, field: string) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
+    const uploadPhotoFile = async (file: File, field: 'mainPhoto' | 'secondaryPhotos') => {
         const key = `${field}-${Date.now()}`;
         setUploadingPhotos(p => ({...p, [key]: true}));
         const url = await uploadToStorage(file, 'main');
         setUploadingPhotos(p => { const n = {...p}; delete n[key]; return n; });
         if (!url) return;
-        if (field === 'mainPhoto') setData(prev => ({ ...prev, mainPhoto: url }));
+        if (field === 'mainPhoto') setData(prev => ({ ...prev, mainPhoto: url, mainPhotoAuto: null }));
         if (field === 'secondaryPhotos') setData(prev => ({ ...prev, secondaryPhotos: [...prev.secondaryPhotos, url].slice(0, 3) }));
+    };
+
+    const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, field: 'mainPhoto' | 'secondaryPhotos') => {
+        const file = e.target.files?.[0];
+        e.target.value = "";
+        if (file) await uploadPhotoFile(file, field);
+    };
+
+    /** Fichiers images déposés par glisser-déposer */
+    const droppedImages = (e: React.DragEvent) => {
+        e.preventDefault();
+        return Array.from(e.dataTransfer.files || []).filter(f => f.type.startsWith('image/'));
     };
 
     const handleExtraPhotosUpload = async (files: File[]) => {
@@ -525,24 +662,119 @@ export default function EstimationEditor({
     const handleComparableImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'sold' | 'forSale', id: string) => {
         const file = e.target.files?.[0];
         if (!file) return;
+        e.target.value = "";
         const key = `comp-${id}`;
         setUploadingPhotos(p => ({...p, [key]: true}));
         const url = await uploadToStorage(file, 'comparables');
         setUploadingPhotos(p => { const n = {...p}; delete n[key]; return n; });
-        if (url) updateComparable(type, id, 'photoUrl', url);
+        if (url) patchComparable(type, id, { photoUrl: url, photoAuto: null });
     };
 
     const isUploading = Object.keys(uploadingPhotos).length > 0;
 
-    const updateComparable = (type: 'sold' | 'forSale', id: string, field: keyof Comparable, value: any) => {
+    const patchComparable = (type: 'sold' | 'forSale', id: string, patch: Partial<Comparable>) => {
         setData(prev => {
             const list = type === 'sold' ? prev.soldComparables : prev.forSaleComparables;
-            const updated = list.map(c => c.id === id ? { ...c, [field]: value } : c);
+            const updated = list.map(c => c.id === id ? { ...c, ...patch } : c);
             return type === 'sold'
                 ? { ...prev, soldComparables: updated }
                 : { ...prev, forSaleComparables: updated };
         });
     };
+
+    const updateComparable = (type: 'sold' | 'forSale', id: string, field: keyof Comparable, value: any) =>
+        patchComparable(type, id, { [field]: value } as Partial<Comparable>);
+
+    // ─── PHOTOS AUTOMATIQUES À PARTIR DE L'ADRESSE ───
+    // Vue de rue (Panoramax : photos de Toulouse Métropole, IGN…) ou, à défaut, vue aérienne IGN.
+    // La photo est copiée dans le stockage du dossier, comme une photo importée.
+    const [photoError, setPhotoError] = useState("");          // photo de couverture
+    const [compPhotoError, setCompPhotoError] = useState("");  // photos des comparables
+
+    const autoPhoto = async (opts: { lat?: number; lon?: number; address?: string; variant?: number; mode?: "auto" | "aerien" }) => {
+        const result = await fetchAddressPhoto(opts);
+        const url = await uploadToStorage(result.file, 'auto');
+        if (!url) throw new Error("Enregistrement de la photo impossible.");
+        return { url, result };
+    };
+
+    const setComparableAutoPhoto = async (type: 'sold' | 'forSale', comp: Pick<Comparable, 'id' | 'address' | 'lat' | 'lon' | 'photoAuto'>, next = false) => {
+        const key = `comp-${comp.id}`;
+        setUploadingPhotos(p => ({ ...p, [key]: true }));
+        setCompPhotoError("");
+        try {
+            const variant = next ? (comp.photoAuto?.variant ?? -1) + 1 : 0;
+            const { url, result } = await autoPhoto({ lat: comp.lat, lon: comp.lon, address: comp.address, variant });
+            patchComparable(type, comp.id, {
+                photoUrl: url,
+                photoAuto: { variant: result.variant, credit: result.credit },
+                ...(comp.lat && comp.lon ? {} : { lat: result.lat, lon: result.lon }),
+            });
+        } catch (e) {
+            setCompPhotoError(`${comp.address || "Comparable"} : ${e instanceof Error ? e.message : "photo introuvable"}`);
+        } finally {
+            setUploadingPhotos(p => { const n = { ...p }; delete n[key]; return n; });
+        }
+    };
+
+    /** Photos automatiques pour une liste de comparables (2 en parallèle) */
+    const fillComparablePhotos = async (items: { type: 'sold' | 'forSale'; comp: Comparable }[]) => {
+        const queue = items.filter(({ comp }) => !comp.photoUrl && ((comp.lat && comp.lon) || comp.address.trim().length > 5));
+        const worker = async () => {
+            for (let item = queue.shift(); item; item = queue.shift()) await setComparableAutoPhoto(item.type, item.comp);
+        };
+        await Promise.all([worker(), worker()]);
+    };
+
+    const missingCompPhotos = [
+        ...data.soldComparables.map(comp => ({ type: 'sold' as const, comp })),
+        ...data.forSaleComparables.map(comp => ({ type: 'forSale' as const, comp })),
+    ].filter(({ comp }) => !comp.photoUrl && ((comp.lat && comp.lon) || comp.address.trim().length > 5));
+
+    const selectComparableAddress = (type: 'sold' | 'forSale', comp: Comparable, s: AddressSuggestion) => {
+        patchComparable(type, comp.id, { address: s.label, lat: s.lat, lon: s.lon });
+        // Nouvelle adresse : on (re)cherche la photo, sauf si l'agent a importé la sienne
+        if (!comp.photoUrl || comp.photoAuto) void setComparableAutoPhoto(type, { ...comp, address: s.label, lat: s.lat, lon: s.lon, photoAuto: null });
+    };
+
+    const setMainAutoPhoto = async (mode: "auto" | "aerien", next = false, place?: { lat?: number; lon?: number; address?: string }) => {
+        const key = 'mainPhoto-auto';
+        setUploadingPhotos(p => ({ ...p, [key]: true }));
+        setPhotoError("");
+        try {
+            const d = dataRef.current;
+            const where = place ?? { lat: d.propertyLat, lon: d.propertyLon, address: d.propertyAddress };
+            const variant = next ? (d.mainPhotoAuto?.variant ?? -1) + 1 : 0;
+            const { url, result } = await autoPhoto({ ...where, variant, mode });
+            setData(prev => ({
+                ...prev,
+                mainPhoto: url,
+                mainPhotoAuto: { variant: result.variant, credit: result.credit },
+                ...(prev.propertyLat && prev.propertyLon ? {} : { propertyLat: result.lat, propertyLon: result.lon }),
+            }));
+        } catch (e) {
+            setPhotoError(e instanceof Error ? e.message : "Photo introuvable pour cette adresse.");
+        } finally {
+            setUploadingPhotos(p => { const n = { ...p }; delete n[key]; return n; });
+        }
+    };
+
+    const selectPropertyAddress = (s: AddressSuggestion) => {
+        setData(prev => ({ ...prev, propertyAddress: s.label, propertyLat: s.lat, propertyLon: s.lon }));
+        // Pas encore de photo de couverture : on met la façade automatiquement (remplaçable à l'étape 2)
+        if (!dataRef.current.mainPhoto) void setMainAutoPhoto("auto", false, { lat: s.lat, lon: s.lon, address: s.label });
+    };
+
+    // Collaborateur : on reprend le dernier choisi sur ce poste pour un nouveau dossier
+    useEffect(() => {
+        if (existingId) return;
+        try {
+            const last = localStorage.getItem(LAST_AGENT_KEY);
+            // Lecture unique du stockage local (indisponible au rendu serveur de /estimation/new)
+            // eslint-disable-next-line react-hooks/set-state-in-effect
+            if (last && AGENTS.some(a => a.id === last)) setData(prev => (prev.agentId ? prev : { ...prev, agentId: last }));
+        } catch { /* stockage local indisponible */ }
+    }, [existingId]);
 
 
     // =========================================================================
@@ -551,6 +783,25 @@ export default function EstimationEditor({
     if (view === "EDIT") {
         const inputClass = "bg-black/60 border-white/8 h-14 rounded-2xl focus:border-[#d35f52] focus:ring-0 transition-colors text-white placeholder:text-zinc-700";
         const selectClass = "w-full bg-black/60 border border-white/8 h-14 rounded-2xl px-4 focus:border-[#d35f52] text-white outline-none transition-colors appearance-none cursor-pointer";
+        const isMaison = data.propertyType === "Maison";
+
+        // Avancement réel de chaque étape (pastilles de la barre du haut)
+        const stepDone: Record<number, boolean> = {
+            1: !!data.propertyAddress.trim() && data.surface > 0,
+            2: !!data.mainPhoto,
+            3: data.soldComparables.length + data.forSaleComparables.length > 0,
+            4: data.lowPrice > 0 && data.highPrice > 0 && !!data.agentId,
+        };
+        // Points à vérifier avant de générer l'avis de valeur
+        const checklist = [
+            { label: "Adresse du bien", ok: !!data.propertyAddress.trim(), step: 1 },
+            { label: "Surface et pièces", ok: data.surface > 0 && data.rooms > 0, step: 1 },
+            { label: "Photo de couverture", ok: !!data.mainPhoto, step: 2 },
+            { label: "Ventes comparables", ok: data.soldComparables.length > 0, step: 3 },
+            { label: "Fourchette de prix", ok: data.lowPrice > 0 && data.highPrice >= data.lowPrice, step: 4 },
+            { label: "Collaborateur (signature)", ok: !!data.agentId, step: 4 },
+        ];
+        const photoBusy = (key: string) => Object.keys(uploadingPhotos).some(k => k.startsWith(key));
 
         return (
             <div className="min-h-screen font-sans pb-32" style={{ backgroundColor: COLORS.darkBg, color: "white" }}>
@@ -572,11 +823,12 @@ export default function EstimationEditor({
                     {/* Étapes cliquables */}
                     <div className="flex items-center gap-1">
                         {STEPS.map(st => (
-                            <button key={st.id} type="button" onClick={() => setStep(st.id)}
+                            <button key={st.id} type="button" onClick={() => { setStep(st.id); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                                title={stepDone[st.id] ? `${st.label} : complété` : st.label}
                                 className={`flex items-center gap-1.5 h-8 rounded-full px-2.5 text-xs font-semibold transition-all ${step === st.id ? 'bg-white/10 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}>
                                 <span className="w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold"
-                                    style={{ backgroundColor: step >= st.id ? COLORS.secondary : 'rgba(255,255,255,0.12)', color: 'white' }}>
-                                    {step > st.id ? <Check size={9} strokeWidth={3}/> : st.id}
+                                    style={{ backgroundColor: stepDone[st.id] ? '#10b981' : step === st.id ? COLORS.secondary : 'rgba(255,255,255,0.12)', color: 'white' }}>
+                                    {stepDone[st.id] ? <Check size={9} strokeWidth={3}/> : st.id}
                                 </span>
                                 <span className="hidden md:inline">{st.label}</span>
                             </button>
@@ -603,302 +855,306 @@ export default function EstimationEditor({
                         <AnimatePresence mode="wait">
                             {/* ÉTAPE 1 */}
                             {step === 1 && (
-                                <motion.div key="step1" initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -24 }} transition={{ duration: 0.25 }} className="space-y-6">
-                                    <div className="flex items-center gap-3 mb-8">
-                                        <div className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0" style={{ background: `linear-gradient(135deg, ${COLORS.primary}, ${COLORS.secondary})` }}>
-                                            <Home size={18} className="text-white"/>
-                                        </div>
-                                        <div>
-                                            <p className="text-xs text-zinc-600 uppercase tracking-widest font-semibold">Étape 1 / 4</p>
-                                            <h2 className="text-2xl font-bold text-white display-font">Le Bien & Le Client</h2>
-                                        </div>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-5">
-                                        <div className="space-y-2 col-span-2 md:col-span-1">
-                                            <label className="text-xs font-semibold text-zinc-500 uppercase tracking-widest">Nom du / des Client(s)</label>
-                                            <Input value={data.clientName} onChange={e => setData({...data, clientName: e.target.value})} className={inputClass} placeholder="Ex: M. & Mme Dupont"/>
-                                        </div>
-                                        <div className="space-y-2 col-span-2 md:col-span-1">
-                                            <label className="text-xs font-semibold text-zinc-500 uppercase tracking-widest">Adresse du / des demandant(s)</label>
-                                            <Input value={data.clientAddress||""} onChange={e => setData({...data, clientAddress: e.target.value})} className={inputClass} placeholder="Ex: 12 rue des Acacias, 31000 Toulouse"/>
-                                        </div>
-                                        <div className="space-y-2 col-span-2">
-                                            <label className="text-xs font-semibold text-zinc-500 uppercase tracking-widest">Adresse du bien estimé</label>
-                                            <Input value={data.propertyAddress} onChange={e => setData({...data, propertyAddress: e.target.value})} className={inputClass} placeholder="Ex: 37, boulevard Jean Bruhne, 31000 Toulouse"/>
-                                        </div>
-                                        <div className="space-y-2 col-span-2 md:col-span-1">
-                                            <label className="text-xs font-semibold text-zinc-500 uppercase tracking-widest">Type de bien</label>
-                                            <select value={data.propertyType} onChange={e => setData({...data, propertyType: e.target.value as any})} className={selectClass}>
-                                                <option>Appartement</option><option>Maison</option><option>Autre</option>
-                                            </select>
-                                        </div>
-                                        <div className="grid grid-cols-2 gap-4 col-span-2 md:col-span-1">
-                                            <div className="space-y-2">
-                                                <label className="text-xs font-semibold text-zinc-500 uppercase tracking-widest">Surface (m²)</label>
-                                                <Input type="number" value={data.surface||""} onChange={e => setData({...data, surface: Number(e.target.value)})} className={inputClass} placeholder="0"/>
-                                            </div>
-                                            <div className="space-y-2">
-                                                <label className="text-xs font-semibold text-zinc-500 uppercase tracking-widest">Pièces</label>
-                                                <Input type="number" value={data.rooms||""} onChange={e => setData({...data, rooms: Number(e.target.value)})} className={inputClass} placeholder="0"/>
-                                            </div>
-                                        </div>
-                                        <div className="grid grid-cols-3 gap-4 col-span-2 md:col-span-1">
-                                            <div className="space-y-2">
-                                                <label className="text-xs font-semibold text-zinc-500 uppercase tracking-widest">Étage</label>
-                                                <Input value={data.floor||""} onChange={e => setData({...data, floor: e.target.value})} className={inputClass} placeholder="Ex: 3, RDC…"/>
-                                            </div>
-                                            <div className="space-y-2">
-                                                <label className="text-xs font-semibold text-zinc-500 uppercase tracking-widest">Année de construction</label>
-                                                <Input type="number" value={data.buildYear||""} onChange={e => setData({...data, buildYear: Number(e.target.value)})} className={inputClass} placeholder="Ex: 1985"/>
-                                            </div>
-                                            <div className="flex flex-col justify-end">
-                                                <div className="flex items-center justify-between bg-black/30 px-5 h-14 rounded-2xl border" style={{ borderColor: COLORS.darkBorder }}>
-                                                    <label className="text-sm font-semibold text-white">Ascenseur</label>
-                                                    <Switch checked={data.hasElevator ?? false} onCheckedChange={(checked) => setData({...data, hasElevator: checked})}/>
-                                                </div>
-                                            </div>
-                                        </div>
+                                <motion.div key="step1" initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -24 }} transition={{ duration: 0.25 }} className="space-y-5">
+                                    <StepHeader n={1} icon={<Home size={18} className="text-white"/>} title="Le bien & le client"
+                                        subtitle="Choisissez l'adresse dans les suggestions : la photo de façade se met automatiquement."/>
 
-                                        <div className="col-span-2">
-                                            <div className="flex items-center justify-between bg-black/30 px-5 h-14 rounded-2xl border" style={{ borderColor: COLORS.darkBorder }}>
-                                                <label className="text-sm font-semibold text-white">Le bien est-il vendu loué (occupé) ?</label>
-                                                <Switch checked={data.isRented ?? false} onCheckedChange={(checked) => setData({...data, isRented: checked})}/>
-                                            </div>
+                                    <Section icon={<MapPin size={16}/>} title="Le bien">
+                                        <Field label="Adresse du bien estimé">
+                                            <AddressInput
+                                                value={data.propertyAddress}
+                                                onChange={text => setData(prev => ({ ...prev, propertyAddress: text, propertyLat: undefined, propertyLon: undefined }))}
+                                                onSelect={selectPropertyAddress}
+                                                className={`${inputClass} pr-10`}
+                                                placeholder="Ex : 37 boulevard Jean Brunhes, Toulouse"
+                                                autoFocus={!existingId}/>
+                                            {data.propertyLat && data.propertyLon ? (
+                                                <p className="text-[11px] text-emerald-400 flex items-center gap-1.5 pl-1">
+                                                    <Check size={12}/> Adresse localisée
+                                                    {photoBusy('mainPhoto') ? " · recherche de la photo de façade…" : data.mainPhotoAuto ? " · photo de façade ajoutée (modifiable à l'étape Photos)" : ""}
+                                                </p>
+                                            ) : data.propertyAddress.trim().length > 3 ? (
+                                                <p className="text-[11px] text-zinc-500 pl-1">Choisissez une suggestion pour localiser le bien (photo automatique, ventes DVF).</p>
+                                            ) : null}
+                                        </Field>
+                                        <Segmented
+                                            value={data.propertyType}
+                                            onChange={v => setData(prev => ({ ...prev, propertyType: v }))}
+                                            options={[
+                                                { value: "Appartement" as const, label: "Appartement", icon: <Building2 size={15}/> },
+                                                { value: "Maison" as const, label: "Maison", icon: <Home size={15}/> },
+                                                { value: "Autre" as const, label: "Autre" },
+                                            ]}/>
+                                        <div className={`grid grid-cols-2 gap-4 ${isMaison ? 'md:grid-cols-5' : 'md:grid-cols-4'}`}>
+                                            <Field label="Surface (m²)">
+                                                <Input type="number" inputMode="decimal" value={data.surface || ""} onChange={e => setData(prev => ({ ...prev, surface: Number(e.target.value) }))} className={inputClass} placeholder="0"/>
+                                            </Field>
+                                            <Field label="Pièces">
+                                                <Input type="number" inputMode="numeric" value={data.rooms || ""} onChange={e => setData(prev => ({ ...prev, rooms: Number(e.target.value) }))} className={inputClass} placeholder="0"/>
+                                            </Field>
+                                            {isMaison ? (
+                                                <>
+                                                    <Field label="Parcelle (m²)">
+                                                        <Input type="number" inputMode="numeric" value={data.plotSurface || ""} onChange={e => setData(prev => ({ ...prev, plotSurface: Number(e.target.value) }))} className={inputClass} placeholder="Ex : 450"/>
+                                                    </Field>
+                                                    <Field label="Jardin (m²)">
+                                                        <Input type="number" inputMode="numeric" value={data.gardenSurface || ""} onChange={e => setData(prev => ({ ...prev, gardenSurface: Number(e.target.value) }))} className={inputClass} placeholder="Ex : 300"/>
+                                                    </Field>
+                                                </>
+                                            ) : (
+                                                <Field label="Étage">
+                                                    <Input value={data.floor || ""} onChange={e => setData(prev => ({ ...prev, floor: e.target.value }))} className={inputClass} placeholder="Ex : 3, RDC…"/>
+                                                </Field>
+                                            )}
+                                            <Field label="Construction">
+                                                <Input type="number" inputMode="numeric" value={data.buildYear || ""} onChange={e => setData(prev => ({ ...prev, buildYear: Number(e.target.value) }))} className={inputClass} placeholder="Ex : 1985"/>
+                                            </Field>
                                         </div>
+                                        <div className="grid md:grid-cols-2 gap-3">
+                                            {!isMaison && (
+                                                <ToggleTile label="Ascenseur" icon={<ArrowUpDown size={15} className="text-zinc-500"/>}
+                                                    checked={data.hasElevator ?? false} onChange={v => setData(prev => ({ ...prev, hasElevator: v }))}/>
+                                            )}
+                                            <ToggleTile label="Vendu loué (occupé)" icon={<KeyRound size={15} className="text-zinc-500"/>}
+                                                checked={data.isRented ?? false} onChange={v => setData(prev => ({ ...prev, isRented: v }))}/>
+                                        </div>
+                                    </Section>
 
-                                        {/* Champs Maison uniquement */}
-                                        {data.propertyType === "Maison" && (
-                                            <div className="grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2 col-span-2">
-                                                <div className="space-y-2">
-                                                    <label className="text-xs font-semibold uppercase tracking-widest" style={{ color: COLORS.secondary }}>🌿 Surface de la Parcelle (m²)</label>
-                                                    <Input type="number" value={data.plotSurface||""} onChange={e => setData({...data, plotSurface: Number(e.target.value)})} className={inputClass} placeholder="Ex: 450"/>
-                                                </div>
-                                                <div className="space-y-2">
-                                                    <label className="text-xs font-semibold uppercase tracking-widest" style={{ color: COLORS.secondary }}>🌳 Surface du Jardin (m²)</label>
-                                                    <Input type="number" value={data.gardenSurface||""} onChange={e => setData({...data, gardenSurface: Number(e.target.value)})} className={inputClass} placeholder="Ex: 300"/>
-                                                </div>
-                                            </div>
+                                    <Section icon={<User size={16}/>} title="Le client">
+                                        <div className="grid md:grid-cols-2 gap-4">
+                                            <Field label="Nom du / des client(s)">
+                                                <Input value={data.clientName} onChange={e => setData(prev => ({ ...prev, clientName: e.target.value }))} className={inputClass} placeholder="Ex : M. & Mme Dupont"/>
+                                            </Field>
+                                            <Field label="Adresse du / des demandant(s)">
+                                                <AddressInput
+                                                    value={data.clientAddress || ""}
+                                                    onChange={text => setData(prev => ({ ...prev, clientAddress: text }))}
+                                                    onSelect={s => setData(prev => ({ ...prev, clientAddress: s.label }))}
+                                                    near={{ lat: data.propertyLat, lon: data.propertyLon }}
+                                                    className={`${inputClass} pr-10`}
+                                                    placeholder="Ex : 12 rue des Acacias, Toulouse"/>
+                                            </Field>
+                                        </div>
+                                        {data.propertyAddress.trim() && !(data.clientAddress || "").trim() && (
+                                            <button type="button" onClick={() => setData(prev => ({ ...prev, clientAddress: prev.propertyAddress }))}
+                                                className="text-xs text-zinc-400 hover:text-white inline-flex items-center gap-1.5 transition-colors">
+                                                <Plus size={13}/> Le client habite le bien estimé
+                                            </button>
                                         )}
-                                    </div>
+                                    </Section>
 
-                                    <div className="p-6 rounded-2xl space-y-5 border" style={{ backgroundColor: 'rgba(0,0,0,0.3)', borderColor: COLORS.darkBorder }}>
-                                        <h3 className="text-sm font-bold uppercase tracking-widest flex items-center gap-2" style={{ color: COLORS.secondary }}>
-                                            <Leaf size={16}/> Performance Énergétique
-                                        </h3>
-                                        <div className="grid grid-cols-3 gap-5">
-                                            <div className="space-y-2">
-                                                <label className="text-xs font-semibold text-zinc-500 uppercase tracking-widest">Note DPE</label>
-                                                <select value={data.dpe} onChange={e => setData({...data, dpe: e.target.value})} className={selectClass}>
-                                                    {["A","B","C","D","E","F","G"].map(l => <option key={l} value={l}>{l}</option>)}
-                                                </select>
-                                            </div>
-                                            <div className="space-y-2">
-                                                <label className="text-xs font-semibold text-zinc-500 uppercase tracking-widest">Note GES</label>
-                                                <select value={data.ges} onChange={e => setData({...data, ges: e.target.value})} className={selectClass}>
-                                                    {["A","B","C","D","E","F","G"].map(l => <option key={l} value={l}>{l}</option>)}
-                                                </select>
-                                            </div>
-                                            <div className="space-y-2">
-                                                <label className="text-xs font-semibold text-zinc-500 uppercase tracking-widest">Énergie Finale (kWh)</label>
-                                                <Input type="number" value={data.energieFinale||""} onChange={e => setData({...data, energieFinale: Number(e.target.value)})} className={inputClass} placeholder="0"/>
-                                            </div>
+                                    <Section icon={<Leaf size={16}/>} title="Performance énergétique">
+                                        <div className="grid md:grid-cols-[1fr_1fr_170px] gap-5">
+                                            <Field label="Classe DPE">
+                                                <LetterPicker value={data.dpe} onChange={v => setData(prev => ({ ...prev, dpe: v }))}/>
+                                            </Field>
+                                            <Field label="Classe GES">
+                                                <LetterPicker value={data.ges} onChange={v => setData(prev => ({ ...prev, ges: v }))}/>
+                                            </Field>
+                                            <Field label="Énergie finale (kWh)">
+                                                <Input type="number" inputMode="numeric" value={data.energieFinale || ""} onChange={e => setData(prev => ({ ...prev, energieFinale: Number(e.target.value) }))} className={inputClass} placeholder="0"/>
+                                            </Field>
                                         </div>
-                                    </div>
+                                    </Section>
 
-                                    <div className="p-6 rounded-2xl space-y-5 border" style={{ backgroundColor: 'rgba(0,0,0,0.3)', borderColor: COLORS.darkBorder }}>
-                                        <h3 className="text-sm font-bold uppercase tracking-widest flex items-center gap-2" style={{ color: COLORS.secondary }}>
-                                            <Banknote size={16}/> Coûts de détention
-                                        </h3>
-                                        <div className="grid grid-cols-2 gap-5">
-                                            <div className="space-y-2">
-                                                <label className="text-xs font-semibold text-zinc-500 uppercase tracking-widest">Taxe Foncière (€/an)</label>
-                                                <Input type="number" value={data.taxeFonciere||""} onChange={e => setData({...data, taxeFonciere: Number(e.target.value)})} className={inputClass} placeholder="Ex: 1 200"/>
-                                            </div>
-                                            <div className="flex items-end">
-                                                <div className="flex items-center justify-between w-full bg-black/30 px-5 h-14 rounded-2xl border" style={{ borderColor: COLORS.darkBorder }}>
-                                                    <label className="text-sm font-semibold text-white flex items-center gap-2"><Building2 size={15}/> Copropriété ?</label>
-                                                    <Switch checked={data.isCopropriete} onCheckedChange={(checked) => setData({...data, isCopropriete: checked})}/>
-                                                </div>
-                                            </div>
+                                    <Section icon={<Banknote size={16}/>} title="Coûts de détention">
+                                        <div className="grid md:grid-cols-3 gap-4 items-end">
+                                            <Field label="Taxe foncière (€/an)">
+                                                <Input type="number" inputMode="numeric" value={data.taxeFonciere || ""} onChange={e => setData(prev => ({ ...prev, taxeFonciere: Number(e.target.value) }))} className={inputClass} placeholder="Ex : 1 200"/>
+                                            </Field>
+                                            <ToggleTile label="Copropriété" icon={<Building2 size={15} className="text-zinc-500"/>}
+                                                checked={data.isCopropriete} onChange={v => setData(prev => ({ ...prev, isCopropriete: v }))}/>
                                             {data.isCopropriete && (
-                                                <div className="col-span-2 space-y-2">
-                                                    <label className="text-xs font-semibold text-zinc-500 uppercase tracking-widest">Charges de copropriété (€/mois)</label>
-                                                    <Input type="number" value={data.coproFees||""} onChange={e => setData({...data, coproFees: Number(e.target.value)})} className={inputClass} placeholder="Ex: 150"/>
-                                                </div>
+                                                <Field label="Charges (€/mois)">
+                                                    <Input type="number" inputMode="numeric" value={data.coproFees || ""} onChange={e => setData(prev => ({ ...prev, coproFees: Number(e.target.value) }))} className={inputClass} placeholder="Ex : 150"/>
+                                                </Field>
                                             )}
                                         </div>
-                                    </div>
+                                    </Section>
 
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-semibold text-zinc-500 uppercase tracking-widest">Caractéristiques & Prestations</label>
+                                    <Section icon={<FileText size={16}/>} title="Description & prestations" hint="Repris tel quel dans l'avis de valeur.">
                                         <textarea
                                             value={data.features}
-                                            onChange={e => setData({...data, features: e.target.value})}
-                                            className="w-full bg-black/60 border border-white/8 rounded-2xl px-4 py-3.5 text-white outline-none focus:border-[#d35f52] transition-colors resize-none text-sm leading-relaxed"
-                                            style={{ minHeight: '80px' }}
-                                            placeholder="Ex: Appartement au 3ème étage, ascenseur, refait à neuf, double exposition..."
+                                            onChange={e => setData(prev => ({ ...prev, features: e.target.value }))}
+                                            className="w-full bg-black/60 border border-white/8 rounded-2xl px-4 py-3.5 text-white outline-none focus:border-[#d35f52] transition-colors resize-y text-sm leading-relaxed min-h-[96px]"
+                                            placeholder="Ex : Appartement traversant refait à neuf, double exposition, parquet, cuisine équipée…"
                                             rows={3}
                                         />
-                                    </div>
+                                    </Section>
 
-                                    <div className="p-6 rounded-2xl space-y-4 border" style={{ backgroundColor: 'rgba(0,0,0,0.3)', borderColor: COLORS.darkBorder }}>
-                                        <h3 className="text-sm font-bold uppercase tracking-widest flex items-center gap-2" style={{ color: COLORS.secondary }}>
-                                            <Home size={16}/> Équipements & Annexes
-                                        </h3>
-                                        <div className="grid grid-cols-3 gap-2.5">
+                                    <Section icon={<Home size={16}/>} title="Équipements & annexes">
+                                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
                                             {ALL_AMENITIES.map(am => {
                                                 const isChecked = (data.amenities ?? []).includes(am.id);
                                                 return (
                                                     <button
                                                         key={am.id}
                                                         type="button"
-                                                        onClick={() => setData({ ...data, amenities: isChecked ? (data.amenities ?? []).filter(a => a !== am.id) : [...(data.amenities ?? []), am.id] })}
+                                                        onClick={() => setData(prev => ({ ...prev, amenities: isChecked ? (prev.amenities ?? []).filter(a => a !== am.id) : [...(prev.amenities ?? []), am.id] }))}
                                                         className="flex items-center gap-2.5 px-4 py-3 rounded-2xl border text-left transition-all"
                                                         style={{
                                                             backgroundColor: isChecked ? `${COLORS.secondary}18` : 'rgba(0,0,0,0.2)',
                                                             borderColor: isChecked ? COLORS.secondary : 'rgba(255,255,255,0.08)',
                                                             color: isChecked ? 'white' : '#71717a',
                                                         }}>
-                                                        
                                                         <span className="text-sm font-semibold">{am.label}</span>
                                                         {isChecked && <CheckCircle size={14} className="ml-auto shrink-0" style={{ color: COLORS.secondary }}/>}
                                                     </button>
                                                 );
                                             })}
                                         </div>
-                                        {/* Équipement personnalisé */}
-                                        <div className="mt-1">
-                                            <p className="text-xs font-semibold text-zinc-500 uppercase tracking-widest mb-2">Ajouter un équipement</p>
-                                            <div className="flex gap-2">
-                                                <Input
-                                                    value={newAmenity}
-                                                    onChange={e => setNewAmenity(e.target.value)}
-                                                    onKeyDown={e => { if (e.key === 'Enter' && newAmenity.trim()) { setData({ ...data, amenities: [...(data.amenities ?? []), newAmenity.trim()] }); setNewAmenity(""); } }}
-                                                    className="bg-black/50 border-white/8 rounded-xl h-11 text-sm"
-                                                    placeholder="Ex: Balançoire, Abri de jardin…"
-                                                />
-                                                <Button
-                                                    type="button"
-                                                    onClick={() => { if (newAmenity.trim()) { setData({ ...data, amenities: [...(data.amenities ?? []), newAmenity.trim()] }); setNewAmenity(""); } }}
-                                                    variant="outline"
-                                                    className="px-4 h-11 border-white/10 hover:bg-white/5 text-white rounded-xl shrink-0">
-                                                    <Plus size={16}/>
-                                                </Button>
-                                            </div>
-                                            {(data.amenities ?? []).filter(id => !ALL_AMENITIES.find(a => a.id === id)).length > 0 && (
-                                                <div className="flex flex-wrap gap-1.5 mt-2.5">
-                                                    {(data.amenities ?? []).filter(id => !ALL_AMENITIES.find(a => a.id === id)).map(custom => (
-                                                        <span key={custom} className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full border border-white/10 text-zinc-300 bg-white/5">
-                                                            {custom}
-                                                            <button onClick={() => setData({ ...data, amenities: (data.amenities ?? []).filter(a => a !== custom) })} className="text-zinc-500 hover:text-red-400 transition-colors ml-1">
-                                                                <X size={12}/>
-                                                            </button>
-                                                        </span>
-                                                    ))}
-                                                </div>
-                                            )}
+                                        <div className="flex gap-2">
+                                            <Input
+                                                value={newAmenity}
+                                                onChange={e => setNewAmenity(e.target.value)}
+                                                onKeyDown={e => { if (e.key === 'Enter' && newAmenity.trim()) { const v = newAmenity.trim(); setData(prev => ({ ...prev, amenities: [...(prev.amenities ?? []), v] })); setNewAmenity(""); } }}
+                                                className="bg-black/50 border-white/8 rounded-xl h-11 text-sm"
+                                                placeholder="Autre équipement (Entrée pour ajouter) : abri de jardin, climatisation…"
+                                            />
+                                            <Button
+                                                type="button"
+                                                onClick={() => { if (newAmenity.trim()) { const v = newAmenity.trim(); setData(prev => ({ ...prev, amenities: [...(prev.amenities ?? []), v] })); setNewAmenity(""); } }}
+                                                variant="outline"
+                                                className="px-4 h-11 border-white/10 hover:bg-white/5 text-white rounded-xl shrink-0">
+                                                <Plus size={16}/>
+                                            </Button>
                                         </div>
-                                    </div>
+                                        {(data.amenities ?? []).filter(id => !ALL_AMENITIES.find(a => a.id === id)).length > 0 && (
+                                            <div className="flex flex-wrap gap-1.5">
+                                                {(data.amenities ?? []).filter(id => !ALL_AMENITIES.find(a => a.id === id)).map(custom => (
+                                                    <span key={custom} className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full border border-white/10 text-zinc-300 bg-white/5">
+                                                        {custom}
+                                                        <button type="button" onClick={() => setData(prev => ({ ...prev, amenities: (prev.amenities ?? []).filter(a => a !== custom) }))} className="text-zinc-500 hover:text-red-400 transition-colors ml-1">
+                                                            <X size={12}/>
+                                                        </button>
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </Section>
                                 </motion.div>
                             )}
 
                             {/* ÉTAPE 2 */}
                             {step === 2 && (
-                                <motion.div key="step2" initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -24 }} transition={{ duration: 0.25 }} className="space-y-6">
-                                    <div className="flex items-center gap-3 mb-6">
-                                        <div className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0" style={{ background: `linear-gradient(135deg, ${COLORS.primary}, ${COLORS.secondary})` }}>
-                                            <ImageIcon size={18} className="text-white"/>
-                                        </div>
-                                        <div>
-                                            <p className="text-xs text-zinc-600 uppercase tracking-widest font-semibold">Étape 2 / 4</p>
-                                            <h2 className="text-2xl font-bold text-white display-font">Photos du Bien</h2>
-                                        </div>
-                                    </div>
+                                <motion.div key="step2" initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -24 }} transition={{ duration: 0.25 }} className="space-y-5">
+                                    <StepHeader n={2} icon={<ImageIcon size={18} className="text-white"/>} title="Photos du bien"
+                                        subtitle="Glissez-déposez vos photos, ou utilisez la photo de façade trouvée à partir de l'adresse."/>
+                                    {photoError && <p className="text-xs text-amber-300 flex items-center gap-1.5"><AlertCircle size={13}/> {photoError}</p>}
 
-                                    {/* MODULE ASPIRATEUR D'ANNONCE */}
-                                    <div className="bg-gradient-to-r from-[#111114] to-[#1a1a1f] p-6 rounded-3xl border border-white/10 shadow-2xl flex flex-col md:flex-row items-center gap-6 mb-8">
-                                        <div className="flex items-center justify-center w-14 h-14 rounded-full bg-white/5 shrink-0 border border-white/10">
-                                            <Globe className="text-[#d35f52]" size={24}/>
-                                        </div>
-                                        <div className="flex-1 w-full">
-                                            <h2 className="text-sm font-bold text-white mb-1">Aspirateur d'Annonce</h2>
-                                            <p className="text-xs text-zinc-400 mb-3">Si le bien est déjà en ligne, collez le lien pour importer automatiquement les photos (et le prix).</p>
-                                            <div className="flex gap-3 w-full">
-                                                <Input value={listingUrl} onChange={e => setListingUrl(e.target.value)} placeholder="https://www.patrim.fr/..." className="flex-1 bg-black/50 border-white/20 h-12 text-sm text-white focus:border-[#d35f52]"/>
-                                                <Button onClick={handleImportFromUrl} disabled={isScraping} className="h-12 px-6 rounded-xl font-bold bg-white text-black hover:bg-zinc-200 transition-colors">
-                                                    {isScraping ? <Loader2 className="animate-spin" size={18} /> : <Wand2 size={18} className="mr-2" />} Importer
+                                    <Section icon={<Star size={16}/>} title="Photo de couverture" hint="En grand sur la première page de l'avis de valeur.">
+                                        <div className="grid md:grid-cols-[1fr_210px] gap-4">
+                                            <div className="relative border-2 border-dashed rounded-3xl h-60 flex flex-col items-center justify-center overflow-hidden cursor-pointer transition-all"
+                                                style={{ borderColor: data.mainPhoto ? COLORS.primary : 'rgba(255,255,255,0.1)', backgroundColor: 'rgba(0,0,0,0.3)' }}
+                                                onDragOver={e => e.preventDefault()}
+                                                onDrop={e => { const [f] = droppedImages(e); if (f) void uploadPhotoFile(f, 'mainPhoto'); }}>
+                                                {photoBusy('mainPhoto')
+                                                    ? <div className="flex flex-col items-center gap-2 text-zinc-500"><Loader2 className="animate-spin" size={32}/><span className="text-sm">{uploadingPhotos['mainPhoto-auto'] ? "Recherche de la photo…" : "Compression & envoi…"}</span></div>
+                                                    : data.mainPhoto
+                                                        ? <img src={data.mainPhoto} alt="Photo de couverture" className="absolute inset-0 w-full h-full object-cover opacity-90"/>
+                                                        : <div className="text-center text-zinc-600 flex flex-col items-center gap-2"><UploadCloud size={32}/><span className="text-sm font-medium">Cliquez ou déposez une photo</span></div>}
+                                                <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, 'mainPhoto')} className="absolute inset-0 opacity-0 cursor-pointer" disabled={photoBusy('mainPhoto')}/>
+                                                {data.mainPhoto && !photoBusy('mainPhoto') && (
+                                                    <button type="button" title="Retirer la photo" onClick={() => setData(prev => ({ ...prev, mainPhoto: "", mainPhotoAuto: null }))}
+                                                        className="absolute top-3 right-3 w-7 h-7 rounded-full flex items-center justify-center z-10" style={{ backgroundColor: COLORS.primary }}>
+                                                        <X size={13} className="text-white"/>
+                                                    </button>
+                                                )}
+                                                {data.mainPhoto && data.mainPhotoAuto?.credit && !photoBusy('mainPhoto') && (
+                                                    <span className="absolute left-3 bottom-3 z-10 text-[10px] text-white/85 bg-black/60 px-2 py-1 rounded-lg pointer-events-none">{data.mainPhotoAuto.credit}</span>
+                                                )}
+                                            </div>
+                                            <div className="flex flex-col gap-2">
+                                                <p className="text-[11px] text-zinc-500 leading-snug">Sans capture d&apos;écran : vue prise depuis la rue (ou vue aérienne), trouvée à partir de l&apos;adresse du bien.</p>
+                                                <Button type="button" onClick={() => setMainAutoPhoto("auto")} disabled={!data.propertyAddress.trim() || photoBusy('mainPhoto')}
+                                                    className="h-11 rounded-xl bg-white text-black hover:bg-zinc-200 font-semibold justify-start">
+                                                    <Camera size={16} className="mr-2"/> Façade (auto)
                                                 </Button>
+                                                {data.mainPhotoAuto && (
+                                                    <Button type="button" variant="outline" onClick={() => setMainAutoPhoto("auto", true)} disabled={photoBusy('mainPhoto')}
+                                                        className="h-11 rounded-xl border-white/10 bg-transparent hover:bg-white/5 text-white justify-start">
+                                                        <RefreshCw size={16} className="mr-2"/> Autre vue
+                                                    </Button>
+                                                )}
+                                                <Button type="button" variant="outline" onClick={() => setMainAutoPhoto("aerien")} disabled={!data.propertyAddress.trim() || photoBusy('mainPhoto')}
+                                                    className="h-11 rounded-xl border-white/10 bg-transparent hover:bg-white/5 text-white justify-start">
+                                                    <Satellite size={16} className="mr-2"/> Vue aérienne
+                                                </Button>
+                                                {!data.propertyAddress.trim() && <p className="text-[11px] text-amber-300/80">Renseignez d&apos;abord l&apos;adresse du bien (étape 1).</p>}
                                             </div>
                                         </div>
-                                    </div>
+                                    </Section>
 
-                                    {/* Photo de garde */}
-                                    <div className="space-y-3">
-                                        <label className="text-xs font-semibold text-zinc-500 uppercase tracking-widest">Photo de Garde <span className="text-zinc-700 normal-case tracking-normal">— apparaît sur la couverture</span></label>
-                                        <div className="relative border-2 border-dashed rounded-3xl h-52 flex flex-col items-center justify-center overflow-hidden cursor-pointer transition-all"
-                                            style={{ borderColor: data.mainPhoto ? COLORS.primary : 'rgba(255,255,255,0.1)', backgroundColor: 'rgba(0,0,0,0.3)' }}>
-                                            {uploadingPhotos['mainPhoto-'] || Object.keys(uploadingPhotos).some(k => k.startsWith('mainPhoto'))
-                                                ? <div className="flex flex-col items-center gap-2 text-zinc-500"><Loader2 className="animate-spin" size={32}/><span className="text-sm">Compression & upload…</span></div>
-                                                : data.mainPhoto 
-                                                    ? <img src={data.mainPhoto} className="absolute inset-0 w-full h-full object-cover opacity-90"/> 
-                                                    : <div className="text-center text-zinc-600 flex flex-col items-center gap-2"><UploadCloud size={32}/><span className="text-sm font-medium">Cliquez pour ajouter</span></div>}
-                                            <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, 'mainPhoto')} className="absolute inset-0 opacity-0 cursor-pointer"/>
-                                            {data.mainPhoto && (
-                                                <button onClick={() => setData({...data, mainPhoto: ""})}
-                                                    className="absolute top-3 right-3 w-7 h-7 rounded-full flex items-center justify-center z-10" style={{ backgroundColor: COLORS.primary }}>
-                                                    <X size={13} className="text-white"/>
-                                                </button>
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    {/* Photos complémentaires */}
-                                    <div className="space-y-3">
-                                        <div className="flex items-center justify-between">
-                                            <label className="text-xs font-semibold text-zinc-500 uppercase tracking-widest">
-                                                Photos Complémentaires <span className="text-zinc-700 normal-case tracking-normal">— dossier photo (max 8)</span>
-                                            </label>
-                                            <span className="text-xs font-mono text-zinc-600">{(data.extraPhotos ?? []).length} / 8</span>
-                                        </div>
-                                        <div className="grid grid-cols-4 gap-3">
-                                            {(data.extraPhotos ?? []).map((url, i) => (
-                                                <div key={i} className="relative rounded-2xl overflow-hidden border aspect-[4/3]" style={{ borderColor: COLORS.darkBorder }}>
-                                                    <img src={url} className="w-full h-full object-cover"/>
-                                                    <button onClick={() => setData({...data, extraPhotos: (data.extraPhotos ?? []).filter((_, idx) => idx !== i)})}
-                                                        className="absolute top-2 right-2 w-6 h-6 rounded-full flex items-center justify-center" style={{ backgroundColor: COLORS.primary }}>
-                                                        <X size={11} className="text-white"/>
-                                                    </button>
-                                                </div>
-                                            ))}
+                                    <Section icon={<ImageIcon size={16}/>} title="Photos du bien"
+                                        hint="★ mettre en couverture · « Page 2 » afficher à côté des caractéristiques (3 max) · dossier photo en fin d'avis (8 max)"
+                                        action={<span className="text-xs font-mono text-zinc-500">{(data.extraPhotos ?? []).length} / 8</span>}>
+                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3"
+                                            onDragOver={e => e.preventDefault()}
+                                            onDrop={e => { const files = droppedImages(e); if (files.length) void handleExtraPhotosUpload(files); }}>
+                                            {(data.extraPhotos ?? []).map((url, i) => {
+                                                const onPage2 = data.secondaryPhotos.includes(url);
+                                                const isCover = data.mainPhoto === url;
+                                                return (
+                                                    <div key={`${url}-${i}`} className="relative rounded-2xl overflow-hidden border aspect-[4/3]" style={{ borderColor: onPage2 ? COLORS.secondary : COLORS.darkBorder }}>
+                                                        <img src={url} alt={`Photo ${i + 1}`} className="w-full h-full object-cover"/>
+                                                        <div className="absolute inset-x-0 bottom-0 p-1.5 flex items-center gap-1 bg-gradient-to-t from-black/85 to-transparent">
+                                                            <button type="button" title="Mettre en photo de couverture"
+                                                                onClick={() => setData(prev => ({ ...prev, mainPhoto: url, mainPhotoAuto: null }))}
+                                                                className={`h-6 px-2 rounded-full text-[10px] font-bold flex items-center gap-1 transition-colors ${isCover ? 'bg-amber-400 text-black' : 'bg-black/60 text-white hover:bg-black/90'}`}>
+                                                                <Star size={10} className={isCover ? 'fill-black' : ''}/>{isCover ? 'Couverture' : ''}
+                                                            </button>
+                                                            <button type="button" title="Afficher en page 2 de l'avis" disabled={!onPage2 && data.secondaryPhotos.length >= 3}
+                                                                onClick={() => setData(prev => ({ ...prev, secondaryPhotos: prev.secondaryPhotos.includes(url) ? prev.secondaryPhotos.filter(u => u !== url) : [...prev.secondaryPhotos, url].slice(0, 3) }))}
+                                                                className={`h-6 px-2 rounded-full text-[10px] font-bold text-white transition-colors disabled:opacity-40 ${onPage2 ? '' : 'bg-black/60 hover:bg-black/90'}`}
+                                                                style={onPage2 ? { backgroundColor: COLORS.secondary } : undefined}>
+                                                                Page 2
+                                                            </button>
+                                                            <button type="button" title="Supprimer la photo"
+                                                                onClick={() => setData(prev => ({ ...prev, extraPhotos: (prev.extraPhotos ?? []).filter((_, idx) => idx !== i), secondaryPhotos: prev.secondaryPhotos.filter(u => u !== url) }))}
+                                                                className="ml-auto w-6 h-6 rounded-full flex items-center justify-center" style={{ backgroundColor: COLORS.primary }}>
+                                                                <X size={11} className="text-white"/>
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
                                             {(data.extraPhotos ?? []).length < 8 && (
                                                 <div className="relative border-2 border-dashed rounded-2xl aspect-[4/3] flex flex-col items-center justify-center cursor-pointer transition-all hover:border-[#d35f52]/50 gap-1"
                                                     style={{ borderColor: uploadingPhotos['extra'] ? COLORS.secondary : 'rgba(255,255,255,0.1)', backgroundColor: 'rgba(0,0,0,0.3)' }}>
                                                     {uploadingPhotos['extra']
-                                                        ? <><Loader2 className="animate-spin text-zinc-500" size={20}/><span className="text-[10px] text-zinc-600 font-medium">Upload…</span></>
-                                                        : <><Plus className="text-zinc-600" size={22}/><span className="text-[10px] text-zinc-700 font-medium">Ajouter</span></>}
+                                                        ? <><Loader2 className="animate-spin text-zinc-500" size={20}/><span className="text-[10px] text-zinc-600 font-medium">Envoi…</span></>
+                                                        : <><Plus className="text-zinc-600" size={22}/><span className="text-[10px] text-zinc-600 font-medium text-center px-2">Ajouter ou déposer<br/>plusieurs photos</span></>}
                                                     <input type="file" accept="image/*" multiple
-                                                        onChange={(e) => handleExtraPhotosUpload(Array.from(e.target.files || []))}
+                                                        onChange={(e) => { const files = Array.from(e.target.files || []); e.target.value = ""; void handleExtraPhotosUpload(files); }}
                                                         className="absolute inset-0 opacity-0 cursor-pointer"
                                                         disabled={!!uploadingPhotos['extra']}/>
                                                 </div>
                                             )}
                                         </div>
-                                    </div>
+                                        {data.secondaryPhotos.length > 0 && (
+                                            <p className="text-[11px] text-zinc-500 flex items-center gap-2">
+                                                Page 2 : {data.secondaryPhotos.length} / 3 photo{data.secondaryPhotos.length > 1 ? 's' : ''}
+                                                <button type="button" onClick={() => setData(prev => ({ ...prev, secondaryPhotos: [] }))} className="underline underline-offset-2 hover:text-white">vider</button>
+                                            </p>
+                                        )}
+                                    </Section>
+
+                                    <Section icon={<Globe size={16}/>} title="Importer depuis une annonce" hint="Si le bien est déjà en ligne, collez le lien pour récupérer ses photos (et le prix).">
+                                        <div className="flex gap-3 w-full flex-col sm:flex-row">
+                                            <Input value={listingUrl} onChange={e => setListingUrl(e.target.value)} placeholder="https://www.patrim.fr/..." className="flex-1 bg-black/50 border-white/10 h-12 rounded-xl text-sm text-white focus:border-[#d35f52]"/>
+                                            <Button onClick={handleImportFromUrl} disabled={isScraping} className="h-12 px-6 rounded-xl font-bold bg-white text-black hover:bg-zinc-200 transition-colors">
+                                                {isScraping ? <Loader2 className="animate-spin mr-2" size={18}/> : <Wand2 size={18} className="mr-2"/>} Importer
+                                            </Button>
+                                        </div>
+                                    </Section>
                                 </motion.div>
                             )}
 
                             {/* ÉTAPE 3 */}
                             {step === 3 && (
                                 <motion.div key="step3" initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -24 }} transition={{ duration: 0.25 }} className="space-y-8">
-                                    <div className="flex items-center gap-3 mb-4">
-                                        <div className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0" style={{ background: `linear-gradient(135deg, ${COLORS.primary}, ${COLORS.secondary})` }}>
-                                            <TrendingUp size={18} className="text-white"/>
-                                        </div>
-                                        <div>
-                                            <p className="text-xs text-zinc-600 uppercase tracking-widest font-semibold">Étape 3 / 4</p>
-                                            <h2 className="text-2xl font-bold text-white display-font">Analyse du Marché</h2>
-                                        </div>
-                                    </div>
+                                    <StepHeader n={3} icon={<TrendingUp size={18} className="text-white"/>} title="Analyse du marché"
+                                        subtitle="Les photos des biens comparables se mettent automatiquement à partir de leur adresse."/>
 
                                     {/* ── RECHERCHE DVF (ventes réelles) ── */}
                                     <div className="rounded-2xl border p-5 space-y-4" style={{ backgroundColor: 'rgba(16,185,129,0.04)', borderColor: 'rgba(16,185,129,0.18)' }}>
@@ -985,6 +1241,24 @@ export default function EstimationEditor({
                                         )}
                                     </div>
 
+                                    {(missingCompPhotos.length > 0 || compPhotoError) && (
+                                        <div className="flex items-center justify-between gap-3 flex-wrap rounded-2xl border px-4 py-3" style={{ backgroundColor: 'rgba(0,0,0,0.3)', borderColor: COLORS.darkBorder }}>
+                                            <div className="text-xs text-zinc-400 space-y-1">
+                                                {missingCompPhotos.length > 0 && (
+                                                    <p className="flex items-center gap-2"><Camera size={14} className="text-zinc-500"/>{missingCompPhotos.length} comparable{missingCompPhotos.length > 1 ? 's' : ''} sans photo</p>
+                                                )}
+                                                {compPhotoError && <p className="flex items-center gap-2 text-amber-300"><AlertCircle size={13}/>{compPhotoError}</p>}
+                                            </div>
+                                            {missingCompPhotos.length > 0 && (
+                                                <Button type="button" size="sm" onClick={() => void fillComparablePhotos(missingCompPhotos)} disabled={photoBusy('comp-')}
+                                                    className="rounded-xl h-8 px-3 text-xs font-bold bg-white text-black hover:bg-zinc-200">
+                                                    {photoBusy('comp-') ? <Loader2 size={13} className="animate-spin mr-1.5"/> : <Wand2 size={13} className="mr-1.5"/>}
+                                                    Ajouter les photos automatiquement
+                                                </Button>
+                                            )}
+                                        </div>
+                                    )}
+
                                     {(['sold', 'forSale'] as const).map(type => {
                                         const list = type === 'sold' ? data.soldComparables : data.forSaleComparables;
                                         const med = median(list.map(sqmOf));
@@ -1009,17 +1283,56 @@ export default function EstimationEditor({
                                                     const isUploadingPhoto = !!uploadingPhotos[`comp-${comp.id}`];
                                                     const sqm = comp.price > 0 && comp.surface > 0 ? Math.round(comp.price / comp.surface) : 0;
                                                     return (
-                                                    <div key={comp.id} className="flex flex-wrap md:flex-nowrap gap-3 p-4 rounded-2xl border items-center relative pr-12" style={{ backgroundColor: 'rgba(0,0,0,0.35)', borderColor: COLORS.darkBorder }}>
-                                                        <div className="w-14 h-14 shrink-0 relative border border-dashed rounded-xl flex items-center justify-center overflow-hidden" style={{ borderColor: isUploadingPhoto ? COLORS.secondary : 'rgba(255,255,255,0.15)' }}>
+                                                    <div key={comp.id} className="flex flex-wrap md:flex-nowrap gap-3 p-3 rounded-2xl border items-center relative pr-12" style={{ backgroundColor: 'rgba(0,0,0,0.35)', borderColor: COLORS.darkBorder }}>
+                                                        <div className="w-24 h-16 shrink-0 relative border border-dashed rounded-xl flex items-center justify-center overflow-hidden"
+                                                            style={{ borderColor: isUploadingPhoto ? COLORS.secondary : comp.photoUrl ? 'transparent' : 'rgba(255,255,255,0.15)' }}
+                                                            onDragOver={e => e.preventDefault()}
+                                                            onDrop={async e => {
+                                                                const [f] = droppedImages(e);
+                                                                if (!f) return;
+                                                                const key = `comp-${comp.id}`;
+                                                                setUploadingPhotos(p => ({ ...p, [key]: true }));
+                                                                const url = await uploadToStorage(f, 'comparables');
+                                                                setUploadingPhotos(p => { const n = { ...p }; delete n[key]; return n; });
+                                                                if (url) patchComparable(type, comp.id, { photoUrl: url, photoAuto: null });
+                                                            }}>
                                                             {isUploadingPhoto
                                                                 ? <Loader2 className="animate-spin text-zinc-500" size={18}/>
                                                                 : comp.photoUrl
-                                                                    ? <img src={comp.photoUrl} className="w-full h-full object-cover"/>
-                                                                    : <span className="text-[9px] text-zinc-600 text-center">Photo</span>}
-                                                            <input type="file" accept="image/*" onChange={(e) => handleComparableImageUpload(e, type, comp.id)} className="absolute inset-0 opacity-0 cursor-pointer" disabled={isUploadingPhoto}/>
+                                                                    ? <img src={comp.photoUrl} alt="" className="w-full h-full object-cover"/>
+                                                                    : (
+                                                                        <button type="button" disabled={!comp.address.trim() && !(comp.lat && comp.lon)}
+                                                                            onClick={() => void setComparableAutoPhoto(type, comp)}
+                                                                            title={comp.address.trim() ? "Trouver la photo à partir de l'adresse" : "Renseignez l'adresse"}
+                                                                            className="absolute inset-0 flex flex-col items-center justify-center gap-0.5 text-zinc-500 hover:text-white disabled:hover:text-zinc-500 disabled:opacity-50 transition-colors">
+                                                                            <Camera size={16}/>
+                                                                            <span className="text-[9px] font-semibold">Photo auto</span>
+                                                                        </button>
+                                                                    )}
+                                                            {!isUploadingPhoto && (
+                                                                <div className="absolute bottom-1 right-1 flex gap-1 z-10">
+                                                                    {comp.photoUrl && (comp.address.trim() || (comp.lat && comp.lon)) && (
+                                                                        <button type="button" title={comp.photoAuto ? "Autre vue" : "Remplacer par la photo automatique"}
+                                                                            onClick={() => void setComparableAutoPhoto(type, comp, !!comp.photoAuto)}
+                                                                            className="w-5 h-5 rounded-full bg-black/70 hover:bg-black flex items-center justify-center text-white">
+                                                                            <RefreshCw size={10}/>
+                                                                        </button>
+                                                                    )}
+                                                                    <label title="Importer une photo" className="w-5 h-5 rounded-full bg-black/70 hover:bg-black flex items-center justify-center text-white cursor-pointer">
+                                                                        <UploadCloud size={10}/>
+                                                                        <input type="file" accept="image/*" onChange={(e) => handleComparableImageUpload(e, type, comp.id)} className="hidden"/>
+                                                                    </label>
+                                                                </div>
+                                                            )}
                                                         </div>
                                                         <div className="flex-1 min-w-[180px]">
-                                                            <Input placeholder="Adresse du bien" value={comp.address} onChange={e => updateComparable(type, comp.id, 'address', e.target.value)} className="bg-transparent border-white/8 rounded-xl"/>
+                                                            <AddressInput
+                                                                placeholder="Adresse du bien"
+                                                                value={comp.address}
+                                                                onChange={text => patchComparable(type, comp.id, { address: text, lat: undefined, lon: undefined })}
+                                                                onSelect={s => selectComparableAddress(type, comp, s)}
+                                                                near={{ lat: data.propertyLat, lon: data.propertyLon }}
+                                                                className="bg-transparent border-white/8 rounded-xl pr-9"/>
                                                             {(comp.source === "dvf" || sqm > 0) && (
                                                                 <p className="text-[10px] text-zinc-500 mt-1 pl-1">
                                                                     {comp.source === "dvf" && <span className="text-emerald-400 font-semibold">DVF</span>}
@@ -1058,40 +1371,73 @@ export default function EstimationEditor({
                             {/* ÉTAPE 4 */}
                             {step === 4 && (
                                 <motion.div key="step4" initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -24 }} transition={{ duration: 0.25 }} className="space-y-6">
-                                    <div className="flex items-center gap-3 mb-8">
-                                        <div className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0" style={{ background: `linear-gradient(135deg, ${COLORS.primary}, ${COLORS.secondary})` }}>
-                                            <CheckCircle size={18} className="text-white"/>
-                                        </div>
-                                        <div>
-                                            <p className="text-xs text-zinc-600 uppercase tracking-widest font-semibold">Étape 4 / 4</p>
-                                            <h2 className="text-2xl font-bold text-white display-font">Bilan Expert</h2>
-                                        </div>
+                                    <StepHeader n={4} icon={<CheckCircle size={18} className="text-white"/>} title="Bilan expert"
+                                        subtitle="Points forts et faibles, valeur retenue et conclusion."/>
+
+                                    {/* Contrôle avant génération du PDF */}
+                                    <div className="rounded-2xl border px-4 py-3 flex items-center gap-2 flex-wrap" style={{ backgroundColor: 'rgba(0,0,0,0.3)', borderColor: COLORS.darkBorder }}>
+                                        {checklist.every(c => c.ok) ? (
+                                            <p className="text-xs text-emerald-300 flex items-center gap-1.5 font-semibold"><CheckCircle size={14}/> Dossier complet : prêt pour le PDF</p>
+                                        ) : (
+                                            <>
+                                                <span className="text-xs text-zinc-400 font-semibold mr-1">À compléter :</span>
+                                                {checklist.filter(c => !c.ok).map(c => (
+                                                    <button key={c.label} type="button" onClick={() => { setStep(c.step); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                                                        className="text-[11px] font-semibold px-2.5 py-1 rounded-full border border-amber-400/30 text-amber-200 bg-amber-400/10 hover:bg-amber-400/20 transition-colors">
+                                                        {c.label}{c.step !== 4 ? ` · étape ${c.step}` : ""}
+                                                    </button>
+                                                ))}
+                                            </>
+                                        )}
                                     </div>
 
-                                    <div className="grid grid-cols-2 gap-5 mb-6">
-                                        {([['sold', 'emerald', '✓ Points Forts', data.strengths, newStrength, setNewStrength, 'strengths'], ['weak', 'rose', '✗ Points Faibles', data.weaknesses, newWeakness, setNewWeakness, 'weaknesses']] as const).map(([key, color]) => (
-                                            <div key={key as string} className="space-y-4 p-5 rounded-2xl border" style={{ backgroundColor: 'rgba(0,0,0,0.35)', borderColor: COLORS.darkBorder }}>
-                                                {key === 'sold' ? (
-                                                    <>
-                                                        <h3 className="text-sm font-bold text-emerald-400 flex items-center gap-2 uppercase tracking-widest"><ThumbsUp size={15}/> Points Forts</h3>
-                                                        <div className="flex gap-2">
-                                                            <Input value={newStrength} onChange={e=>setNewStrength(e.target.value)} onKeyDown={e=>{if(e.key==='Enter' && newStrength){setData({...data, strengths: [...data.strengths, newStrength]}); setNewStrength("");}}} className="bg-black/50 border-white/8 rounded-xl" placeholder="Ajouter..."/>
-                                                            <Button onClick={()=>{if(newStrength){setData({...data, strengths:[...data.strengths, newStrength]}); setNewStrength("");}}} variant="outline" className="px-3 border-white/10 hover:bg-white/5 rounded-xl"><Plus size={15}/></Button>
+                                    <div className="grid md:grid-cols-2 gap-5">
+                                        {([
+                                            { key: "strengths", title: "Points forts", icon: <ThumbsUp size={15}/>, color: "text-emerald-400", dot: "bg-emerald-400", value: newStrength, setValue: setNewStrength, suggestions: suggestStrengths(data) },
+                                            { key: "weaknesses", title: "Points faibles", icon: <ThumbsDown size={15}/>, color: "text-rose-400", dot: "bg-rose-400", value: newWeakness, setValue: setNewWeakness, suggestions: suggestWeaknesses(data) },
+                                        ] as const).map(col => {
+                                            const items = data[col.key];
+                                            const add = (text: string) => {
+                                                const t = text.trim();
+                                                if (t) setData(prev => (prev[col.key].includes(t) ? prev : { ...prev, [col.key]: [...prev[col.key], t] }));
+                                            };
+                                            return (
+                                                <div key={col.key} className="space-y-3 p-5 rounded-2xl border" style={{ backgroundColor: 'rgba(0,0,0,0.35)', borderColor: COLORS.darkBorder }}>
+                                                    <h3 className={`text-sm font-bold ${col.color} flex items-center gap-2 uppercase tracking-widest`}>{col.icon} {col.title}</h3>
+                                                    <div className="flex gap-2">
+                                                        <Input value={col.value} onChange={e => col.setValue(e.target.value)}
+                                                            onKeyDown={e => { if (e.key === 'Enter' && col.value.trim()) { add(col.value); col.setValue(""); } }}
+                                                            className="bg-black/50 border-white/8 rounded-xl" placeholder="Saisir puis Entrée…"/>
+                                                        <Button type="button" onClick={() => { if (col.value.trim()) { add(col.value); col.setValue(""); } }} variant="outline" className="px-3 border-white/10 hover:bg-white/5 rounded-xl"><Plus size={15}/></Button>
+                                                    </div>
+                                                    {items.length > 0 && (
+                                                        <ul className="space-y-1.5">
+                                                            {items.map((s, i) => (
+                                                                <li key={`${s}-${i}`} className="flex justify-between items-center gap-2 text-sm bg-white/[0.04] px-3 py-2 rounded-xl border border-white/5">
+                                                                    <span className="text-zinc-200 flex items-center gap-2"><span className={`w-1.5 h-1.5 rounded-full shrink-0 ${col.dot}`}/>{s}</span>
+                                                                    <button type="button" title="Retirer" onClick={() => setData(prev => ({ ...prev, [col.key]: prev[col.key].filter((_, idx) => idx !== i) }))}>
+                                                                        <X size={13} className="text-zinc-600 hover:text-red-400"/>
+                                                                    </button>
+                                                                </li>
+                                                            ))}
+                                                        </ul>
+                                                    )}
+                                                    {col.suggestions.length > 0 && (
+                                                        <div>
+                                                            <p className="text-[10px] uppercase tracking-widest text-zinc-600 font-semibold mb-1.5">Suggestions · un clic pour ajouter</p>
+                                                            <div className="flex flex-wrap gap-1.5">
+                                                                {col.suggestions.slice(0, 10).map(sg => (
+                                                                    <button key={sg} type="button" onClick={() => add(sg)}
+                                                                        className="text-[11px] px-2.5 py-1 rounded-full border border-white/10 text-zinc-400 hover:text-white hover:border-white/30 transition-colors">
+                                                                        + {sg}
+                                                                    </button>
+                                                                ))}
+                                                            </div>
                                                         </div>
-                                                        <ul className="space-y-1.5">{data.strengths.map((s,i)=><li key={i} className="flex justify-between items-center text-sm bg-white/4 px-3 py-2 rounded-xl border border-white/5"><span className="text-zinc-300">{s}</span><button onClick={()=>setData({...data, strengths: data.strengths.filter((_,idx)=>idx!==i)})}><X size={13} className="text-zinc-600 hover:text-red-400"/></button></li>)}</ul>
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <h3 className="text-sm font-bold text-rose-400 flex items-center gap-2 uppercase tracking-widest"><ThumbsDown size={15}/> Points Faibles</h3>
-                                                        <div className="flex gap-2">
-                                                            <Input value={newWeakness} onChange={e=>setNewWeakness(e.target.value)} onKeyDown={e=>{if(e.key==='Enter' && newWeakness){setData({...data, weaknesses:[...data.weaknesses, newWeakness]}); setNewWeakness("");}}} className="bg-black/50 border-white/8 rounded-xl" placeholder="Ajouter..."/>
-                                                            <Button onClick={()=>{if(newWeakness){setData({...data, weaknesses:[...data.weaknesses, newWeakness]}); setNewWeakness("");}}} variant="outline" className="px-3 border-white/10 hover:bg-white/5 rounded-xl"><Plus size={15}/></Button>
-                                                        </div>
-                                                        <ul className="space-y-1.5">{data.weaknesses.map((w,i)=><li key={i} className="flex justify-between items-center text-sm bg-white/4 px-3 py-2 rounded-xl border border-white/5"><span className="text-zinc-300">{w}</span><button onClick={()=>setData({...data, weaknesses: data.weaknesses.filter((_,idx)=>idx!==i)})}><X size={13} className="text-zinc-600 hover:text-red-400"/></button></li>)}</ul>
-                                                    </>
-                                                )}
-                                            </div>
-                                        ))}
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
                                     </div>
 
                                     {/* ── AIDE AU PRIX : références marché ── */}
@@ -1194,9 +1540,13 @@ export default function EstimationEditor({
                                     </div>
 
                                     {/* SÉLECTION DU COLLABORATEUR */}
-                                    <div className="space-y-2 mt-4 pb-10">
-                                        <label className="text-xs font-semibold text-zinc-500 uppercase tracking-widest">Collaborateur en charge</label>
-                                        <select value={data.agentId} onChange={e => setData({...data, agentId: e.target.value})} className={selectClass}>
+                                    <div className="space-y-2 mt-4 pb-4">
+                                        <label className="text-xs font-semibold text-zinc-500 uppercase tracking-widest">Collaborateur en charge <span className="normal-case tracking-normal text-zinc-600">(signature de l&apos;avis)</span></label>
+                                        <select value={data.agentId} onChange={e => {
+                                            const agentId = e.target.value;
+                                            setData(prev => ({ ...prev, agentId }));
+                                            try { if (agentId) localStorage.setItem(LAST_AGENT_KEY, agentId); } catch { /* stockage local indisponible */ }
+                                        }} className={selectClass}>
                                             <option value="">Sélectionner un collaborateur...</option>
                                             {AGENTS.map(a => <option key={a.id} value={a.id}>{a.name} — {a.role}</option>)}
                                         </select>
@@ -1205,12 +1555,14 @@ export default function EstimationEditor({
                             )}
                         </AnimatePresence>
 
-                        <div className="flex justify-between items-center mt-10 pt-6 border-t" style={{ borderColor: COLORS.darkBorder }}>
-                            <Button variant="ghost" onClick={handleBack} disabled={step === 1} className="text-zinc-500 hover:text-white rounded-full gap-2 disabled:opacity-30">
+                        {/* Navigation toujours visible en bas de l'écran */}
+                        <div className="sticky bottom-4 z-30 flex justify-between items-center mt-8 -mx-3 px-3 py-3 rounded-2xl border"
+                            style={{ backgroundColor: 'rgba(17,17,20,0.92)', backdropFilter: 'blur(16px)', borderColor: COLORS.darkBorder }}>
+                            <Button variant="ghost" onClick={() => { handleBack(); window.scrollTo({ top: 0 }); }} disabled={step === 1} className="text-zinc-500 hover:text-white rounded-full gap-2 disabled:opacity-30">
                                 <ArrowLeft size={16}/> Retour
                             </Button>
                             {step < 4 ? (
-                                <Button onClick={handleNext} className="bg-white text-black font-bold h-11 px-8 rounded-full hover:bg-zinc-200 transition-all">
+                                <Button onClick={() => { handleNext(); window.scrollTo({ top: 0 }); }} className="bg-white text-black font-bold h-11 px-8 rounded-full hover:bg-zinc-200 transition-all">
                                     Suivant <ArrowRight className="ml-2" size={16}/>
                                 </Button>
                             ) : (
@@ -1397,6 +1749,9 @@ export default function EstimationEditor({
                               </div>}
                         <div className="absolute inset-0" style={{ background: 'linear-gradient(to right, transparent 60%, rgba(10,10,12,0.4) 100%)' }}></div>
                         <div className="absolute right-0 top-0 h-full w-1" style={{ background: `linear-gradient(to bottom, ${COLORS.primary}, ${COLORS.secondary})` }}></div>
+                        {data.mainPhoto && data.mainPhotoAuto?.credit && (
+                            <span className="absolute left-4 bottom-[46px] text-[7px] text-white/80 bg-black/35 px-2 py-0.5 rounded">{data.mainPhotoAuto.credit}</span>
+                        )}
                     </div>
 
                     <div className="dark-cover-half w-[45%] h-full text-white flex flex-col justify-between relative" style={{ backgroundColor: '#0a0a0c', padding: '2.8rem 3rem 2.8rem 3rem' }}>
@@ -1767,7 +2122,14 @@ export default function EstimationEditor({
                                     </div>
                                 );
                             };
+                            // Mention des sources des photos automatiques (licences ouvertes)
+                            const photoCredits = Array.from(new Set(
+                                [...data.soldComparables.slice(0, 5), ...data.forSaleComparables.slice(0, 5)]
+                                    .filter(c => c.photoUrl && c.photoAuto?.credit)
+                                    .map(c => c.photoAuto!.credit)
+                            ));
                             return (
+                                <>
                                 <div className="flex gap-5 flex-1 min-h-0">
                                     <div className="w-1/2 premium-card bg-white rounded-[20px] p-5 shadow-sm border border-zinc-200 flex flex-col gap-2.5">
                                         {soldCount > 0 ? (<>
@@ -1782,6 +2144,10 @@ export default function EstimationEditor({
                                         </>) : <div className="flex-1 flex items-center justify-center text-zinc-300 text-xs">Aucun bien en vente renseigné</div>}
                                     </div>
                                 </div>
+                                {photoCredits.length > 0 && (
+                                    <p className="text-[6.5px] text-zinc-400 mt-2 shrink-0 truncate">Photos : {photoCredits.join(" · ")}</p>
+                                )}
+                                </>
                             );
                         })()}
                     </div>
