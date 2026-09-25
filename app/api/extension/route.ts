@@ -1,5 +1,5 @@
 import sharp from 'sharp';
-import { extensionBackground, extensionIconSvg, extensionManifest, EXTENSION_VERSION } from '@/lib/captureExtension';
+import { extensionBackground, extensionBridge, extensionIconSvg, extensionManifest, EXTENSION_VERSION } from '@/lib/captureExtension';
 
 /* ============================================================
    API : /api/extension
@@ -77,8 +77,9 @@ export async function GET(request: Request) {
         data: await sharp(Buffer.from(extensionIconSvg(size))).resize(size, size).png().toBuffer(),
     })));
     const archive = zip([
-        { name: 'patrim-capture/manifest.json', data: Buffer.from(JSON.stringify(extensionManifest(), null, 2)) },
+        { name: 'patrim-capture/manifest.json', data: Buffer.from(JSON.stringify(extensionManifest(origin), null, 2)) },
         { name: 'patrim-capture/background.js', data: Buffer.from(extensionBackground(origin)) },
+        { name: 'patrim-capture/bridge.js', data: Buffer.from(extensionBridge()) },
         ...icons,
     ]);
     return new Response(new Uint8Array(archive), {

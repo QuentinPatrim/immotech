@@ -77,14 +77,34 @@ function referenceSqm(subject: SubjectProperty, candidates: ExtractedListing[]):
     return sqms[Math.floor(sqms.length / 2)];
 }
 
-function whyNotSimilar(ex: ExtractedListing, subject: SubjectProperty, refSqm: number | null, km: number | null): SkipReason | null {
+/** Bornes choisies par l'agent dans la recherche guidée (remplacent les écarts par défaut) */
+interface Bounds { surfaceMin?: number; surfaceMax?: number; roomsMin?: number; roomsMax?: number; radiusKm?: number }
+
+function sanitizeBounds(raw: unknown): Bounds | null {
+    if (!raw || typeof raw !== 'object') return null;
+    const r = raw as Record<string, unknown>;
+    const n = (v: unknown, max: number) => (typeof v === 'number' && Number.isFinite(v) && v > 0 && v <= max ? v : undefined);
+    const b: Bounds = {
+        surfaceMin: n(r.surfaceMin, 10000), surfaceMax: n(r.surfaceMax, 10000),
+        roomsMin: n(r.roomsMin, 50), roomsMax: n(r.roomsMax, 50),
+        radiusKm: n(r.radiusKm, 100),
+    };
+    return Object.values(b).some(v => v !== undefined) ? b : null;
+}
+
+function whyNotSimilar(ex: ExtractedListing, subject: SubjectProperty, refSqm: number | null, km: number | null, bounds: Bounds | null): SkipReason | null {
     if (subject.propertyType && ex.propertyType && ex.propertyType !== 'Autre' && ex.propertyType !== subject.propertyType) return 'type';
-    if (subject.surface) {
+    if (bounds && (bounds.surfaceMin || bounds.surfaceMax)) {
+        if (!ex.surface || (bounds.surfaceMin && ex.surface < bounds.surfaceMin) || (bounds.surfaceMax && ex.surface > bounds.surfaceMax)) return 'surface';
+    } else if (subject.surface) {
         if (!ex.surface || Math.abs(ex.surface - subject.surface) / subject.surface > SIMILAR.surfacePct) return 'surface';
     }
-    if (subject.rooms && ex.rooms && Math.abs(ex.rooms - subject.rooms) > SIMILAR.roomsGap) return 'pièces';
+    if (bounds && (bounds.roomsMin || bounds.roomsMax)) {
+        if (ex.rooms && ((bounds.roomsMin && ex.rooms < bounds.roomsMin) || (bounds.roomsMax && ex.rooms > bounds.roomsMax))) return 'pièces';
+    } else if (subject.rooms && ex.rooms && Math.abs(ex.rooms - subject.rooms) > SIMILAR.roomsGap) return 'pièces';
     // Distance mesurée si le quartier a pu être localisé ; sinon avis de l'IA, seulement pour une autre commune
-    if (km !== null ? km > SIMILAR.areaKm : ex.sameArea === false && !!ex.city && norm(ex.city) !== norm(subject.city)) return 'quartier';
+    const maxKm = bounds?.radiusKm ?? SIMILAR.areaKm;
+    if (km !== null ? km > maxKm : ex.sameArea === false && !!ex.city && norm(ex.city) !== norm(subject.city)) return 'quartier';
     if (refSqm && ex.price && ex.surface && Math.abs(ex.price / ex.surface - refSqm) / refSqm > SIMILAR.sqmPct) return 'prix';
     return null;
 }
@@ -108,7 +128,7 @@ export async function POST(request: Request) {
     const { data: { user } } = await supabase.auth.getUser(authHeader.replace(/^Bearer\s+/i, ''));
     if (!user) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 });
 
-    let body: { estimationId?: string; payload?: CapturePayload; onlySimilar?: boolean };
+    let body: { estimationId?: string; payload?: CapturePayload; onlySimilar?: boolean; bounds?: unknown };
     try {
         const raw = await request.text();
         if (raw.length > 600_000) return NextResponse.json({ error: 'Page trop volumineuse.' }, { status: 413 });
@@ -118,6 +138,7 @@ export async function POST(request: Request) {
     }
     const { estimationId, payload } = body;
     const onlySimilar = body.onlySimilar !== false;
+    const bounds = sanitizeBounds(body.bounds);
     if (!estimationId || !payload || payload.v !== 1 || typeof payload.url !== 'string') {
         return NextResponse.json({ error: 'Capture incomplète.' }, { status: 400 });
     }
@@ -163,7 +184,7 @@ export async function POST(request: Request) {
         const refSqm = referenceSqm(subject, extracted);
         extracted = extracted.filter(ex => {
             if (rows.some(r => r.url === ex.url)) return true;
-            const reason = whyNotSimilar(ex, subject, refSqm, km.get(ex) ?? null);
+            const reason = whyNotSimilar(ex, subject, refSqm, km.get(ex) ?? null, bounds);
             if (reason) skipped.push({ title: ex.title, price: ex.price, surface: ex.surface, district: ex.district || ex.city, distanceKm: km.get(ex) ?? null, reason });
             return !reason;
         });

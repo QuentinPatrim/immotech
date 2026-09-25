@@ -46,11 +46,14 @@ export interface SkippedListing {
     reason: "type" | "surface" | "pièces" | "quartier" | "prix";
 }
 
-export async function sendCapture(estimationId: string, payload: CapturePayload, onlySimilar = true): Promise<CaptureResult> {
+/** Bornes de la recherche guidée : le tri « biens similaires » les applique à la place des écarts par défaut */
+export interface SimilarBounds { surfaceMin?: number; surfaceMax?: number; roomsMin?: number; roomsMax?: number; radiusKm?: number }
+
+export async function sendCapture(estimationId: string, payload: CapturePayload, onlySimilar = true, bounds?: SimilarBounds): Promise<CaptureResult> {
     const res = await fetch("/api/annonces/capture", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(await authHeader()) },
-        body: JSON.stringify({ estimationId, payload, onlySimilar }),
+        body: JSON.stringify({ estimationId, payload, onlySimilar, bounds }),
     });
     const json = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(json.error || "Import impossible.");

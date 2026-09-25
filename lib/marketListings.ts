@@ -53,6 +53,8 @@ export interface CapturePayload {
     jsonLd: string[];
     meta: { ogTitle?: string; ogImage?: string; ogDescription?: string; description?: string };
     images: string[];
+    /** Page de vérification anti-robot détectée par l'extension */
+    blocked?: boolean;
 }
 
 const PORTALS: [RegExp, string][] = [

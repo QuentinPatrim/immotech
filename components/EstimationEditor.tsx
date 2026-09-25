@@ -19,6 +19,7 @@ import { DossierStatus, formatSurface, formatMonthYear, median, centralPrice, PA
 import { fetchAddressPhoto, type AddressSuggestion } from "@/lib/addressClient";
 import AddressInput from "@/components/estimation/AddressInput";
 import ListingCard from "@/components/estimation/ListingCard";
+import PortalSearchPanel from "@/components/estimation/PortalSearchPanel";
 import ThemeToggle from "@/components/estimation/ThemeToggle";
 import { daysOnline, initialPrice, priceDrop, pricePerSqm, type MarketListing } from "@/lib/marketListings";
 import { deleteListing, fetchListingPhoto, fetchListings, LAST_ESTIMATION_KEY, setListingSelected } from "@/lib/captureClient";
@@ -1370,12 +1371,12 @@ export default function EstimationEditor({
                                                     <div className="flex-1 min-w-[260px]">
                                                         <h3 className="text-sm font-semibold text-[var(--p-fg)] flex items-center gap-2"><Globe size={15} className="text-[var(--p-accent)]"/> Annonces en vente sur les portails</h3>
                                                         <p className="text-xs text-[var(--p-muted)] mt-1">
-                                                            Capturées en un clic depuis Leboncoin, SeLoger, Bien&apos;ici, PAP… avec l&apos;extension Patrim. Cochez celles à citer dans l&apos;avis de valeur.
+                                                            Recherchées sur Leboncoin, SeLoger et Bien&apos;ici avec l&apos;extension Patrim, triées pour ne garder que les biens proches du vôtre. Cochez celles à citer dans l&apos;avis de valeur.
                                                         </p>
                                                     </div>
                                                     <div className="flex items-center gap-2">
                                                         <a href="/capture/installer" target="_blank" rel="noopener noreferrer" className="h-9 px-3 rounded-xl border border-[var(--p-line-strong)] text-xs font-semibold text-[var(--p-fg)] hover:bg-[var(--p-hover)] inline-flex items-center gap-1.5">
-                                                            Comment capturer ?
+                                                            Extension Patrim
                                                         </a>
                                                         <button type="button" onClick={() => void reloadListings()} disabled={!currentId} title="Actualiser"
                                                             className="h-9 w-9 rounded-xl border border-[var(--p-line-strong)] text-[var(--p-fg)] hover:bg-[var(--p-hover)] inline-flex items-center justify-center disabled:opacity-40">
@@ -1384,23 +1385,19 @@ export default function EstimationEditor({
                                                     </div>
                                                 </div>
 
-                                                {!currentId ? (
-                                                    <p className="text-xs text-[var(--p-muted)]">Renseignez l&apos;adresse du bien (étape 1) : le dossier est créé et peut recevoir des annonces.</p>
-                                                ) : listings.length === 0 ? (
-                                                    <div className="grid sm:grid-cols-3 gap-3">
-                                                        {[
-                                                            ["1", "Sur le portail", "Faites votre recherche comme d'habitude (ville, surface, pièces)."],
-                                                            ["2", "Un clic sur l'icône Patrim", "Toutes les annonces affichées sont lues et analysées par l'IA."],
-                                                            ["3", "Revenez ici", "Les annonces apparaissent : cochez celles à citer dans l'avis."],
-                                                        ].map(([n, title, text]) => (
-                                                            <div key={n} className="rounded-xl border border-[var(--p-line)] p-3.5" style={{ backgroundColor: 'var(--p-card)' }}>
-                                                                <p className="text-[11px] font-semibold text-[var(--p-accent)]">Étape {n}</p>
-                                                                <p className="text-sm font-semibold text-[var(--p-fg)] mt-0.5">{title}</p>
-                                                                <p className="text-xs text-[var(--p-muted)] mt-1">{text}</p>
-                                                            </div>
-                                                        ))}
-                                                        {listingsLoaded && <p className="sm:col-span-3 text-[11px] text-[var(--p-faint)]">Aucune annonce capturée pour ce dossier pour l&apos;instant.</p>}
-                                                    </div>
+                                                <PortalSearchPanel
+                                                    estimationId={currentId}
+                                                    subject={{
+                                                        propertyType: data.propertyType, propertyAddress: data.propertyAddress,
+                                                        surface: Number(data.surface) || 0, rooms: Number(data.rooms) || 0,
+                                                        lowPrice: Number(data.lowPrice) || 0, highPrice: Number(data.highPrice) || 0,
+                                                        propertyLat: data.propertyLat, propertyLon: data.propertyLon,
+                                                    }}
+                                                    onImported={() => void reloadListings()}
+                                                />
+
+                                                {!currentId ? null : listings.length === 0 ? (
+                                                    listingsLoaded && <p className="text-[11px] text-[var(--p-faint)]">Aucune annonce pour ce dossier pour l&apos;instant. Vous pouvez aussi cliquer sur l&apos;icône Patrim sur n&apos;importe quelle page de portail.</p>
                                                 ) : (
                                                     <>
                                                         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
