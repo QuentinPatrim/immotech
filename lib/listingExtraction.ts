@@ -43,6 +43,8 @@ export interface ExtractedListing {
     pros: string[];
     cons: string[];
     relevance: number;
+    /** Même quartier que le bien estimé, ou quartier limitrophe (avis du modèle) */
+    sameArea: boolean | null;
     description: string | null;
 }
 
@@ -61,7 +63,7 @@ const SCHEMA = {
             items: {
                 type: "object",
                 additionalProperties: false,
-                required: ["card", "isForSale", "title", "price", "previousPrice", "surface", "rooms", "bedrooms", "propertyType", "city", "district", "floor", "dpe", "publishedAt", "features", "highlight", "pros", "cons", "relevance", "description"],
+                required: ["card", "isForSale", "title", "price", "previousPrice", "surface", "rooms", "bedrooms", "propertyType", "city", "district", "floor", "dpe", "publishedAt", "features", "highlight", "pros", "cons", "relevance", "sameArea", "description"],
                 properties: {
                     card: { ...nullable("integer"), description: "Numéro de la carte (null = annonce principale de la page)" },
                     isForSale: { type: "boolean", description: "true seulement pour une annonce de VENTE d'un bien (pas location, pas publicité, pas agence)" },
@@ -82,6 +84,7 @@ const SCHEMA = {
                     pros: { type: "array", items: { type: "string" }, description: "Avantages par rapport au bien estimé, 3 maximum, 60 caractères maximum chacun" },
                     cons: { type: "array", items: { type: "string" }, description: "Inconvénients par rapport au bien estimé, 3 maximum, 60 caractères maximum chacun" },
                     relevance: { type: "integer", description: "Comparabilité avec le bien estimé de 0 à 100 (type, surface, pièces, localisation, prestations)" },
+                    sameArea: { ...nullable("boolean"), description: "true si l'annonce est dans le même quartier que le bien estimé ou un quartier limitrophe (moins d'environ 1,5 km) ; false si c'est un autre secteur de la ville ou une autre commune ; null si la localisation de l'annonce est trop vague pour trancher" },
                     description: { ...nullable("string"), description: "Résumé factuel de l'annonce, 220 caractères maximum" },
                 },
             },
@@ -99,6 +102,7 @@ Règles :
 - Les caractéristiques d'une annonce (surface, pièces, étage, DPE, prestations, quartier…) viennent UNIQUEMENT de son propre texte. N'y recopie jamais celles du bien estimé ; null si l'information n'apparaît pas.
 - Le bien estimé sert seulement à écrire highlight, pros, cons et relevance. Une information absente de l'annonce n'est ni un avantage ni un inconvénient.
 - isForSale = false pour les locations (loyer, « /mois », « charges comprises »), publicités, agences, programmes neufs sans prix, liens de navigation.
+- sameArea : appuie-toi sur ta connaissance des quartiers de la ville (déduis celui du bien estimé de son adresse).
 - Prix, surfaces : nombres sans espace ni symbole (295000, 68.5).
 - Date de capture : ${day}. Convertis les dates relatives (« aujourd'hui », « hier », « il y a 3 jours », « publiée le 12 septembre ») en AAAA-MM-JJ. Sans année indiquée, prends la date passée la plus proche de la date de capture (jamais dans le futur).
 - previousPrice uniquement si un ancien prix ou une baisse est explicitement affiché ; sinon null.

@@ -32,14 +32,24 @@ export interface CaptureResult {
     added: number;
     updated: number;
     merged: number;
+    /** Annonces lues mais écartées car trop différentes du bien estimé */
+    skipped?: SkippedListing[];
     listings: MarketListing[];
 }
 
-export async function sendCapture(estimationId: string, payload: CapturePayload): Promise<CaptureResult> {
+export interface SkippedListing {
+    title: string;
+    price: number | null;
+    surface: number | null;
+    district: string | null;
+    reason: "type" | "surface" | "pièces" | "quartier" | "prix";
+}
+
+export async function sendCapture(estimationId: string, payload: CapturePayload, onlySimilar = true): Promise<CaptureResult> {
     const res = await fetch("/api/annonces/capture", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(await authHeader()) },
-        body: JSON.stringify({ estimationId, payload }),
+        body: JSON.stringify({ estimationId, payload, onlySimilar }),
     });
     const json = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(json.error || "Import impossible.");

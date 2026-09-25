@@ -11,14 +11,24 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowRight, Loader2, AlertCircle, Download, CheckCircle2, Sparkles } from "lucide-react";
+import { ArrowRight, Loader2, AlertCircle, Download, CheckCircle2, Sparkles, Filter } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { portalFromUrl, type CapturePayload } from "@/lib/marketListings";
-import { decodeCapture, sendCapture, LAST_ESTIMATION_KEY, type CaptureResult } from "@/lib/captureClient";
+import { decodeCapture, sendCapture, LAST_ESTIMATION_KEY, type CaptureResult, type SkippedListing } from "@/lib/captureClient";
+import { formatNumber } from "@/lib/formatters";
 import ListingCard from "@/components/estimation/ListingCard";
 import ThemeToggle from "@/components/estimation/ThemeToggle";
 
 const STORAGE_KEY = "patrim:pendingCapture";
+const SIMILAR_KEY = "patrim:onlySimilar";
+
+const REASONS: Record<SkippedListing["reason"], string> = {
+    type: "autre type de bien",
+    surface: "surface trop différente",
+    "pièces": "nombre de pièces",
+    quartier: "autre quartier",
+    prix: "prix au m² incohérent",
+};
 
 interface Dossier { id: string; address: string | null; client_name: string | null; created_at: string }
 
@@ -30,6 +40,10 @@ export default function CapturePage() {
     const [phase, setPhase] = useState<"loading" | "empty" | "ready" | "importing" | "done">("loading");
     const [error, setError] = useState("");
     const [result, setResult] = useState<CaptureResult | null>(null);
+    const [onlySimilar, setOnlySimilar] = useState(() => {
+        try { return typeof window === "undefined" || localStorage.getItem(SIMILAR_KEY) !== "0"; } catch { return true; }
+    });
+    const [showSkipped, setShowSkipped] = useState(false);
 
     useEffect(() => {
         (async () => {
@@ -69,12 +83,20 @@ export default function CapturePage() {
     const portal = useMemo(() => (payload ? portalFromUrl(payload.url) : ""), [payload]);
     const cardCount = payload?.cards.length ?? 0;
 
-    const runImport = async () => {
+    const toggleSimilar = () => {
+        setOnlySimilar(v => {
+            try { localStorage.setItem(SIMILAR_KEY, v ? "0" : "1"); } catch { /* rien */ }
+            return !v;
+        });
+    };
+
+    const runImport = async (similar = onlySimilar) => {
         if (!payload || !dossierId) return;
         setPhase("importing");
         setError("");
+        setShowSkipped(false);
         try {
-            const res = await sendCapture(dossierId, payload);
+            const res = await sendCapture(dossierId, payload, similar);
             setResult(res);
             setPhase("done");
             sessionStorage.removeItem(STORAGE_KEY);
@@ -84,6 +106,12 @@ export default function CapturePage() {
             setPhase("ready");
         }
     };
+
+    const skipped = result?.skipped ?? [];
+    const summary = Object.entries(skipped.reduce<Record<string, number>>((acc, k) => {
+        acc[REASONS[k.reason]] = (acc[REASONS[k.reason]] || 0) + 1;
+        return acc;
+    }, {})).map(([r, n]) => `${n} ${r}`).join(", ");
 
     const current = result?.listings
         ? [...result.listings].sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt))
@@ -142,9 +170,22 @@ export default function CapturePage() {
                             </label>
                         )}
 
+                        <button type="button" onClick={toggleSimilar} disabled={phase === "importing"}
+                            className="w-full flex items-start gap-3 rounded-2xl border border-[var(--p-line)] p-4 text-left hover:bg-[var(--p-hover)] transition-colors">
+                            <span className={`mt-0.5 w-9 h-5 shrink-0 rounded-full p-0.5 transition-colors ${onlySimilar ? "bg-[var(--p-accent)]" : "bg-[var(--p-line-strong)]"}`}>
+                                <span className={`block w-4 h-4 rounded-full bg-white transition-transform ${onlySimilar ? "translate-x-4" : ""}`}/>
+                            </span>
+                            <span>
+                                <span className="block text-sm font-semibold text-[var(--p-fg)]">Seulement les biens similaires</span>
+                                <span className="block text-xs text-[var(--p-muted)] mt-0.5">
+                                    Surface ± 20 %, pièces ± 1, même quartier ou quartier voisin, prix au m² cohérent (± 25 %). Les autres annonces sont écartées.
+                                </span>
+                            </span>
+                        </button>
+
                         {error && <p className="text-sm text-[var(--p-negative)] flex items-center gap-2"><AlertCircle size={15}/> {error}</p>}
 
-                        <button type="button" onClick={runImport} disabled={phase === "importing" || !dossierId}
+                        <button type="button" onClick={() => runImport()} disabled={phase === "importing" || !dossierId}
                             className="w-full h-12 rounded-full text-sm font-semibold text-[#fff] flex items-center justify-center gap-2 disabled:opacity-60 transition-transform hover:scale-[1.01]"
                             style={{ background: "linear-gradient(135deg, #8a0e01, #d35f52)" }}>
                             {phase === "importing"
@@ -182,6 +223,35 @@ export default function CapturePage() {
                         </div>
                         {result.found === 0 && (
                             <p className="text-sm text-[var(--p-warning)] flex items-center gap-2"><AlertCircle size={15}/> Aucune annonce de vente reconnue sur cette page.</p>
+                        )}
+                        {skipped.length > 0 && (
+                            <div className="rounded-2xl border border-[var(--p-line)] p-4 space-y-3" style={{ backgroundColor: "var(--p-card)" }}>
+                                <div className="flex items-center justify-between gap-3 flex-wrap">
+                                    <p className="text-sm text-[var(--p-fg-2)] flex items-center gap-2">
+                                        <Filter size={14} className="text-[var(--p-accent)]"/>
+                                        {skipped.length} annonce{skipped.length > 1 ? "s" : ""} écartée{skipped.length > 1 ? "s" : ""} car trop différente{skipped.length > 1 ? "s" : ""} de votre bien
+                                        <span className="text-[var(--p-muted)]">({summary})</span>
+                                    </p>
+                                    <div className="flex gap-2">
+                                        <button type="button" onClick={() => setShowSkipped(v => !v)} className="h-8 px-3 rounded-full text-xs font-semibold text-[var(--p-fg)] border border-[var(--p-line-strong)] hover:bg-[var(--p-hover)]">
+                                            {showSkipped ? "Masquer" : "Voir le détail"}
+                                        </button>
+                                        <button type="button" onClick={() => runImport(false)} className="h-8 px-3 rounded-full text-xs font-semibold text-[var(--p-fg)] border border-[var(--p-line-strong)] hover:bg-[var(--p-hover)]">
+                                            Les ajouter quand même
+                                        </button>
+                                    </div>
+                                </div>
+                                {showSkipped && (
+                                    <ul className="text-xs text-[var(--p-muted)] space-y-1">
+                                        {skipped.map((k, i) => (
+                                            <li key={i} className="flex gap-2 flex-wrap">
+                                                <span className="text-[var(--p-fg-2)]">{k.price ? `${formatNumber(k.price)} €` : "Prix ?"} · {k.surface ? `${formatNumber(k.surface)} m²` : "surface ?"}{k.district ? ` · ${k.district}` : ""}</span>
+                                                <span>— {REASONS[k.reason]}</span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
+                            </div>
                         )}
                         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
                             {current.map(l => <ListingCard key={l.id} listing={l}/>)}

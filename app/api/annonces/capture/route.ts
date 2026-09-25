@@ -52,10 +52,39 @@ function extractedFields(ex: ExtractedListing): Partial<MarketListing> {
     set('highlight', ex.highlight ?? undefined);
     set('description', ex.description ?? undefined);
     set('relevance', ex.relevance);
+    if (ex.sameArea !== null) f.sameArea = ex.sameArea;
     if (ex.features.length) f.features = ex.features;
     if (ex.pros.length) f.pros = ex.pros;
     if (ex.cons.length) f.cons = ex.cons;
     return f;
+}
+
+/* ---------- Tri des annonces similaires au bien estimé ---------- */
+
+const SIMILAR = { surfacePct: 0.2, roomsGap: 1, sqmPct: 0.25 };
+
+type SkipReason = 'type' | 'surface' | 'pièces' | 'quartier' | 'prix';
+
+/** Prix au m² de référence : prix central envisagé, sinon médiane des annonces déjà proches (surface, quartier) */
+function referenceSqm(subject: SubjectProperty, candidates: ExtractedListing[]): number | null {
+    if (subject.surface && subject.lowPrice && subject.highPrice) return (subject.lowPrice + subject.highPrice) / 2 / subject.surface;
+    const sqms = candidates
+        .filter(ex => ex.price && ex.surface && ex.sameArea !== false)
+        .map(ex => ex.price! / ex.surface!)
+        .sort((a, b) => a - b);
+    if (sqms.length < 3) return null;
+    return sqms[Math.floor(sqms.length / 2)];
+}
+
+function whyNotSimilar(ex: ExtractedListing, subject: SubjectProperty, refSqm: number | null): SkipReason | null {
+    if (subject.propertyType && ex.propertyType && ex.propertyType !== 'Autre' && ex.propertyType !== subject.propertyType) return 'type';
+    if (subject.surface) {
+        if (!ex.surface || Math.abs(ex.surface - subject.surface) / subject.surface > SIMILAR.surfacePct) return 'surface';
+    }
+    if (subject.rooms && ex.rooms && Math.abs(ex.rooms - subject.rooms) > SIMILAR.roomsGap) return 'pièces';
+    if (ex.sameArea === false) return 'quartier';
+    if (refSqm && ex.price && ex.surface && Math.abs(ex.price / ex.surface - refSqm) / refSqm > SIMILAR.sqmPct) return 'prix';
+    return null;
 }
 
 const lastPrice = (history: PriceEvent[], fallback: number) =>
@@ -77,7 +106,7 @@ export async function POST(request: Request) {
     const { data: { user } } = await supabase.auth.getUser(authHeader.replace(/^Bearer\s+/i, ''));
     if (!user) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 });
 
-    let body: { estimationId?: string; payload?: CapturePayload };
+    let body: { estimationId?: string; payload?: CapturePayload; onlySimilar?: boolean };
     try {
         const raw = await request.text();
         if (raw.length > 600_000) return NextResponse.json({ error: 'Page trop volumineuse.' }, { status: 413 });
@@ -86,6 +115,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'Requête invalide.' }, { status: 400 });
     }
     const { estimationId, payload } = body;
+    const onlySimilar = body.onlySimilar !== false;
     if (!estimationId || !payload || payload.v !== 1 || typeof payload.url !== 'string') {
         return NextResponse.json({ error: 'Capture incomplète.' }, { status: 400 });
     }
@@ -95,7 +125,7 @@ export async function POST(request: Request) {
     if (!estimation) return NextResponse.json({ error: 'Dossier introuvable.' }, { status: 404 });
     const d = (estimation.data_json || {}) as Record<string, unknown>;
     const subject: SubjectProperty = {
-        propertyType: String(d.propertyType || 'Appartement'),
+        propertyType: d.propertyType ? String(d.propertyType) : '',
         surface: Number(d.surface) || 0,
         rooms: Number(d.rooms) || 0,
         address: String(d.propertyAddress || estimation.address || ''),
@@ -117,6 +147,19 @@ export async function POST(request: Request) {
 
     const { data: existingData } = await supabase.from('market_listings').select(ROW_COLS).eq('estimation_id', estimationId);
     const rows: Row[] = (existingData as Row[] | null) ?? [];
+
+    // Seulement les biens comparables (surface, pièces, quartier, prix cohérent).
+    // Une annonce déjà dans le dossier reste suivie (mise à jour de son prix).
+    const skipped: { title: string; price: number | null; surface: number | null; district: string | null; reason: SkipReason }[] = [];
+    if (onlySimilar) {
+        const refSqm = referenceSqm(subject, extracted);
+        extracted = extracted.filter(ex => {
+            if (rows.some(r => r.url === ex.url)) return true;
+            const reason = whyNotSimilar(ex, subject, refSqm);
+            if (reason) skipped.push({ title: ex.title, price: ex.price, surface: ex.surface, district: ex.district || ex.city, reason });
+            return !reason;
+        });
+    }
 
     // Même annonce déjà vue dans un autre dossier : on reprend son historique
     const urls = extracted.map(e => e.url).filter(u => !rows.some(r => r.url === u));
@@ -174,8 +217,9 @@ export async function POST(request: Request) {
     return NextResponse.json({
         success: true,
         portal: portalFromUrl(payload.url),
-        found: extracted.length,
+        found: extracted.length + skipped.length,
         added, updated, merged,
+        skipped,
         listings: ((all as Row[] | null) ?? []).map(rowToListing),
     });
 }
