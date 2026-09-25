@@ -20,7 +20,7 @@ async function search(q: string, type?: "municipality"): Promise<GeoFeature[]> {
     const controller = new AbortController();
     const t = setTimeout(() => controller.abort(), 3500);
     try {
-        const url = `https://data.geopf.fr/geocodage/search?q=${encodeURIComponent(q)}&limit=5${type ? `&type=${type}` : ""}`;
+        const url = `https://data.geopf.fr/geocodage/search?q=${encodeURIComponent(q)}&limit=8${type ? `&type=${type}` : ""}`;
         const res = await fetch(url, { signal: controller.signal, cache: "no-store" });
         if (!res.ok) return [];
         const data = (await res.json()) as { features?: GeoFeature[] };
@@ -42,12 +42,17 @@ export async function geocodePoint(address: string): Promise<Point | null> {
  * ou lieu-dit qui porte son nom), sinon centre de la commune si elle diffère
  * de celle du bien. null si la localisation est trop vague.
  */
-async function locate(district: string | null, city: string | null, subjectCity: string): Promise<Point | null> {
+async function locate(district: string | null, city: string | null, subjectCity: string, subject: Point): Promise<Point | null> {
     const c = (city || subjectCity || "").trim();
     const d = (district || "").split(/\s[-–/]\s|,|\(/)[0].trim();
     if (d && c && norm(d) !== norm(c)) {
-        const hit = (await search(`${d} ${c}`)).find(f => !f.properties.city || norm(f.properties.city) === norm(c) || norm(f.properties.city).startsWith(norm(c)));
-        if (hit && (hit.properties.score ?? 1) >= 0.45) return { lon: hit.geometry.coordinates[0], lat: hit.geometry.coordinates[1] };
+        // Plusieurs voies portent le nom du quartier (« place des Carmes », « chemin des Carmes ») :
+        // on garde la plus proche du bien, les autres étant souvent hors du quartier
+        const hits = (await search(`${d} ${c}`))
+            .filter(f => (f.properties.score ?? 1) >= 0.45)
+            .filter(f => !f.properties.city || norm(f.properties.city) === norm(c) || norm(f.properties.city).startsWith(norm(c)))
+            .map(f => ({ lon: f.geometry.coordinates[0], lat: f.geometry.coordinates[1] }));
+        if (hits.length) return hits.sort((a, b) => distanceMeters(subject.lat, subject.lon, a.lat, a.lon) - distanceMeters(subject.lat, subject.lon, b.lat, b.lon))[0];
     }
     if (city && norm(city) !== norm(subjectCity)) {
         const town = (await search(city, "municipality"))[0];
@@ -66,7 +71,7 @@ export async function listingDistances(
     const cache = new Map<string, Promise<Point | null>>();
     return Promise.all(items.map(async it => {
         const key = `${norm(it.district)}|${norm(it.city)}`;
-        if (!cache.has(key)) cache.set(key, locate(it.district, it.city, subjectCity));
+        if (!cache.has(key)) cache.set(key, locate(it.district, it.city, subjectCity, subject));
         const p = await cache.get(key)!;
         return p ? Math.round(distanceMeters(subject.lat, subject.lon, p.lat, p.lon) / 100) / 10 : null;
     }));
