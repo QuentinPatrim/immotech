@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
+import { fetchSharedEstimation } from "@/lib/sharedEstimation";
 import {
     Instagram, Linkedin, MessageCircle, Image as ImageIcon,
     Download, Copy, Check, Sparkles, Loader2, ArrowLeft,
@@ -57,7 +58,7 @@ export default function SocialHub() {
 
     const loadExistingData = async (id: string) => {
         setLoading(true);
-        const { data } = await supabase.from('estimations').select('data_json').eq('id', id).single();
+        const data = { data_json: await fetchSharedEstimation(id) };
         if (data && data.data_json) {
             const d = data.data_json;
             setAddress(d.propertyAddress || "");

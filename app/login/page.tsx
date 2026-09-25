@@ -18,6 +18,19 @@ export default function LoginPagePremiumFinal() {
   const [isSignUp, setIsSignUp] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
+  // Destination après connexion : ?next=/mes-biens (chemins internes uniquement)
+  const getNextPath = () => {
+    if (typeof window === "undefined") return "/dashboard";
+    const next = new URLSearchParams(window.location.search).get("next");
+    if (!next) return "/dashboard";
+    try {
+      const url = new URL(next, window.location.origin);
+      return url.origin === window.location.origin ? url.pathname + url.search + url.hash : "/dashboard";
+    } catch {
+      return "/dashboard";
+    }
+  };
+
   // Authentification classique (Email / Mot de passe)
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -32,11 +45,11 @@ export default function LoginPagePremiumFinal() {
           options: { data: { first_name: "Investisseur", net_worth: 0 } }
         });
         if (error) throw error;
-        router.push("/dashboard");
+        router.push(getNextPath());
       } else {
         const { data, error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
-        router.push("/dashboard");
+        router.push(getNextPath());
       }
     } catch (error: any) {
       setErrorMsg(error.message || "Une erreur est survenue.");
@@ -58,7 +71,7 @@ export default function LoginPagePremiumFinal() {
             prompt: 'consent',
           },
           // Redirige vers la page courante / callback par défaut
-          redirectTo: `${window.location.origin}/dashboard` 
+          redirectTo: `${window.location.origin}${getNextPath()}`
         }
       });
       if (error) throw error;

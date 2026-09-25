@@ -1,19 +1,20 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
     Home, MapPin, Image as ImageIcon, TrendingUp, CheckCircle, 
     Printer, ArrowRight, ArrowLeft, Plus, Trash2, UploadCloud, FileText,
     List, Edit, X, Leaf, ThumbsUp, ThumbsDown, BarChart3, Loader2, Euro, Building2, Banknote,
-    Sparkles, Shield, Star, Globe, Wand2
+    Sparkles, Shield, Star, Globe, Wand2, Search, Target, AlertCircle, Check
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { supabase } from "@/lib/supabaseClient";
 import { formatNumber as formatPrice } from "@/lib/formatters";
+import { DossierStatus, formatSurface, formatMonthYear, median, centralPrice, PATRIM_AGENTS } from "@/lib/dossier";
 
 // --- CHARTE GRAPHIQUE AGENCE PATRIM ---
 const COLORS = {
@@ -26,18 +27,21 @@ const COLORS = {
     gold: "#c9a84c",
 };
 
-// --- LISTE DES COLLABORATEURS ---
-const AGENTS = [
-    { id: "quentin", name: "Quentin Delsol", role: "Service Transaction", signatureUrl: "/signatures/signature-quentin.png" },
-    { id: "rebecca", name: "Rebecca Gau", role: "Service Transaction", signatureUrl: "/signatures/signature-rebecca.png" },
-    { id: "clement", name: "Clément Monti", role: "Service Transaction", signatureUrl: "/signatures/signature-clement.png" },
-    { id: "julien", name: "Julien Passerini", role: "Service Transaction", signatureUrl: "/signatures/signature-julien.png" },
-    { id: "sabri", name: "Sabri Abdesselem", role: "Service Transaction", signatureUrl: "/signatures/signature-sabri.png" },
-    { id: "catherine", name: "Catherine Leloup", role: "Service Transaction", signatureUrl: "/signatures/signature-catherine.png" },
-];
+// --- LISTE DES COLLABORATEURS --- (partagée avec /mes-biens, voir lib/dossier.ts)
+const AGENTS = PATRIM_AGENTS;
 
 // --- TYPES ---
-export interface Comparable { id: string; address: string; surface: number; price: number; photoUrl: string; }
+export interface Comparable {
+    id: string; address: string; surface: number; price: number; photoUrl: string;
+    soldDate?: string;      // date de vente (DVF ou saisie manuelle)
+    distance?: number;      // mètres depuis le bien (DVF)
+    rooms?: number;
+    source?: "dvf" | "manual";
+}
+export interface MarketStats {
+    count: number; median: number; p25: number; p75: number;
+    radius: number; years: number[]; fetchedAt: string;
+}
 export interface EstimationData {
     clientName: string; propertyAddress: string; clientAddress: string; propertyType: "Appartement" | "Maison" | "Autre";
     surface: number; rooms: number;
@@ -55,6 +59,13 @@ export interface EstimationData {
     lowPriceRented: number;
     highPriceRented: number;
     agentId: string;
+    // Suivi commercial (hub Mes biens)
+    status?: DossierStatus;
+    statusUpdatedAt?: string;
+    mandateType?: "simple" | "exclusif" | "";
+    followUpNote?: string;
+    // Référence marché DVF (dernière recherche)
+    marketStats?: MarketStats | null;
 }
 
 const ALL_AMENITIES = [
@@ -85,7 +96,31 @@ export const DEFAULT_DATA: EstimationData = {
     lowPriceRented: 0,
     highPriceRented: 0,
     agentId: "",
+    status: "en_cours",
+    statusUpdatedAt: "",
+    mandateType: "",
+    followUpNote: "",
+    marketStats: null,
 };
+
+const STEPS = [
+    { id: 1, label: "Le bien" },
+    { id: 2, label: "Photos" },
+    { id: 3, label: "Marché" },
+    { id: 4, label: "Valeur" },
+];
+
+interface DvfSaleResult {
+    id: string; date: string; price: number; surface: number; rooms: number; address: string;
+    city: string; distance: number; pricePerSqm: number; dependances: number; landSurface: number; photoUrl: string;
+}
+
+// Champs de suivi gérés depuis "Mes biens" : l'éditeur ne les écrase jamais
+// (on reprend la valeur en base au moment d'enregistrer).
+const HUB_KEYS = ["status", "statusUpdatedAt", "lastFollowUpAt", "mandateType", "followUpNote"] as const;
+
+// Prix au m² d'un comparable (0 si surface ou prix manquant, exclu des médianes)
+const sqmOf = (c: { price: number; surface: number }) => (c.price > 0 && c.surface > 0 ? c.price / c.surface : 0);
 
 const DPE_COLORS: Record<string, string> = { "A": "#00A06D", "B": "#52B153", "C": "#A5CC74", "D": "#F3E724", "E": "#F0B328", "F": "#EB8235", "G": "#D7221F" };
 
@@ -142,43 +177,169 @@ export default function EstimationEditor({
     const [newStrength, setNewStrength] = useState("");
     const [newWeakness, setNewWeakness] = useState("");
     const [newAmenity, setNewAmenity] = useState("");
-    const [savedFeedback, setSavedFeedback] = useState(false);
 
     // --- IMPORT WEB & AUTO-GÉNÉRATION ---
     const [listingUrl, setListingUrl] = useState("");
     const [isScraping, setIsScraping] = useState(false);
     const [isGeneratingComps, setIsGeneratingComps] = useState(false);
     const [dvfRadius, setDvfRadius] = useState<number>(500); // Rayon de recherche DVF en mètres
+    const [dvfTolerance, setDvfTolerance] = useState<number>(0.25);
+    const [dvfSameRooms, setDvfSameRooms] = useState<boolean>(true);
+    const [dvfResults, setDvfResults] = useState<{ sales: DvfSaleResult[]; stats: any; years: number[]; radius: number } | null>(null);
+    const [dvfSelected, setDvfSelected] = useState<Set<string>>(new Set());
+    const [dvfError, setDvfError] = useState("");
+    const [dvfInfo, setDvfInfo] = useState("");
+    const [dvfVisible, setDvfVisible] = useState(30);
 
-    const handleNext = () => setStep(s => s + 1);
-    const handleBack = () => setStep(s => s - 1);
+    const handleNext = () => setStep(s => Math.min(4, s + 1));
+    const handleBack = () => setStep(s => Math.max(1, s - 1));
 
-    // Helper pour retourner à /mes-biens
-    const goToMesBiens = () => router.push('/mes-biens');
+    // ─── SAUVEGARDE (manuelle + automatique) ───
+    // Les dossiers existants sont enregistrés automatiquement 1,5 s après chaque modification.
+    // Un nouveau dossier est créé dès qu'une adresse ou un nom de client est saisi.
+    type SaveState = "idle" | "dirty" | "saving" | "saved" | "error";
+    const [saveState, setSaveState] = useState<SaveState>(existingId ? "saved" : "idle");
+    const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+    const dataRef = useRef<EstimationData>(data);
+    useEffect(() => { dataRef.current = data; }, [data]);
+    const currentIdRef = useRef<string | null>(existingId);
+    const lastSavedJson = useRef<string>(JSON.stringify(initialData));
+    const savingRef = useRef(false);
+
+    const persist = useCallback(async (snapshot: EstimationData, opts?: { promote?: boolean }) => {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error("Session expirée — reconnectez-vous.");
+        const clean: EstimationData = {
+            ...snapshot,
+            clientName: (snapshot.clientName || "").trim(),
+            clientAddress: (snapshot.clientAddress || "").trim(),
+            propertyAddress: (snapshot.propertyAddress || "").trim(),
+        };
+        const id = currentIdRef.current;
+        if (id) {
+            const { data: current, error: readError } = await supabase.from('estimations').select('data_json').eq('id', id).maybeSingle();
+            if (readError) throw readError;
+            const dbJson: Record<string, unknown> = current?.data_json || {};
+            const merged: Record<string, unknown> = { ...clean };
+            for (const k of HUB_KEYS) if (k in dbJson) merged[k] = dbJson[k];
+            // Génération du PDF : un avis "en cours" passe à "remis"
+            if (opts?.promote && (!merged.status || merged.status === "en_cours")) {
+                merged.status = "remise";
+                merged.statusUpdatedAt = new Date().toISOString();
+            }
+            const { error } = await supabase.from('estimations').update({
+                user_id: user.id,
+                client_name: clean.clientName || "Dossier Sans Nom",
+                address: clean.propertyAddress || "Adresse non renseignée",
+                data_json: merged,
+            }).eq('id', id);
+            if (error) throw error;
+            return id;
+        }
+        if (opts?.promote) {
+            clean.status = "remise";
+            clean.statusUpdatedAt = new Date().toISOString();
+        }
+        const payload = {
+            user_id: user.id,
+            client_name: clean.clientName || "Dossier Sans Nom",
+            address: clean.propertyAddress || "Adresse non renseignée",
+            data_json: clean,
+        };
+        const { data: inserted, error } = await supabase.from('estimations').insert(payload).select('id').single();
+        if (error || !inserted) throw error || new Error("Création impossible");
+        currentIdRef.current = inserted.id;
+        setCurrentId(inserted.id);
+        // On remplace /estimation/new par l'URL définitive SANS recharger la page
+        // (un router.replace remonterait l'éditeur et ferait perdre l'étape en cours).
+        window.history.replaceState(null, "", `/estimation/${inserted.id}`);
+        return inserted.id as string;
+    }, []);
+
+    const saveNow = useCallback(async (opts?: { promote?: boolean }): Promise<boolean> => {
+        // Attend la fin d'un enregistrement en cours (évite les doublons à la création)
+        while (savingRef.current) await new Promise(r => setTimeout(r, 80));
+        const snapshot = dataRef.current;
+        const json = JSON.stringify(snapshot);
+        if (json === lastSavedJson.current && currentIdRef.current && !opts?.promote) {
+            setSaveState("saved");
+            return true;
+        }
+        savingRef.current = true;
+        setSaveState("saving");
+        try {
+            // Délai max : une requête bloquée ne doit pas figer l'éditeur
+            await Promise.race([
+                persist(snapshot, opts),
+                new Promise((_, reject) => setTimeout(() => reject(new Error("Délai dépassé")), 20000)),
+            ]);
+            lastSavedJson.current = json;
+            setLastSavedAt(new Date());
+            setSaveState(JSON.stringify(dataRef.current) === json ? "saved" : "dirty");
+            return true;
+        } catch (e) {
+            console.error("Erreur de sauvegarde :", e);
+            setSaveState("error");
+            return false;
+        } finally {
+            savingRef.current = false;
+        }
+    }, [persist]);
+
+    // Autosave (debounce 1,5 s)
+    useEffect(() => {
+        const json = JSON.stringify(data);
+        if (json === lastSavedJson.current) return;
+        setSaveState(prev => (prev === "saving" ? prev : "dirty"));
+        if (!currentIdRef.current && !data.propertyAddress.trim() && !data.clientName.trim()) return;
+        const t = setTimeout(() => { void saveNow(); }, 1500);
+        return () => clearTimeout(t);
+    }, [data, saveNow]);
+
+    // Enregistre ce qui est en attente si on quitte l'éditeur (retour navigateur…) ou si l'onglet passe en arrière-plan
+    useEffect(() => {
+        const hasPending = () =>
+            JSON.stringify(dataRef.current) !== lastSavedJson.current &&
+            !!(currentIdRef.current || dataRef.current.propertyAddress.trim() || dataRef.current.clientName.trim());
+        const onHidden = () => { if (document.visibilityState === "hidden" && hasPending()) void saveNow(); };
+        document.addEventListener("visibilitychange", onHidden);
+        return () => {
+            document.removeEventListener("visibilitychange", onHidden);
+            if (hasPending()) void saveNow();
+        };
+    }, [saveNow]);
+
+    // Alerte si on ferme l'onglet avec des modifications non enregistrées
+    useEffect(() => {
+        const onBeforeUnload = (e: BeforeUnloadEvent) => {
+            if (JSON.stringify(dataRef.current) !== lastSavedJson.current) {
+                e.preventDefault();
+                e.returnValue = "";
+            }
+        };
+        window.addEventListener("beforeunload", onBeforeUnload);
+        return () => window.removeEventListener("beforeunload", onBeforeUnload);
+    }, []);
+
+    // Retour à /mes-biens (on enregistre d'abord ce qui ne l'est pas)
+    const goToMesBiens = async () => {
+        if (JSON.stringify(dataRef.current) !== lastSavedJson.current && (currentIdRef.current || dataRef.current.propertyAddress.trim() || dataRef.current.clientName.trim())) {
+            const ok = await saveNow();
+            if (!ok && !confirm("L'enregistrement a échoué. Quitter quand même et perdre les dernières modifications ?")) return;
+        }
+        router.push('/mes-biens');
+    };
 
     const handleSave = async (isDraft = false) => {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
-        const payload = { user_id: user.id, client_name: data.clientName || "Dossier Sans Nom", address: data.propertyAddress || "Adresse non renseignée", data_json: data };
-        let savedId = currentId;
-        if (currentId) {
-            await supabase.from('estimations').update(payload).eq('id', currentId);
-        } else {
-            const { data: inserted } = await supabase.from('estimations').insert(payload).select('id').single();
-            if (inserted) {
-                setCurrentId(inserted.id);
-                savedId = inserted.id;
-                // Si on vient de /estimation/new, on met à jour l'URL en remplacement pour
-                // que le bouton "retour" du navigateur ne ramène pas sur /new orphelin
-                router.replace(`/estimation/${inserted.id}`);
-            }
+        if (isDraft) {
+            await saveNow();
+            return;
         }
-        if (!isDraft) {
-            setView("PRINT");
-        } else {
-            setSavedFeedback(true);
-            setTimeout(() => setSavedFeedback(false), 2000);
-        }
+        // Génération du PDF : l'avis de valeur passe au statut "remis" s'il était en cours
+        const ok = await saveNow({ promote: true });
+        if (!ok && !confirm("L'enregistrement a échoué. Afficher quand même le PDF ?")) return;
+        setView("PRINT");
+        window.scrollTo(0, 0);
     };
 
     // Note : deleteEstimation, openEstimation et createNew ont été retirés.
@@ -224,33 +385,86 @@ export default function EstimationEditor({
         setIsScraping(false);
     };
 
-    // ─── AUTO-GÉNÉRATION COMPARABLES DVF ───
+    // ─── RECHERCHE DE VENTES RÉELLES (DVF data.gouv) ───
     const handleAutoGenerateDVF = async () => {
         if (!data.propertyAddress || !data.surface) {
-            return alert("Veuillez renseigner l'adresse du bien et sa surface (Étape 1) avant de générer.");
+            setDvfError("Renseignez l'adresse du bien et sa surface (étape 1) avant de lancer la recherche.");
+            return;
         }
         setIsGeneratingComps(true);
+        setDvfError("");
         try {
+            const { data: { session } } = await supabase.auth.getSession();
             const response = await fetch('/api/comparables', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                // On passe le rayon sélectionné à l'API
-                body: JSON.stringify({ address: data.propertyAddress, surface: data.surface, propertyType: data.propertyType, radius: dvfRadius })
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+                },
+                body: JSON.stringify({
+                    address: data.propertyAddress,
+                    surface: data.surface,
+                    propertyType: data.propertyType,
+                    radius: dvfRadius,
+                    surfaceTolerance: dvfTolerance,
+                    rooms: dvfSameRooms ? data.rooms : 0,
+                    knownSales: data.soldComparables
+                        .filter(c => c.source !== "dvf" && c.price > 0)
+                        .map(c => ({ id: c.id, price: c.price, surface: c.surface })),
+                }),
             });
             const result = await response.json();
-            
             if (result.success) {
+                const already = new Set(data.soldComparables.map(c => c.id));
+                // Ventes déjà saisies à la main : l'API retrouve leur date dans DVF
+                const matches: Record<string, { dvfId: string; date: string; distance: number }> = result.matches || {};
+                const fillDate = (c: Comparable): Comparable => {
+                    const m = matches[c.id];
+                    return !m || c.soldDate ? c : { ...c, soldDate: m.date, distance: c.distance ?? m.distance };
+                };
+                const datesFilled = data.soldComparables.filter(c => matches[c.id] && !c.soldDate).length;
+                const sales: DvfSaleResult[] = result.sales.filter((s: DvfSaleResult) => !already.has(`dvf-${s.id}`));
+                setDvfResults({ sales, stats: result.stats, years: result.years, radius: result.radius });
+                setDvfVisible(30);
+                setDvfInfo(datesFilled > 0 ? `Date de vente retrouvée dans DVF pour ${datesFilled} comparable${datesFilled > 1 ? "s" : ""} déjà saisi${datesFilled > 1 ? "s" : ""}.` : "");
+                // Pré-sélection : les 3 ventes les plus pertinentes (déjà triées par l'API)
+                setDvfSelected(new Set(sales.slice(0, 3).map(s => s.id)));
                 setData(prev => ({
                     ...prev,
-                    soldComparables: [...prev.soldComparables, ...result.comparables]
+                    soldComparables: datesFilled > 0 ? prev.soldComparables.map(fillDate) : prev.soldComparables,
+                    marketStats: result.stats ? {
+                        count: result.stats.count, median: result.stats.median,
+                        p25: result.stats.p25, p75: result.stats.p75,
+                        radius: result.radius, years: result.years, fetchedAt: new Date().toISOString(),
+                    } : prev.marketStats,
                 }));
             } else {
-                alert(result.error); // Affiche "Aucun bien trouvé, élargissez le rayon"
+                setDvfResults(null);
+                setDvfError(result.error || "Aucune vente trouvée.");
             }
         } catch (error) {
-            alert("Erreur de connexion au serveur DVF.");
+            setDvfError("Erreur de connexion au serveur DVF. Réessayez dans un instant.");
         }
         setIsGeneratingComps(false);
+    };
+
+    const addSelectedDvf = () => {
+        if (!dvfResults) return;
+        const picked = dvfResults.sales.filter(s => dvfSelected.has(s.id));
+        const comps: Comparable[] = picked.map(s => ({
+            id: `dvf-${s.id}`,
+            address: s.city ? `${s.address}, ${s.city}` : s.address,
+            surface: s.surface,
+            price: s.price,
+            photoUrl: s.photoUrl || "",
+            soldDate: s.date,
+            distance: s.distance,
+            rooms: s.rooms,
+            source: "dvf",
+        }));
+        setData(prev => ({ ...prev, soldComparables: [...prev.soldComparables, ...comps] }));
+        setDvfResults(null);
+        setDvfSelected(new Set());
     };
 
     // ─── Upload vers Supabase Storage ───
@@ -352,18 +566,35 @@ export default function EstimationEditor({
                 {/* Nav Bar */}
                 <div className="fixed top-4 left-1/2 -translate-x-1/2 w-[95%] max-w-4xl z-50 flex justify-between items-center px-6 py-3 rounded-full border shadow-2xl dash-font"
                     style={{ backgroundColor: 'rgba(17,17,20,0.85)', backdropFilter: 'blur(24px)', borderColor: COLORS.darkBorder }}>
-                    <Button variant="ghost" onClick={goToMesBiens} className="text-zinc-400 hover:text-white rounded-full gap-2 text-sm">
-                        <ArrowLeft size={16}/> Mes biens
+                    <Button variant="ghost" onClick={goToMesBiens} className="text-zinc-400 hover:text-white rounded-full gap-2 text-sm px-2 sm:px-4">
+                        <ArrowLeft size={16}/> <span className="hidden sm:inline">Mes biens</span>
                     </Button>
-                    <div className="flex gap-1.5">
-                        {[1,2,3,4].map(i => (
-                            <div key={i} className="h-1.5 w-8 rounded-full transition-all duration-500"
-                                style={{ backgroundColor: step >= i ? COLORS.secondary : 'rgba(255,255,255,0.12)', width: step === i ? '32px' : '16px' }}/>
+                    {/* Étapes cliquables */}
+                    <div className="flex items-center gap-1">
+                        {STEPS.map(st => (
+                            <button key={st.id} type="button" onClick={() => setStep(st.id)}
+                                className={`flex items-center gap-1.5 h-8 rounded-full px-2.5 text-xs font-semibold transition-all ${step === st.id ? 'bg-white/10 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}>
+                                <span className="w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold"
+                                    style={{ backgroundColor: step >= st.id ? COLORS.secondary : 'rgba(255,255,255,0.12)', color: 'white' }}>
+                                    {step > st.id ? <Check size={9} strokeWidth={3}/> : st.id}
+                                </span>
+                                <span className="hidden md:inline">{st.label}</span>
+                            </button>
                         ))}
                     </div>
-                    <Button onClick={() => handleSave(true)} disabled={isUploading} className={`rounded-full h-9 px-5 text-sm font-semibold transition-all ${savedFeedback ? 'bg-emerald-500 text-white' : isUploading ? 'bg-zinc-600 text-zinc-400 cursor-not-allowed' : 'bg-white text-black hover:bg-zinc-200'}`}>
-                        {isUploading ? <><Loader2 size={14} className="animate-spin mr-1.5"/>Upload…</> : savedFeedback ? '✓ Sauvegardé !' : 'Sauvegarder'}
-                    </Button>
+                    <div className="flex items-center gap-3">
+                        <span className="hidden lg:inline text-[11px] text-zinc-500 whitespace-nowrap">
+                            {isUploading ? "Upload des photos…"
+                                : saveState === "saving" ? "Enregistrement…"
+                                : saveState === "error" ? <span className="text-rose-400 inline-flex items-center gap-1"><AlertCircle size={12}/> Non enregistré</span>
+                                : saveState === "dirty" ? "Modifications en attente"
+                                : saveState === "saved" && lastSavedAt ? `Enregistré à ${lastSavedAt.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`
+                                : saveState === "saved" ? "Enregistré" : ""}
+                        </span>
+                        <Button onClick={() => handleSave(true)} disabled={isUploading || saveState === "saving"} className={`rounded-full h-9 px-5 text-sm font-semibold transition-all ${saveState === "saved" ? 'bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25' : saveState === "error" ? 'bg-rose-500 text-white hover:bg-rose-600' : isUploading ? 'bg-zinc-600 text-zinc-400 cursor-not-allowed' : 'bg-white text-black hover:bg-zinc-200'}`}>
+                            {isUploading || saveState === "saving" ? <><Loader2 size={14} className="animate-spin mr-1.5"/>{isUploading ? 'Upload…' : 'Enregistrement'}</> : saveState === "saved" ? <><Check size={14} className="mr-1.5"/>Enregistré</> : saveState === "error" ? 'Réessayer' : 'Enregistrer'}
+                        </Button>
+                    </div>
                 </div>
 
                 <div className="max-w-4xl mx-auto pt-24 px-4 dash-font">
@@ -395,13 +626,13 @@ export default function EstimationEditor({
                                             <label className="text-xs font-semibold text-zinc-500 uppercase tracking-widest">Adresse du bien estimé</label>
                                             <Input value={data.propertyAddress} onChange={e => setData({...data, propertyAddress: e.target.value})} className={inputClass} placeholder="Ex: 37, boulevard Jean Bruhne, 31000 Toulouse"/>
                                         </div>
-                                        <div className="space-y-2">
+                                        <div className="space-y-2 col-span-2 md:col-span-1">
                                             <label className="text-xs font-semibold text-zinc-500 uppercase tracking-widest">Type de bien</label>
                                             <select value={data.propertyType} onChange={e => setData({...data, propertyType: e.target.value as any})} className={selectClass}>
                                                 <option>Appartement</option><option>Maison</option><option>Autre</option>
                                             </select>
                                         </div>
-                                        <div className="grid grid-cols-2 gap-4">
+                                        <div className="grid grid-cols-2 gap-4 col-span-2 md:col-span-1">
                                             <div className="space-y-2">
                                                 <label className="text-xs font-semibold text-zinc-500 uppercase tracking-widest">Surface (m²)</label>
                                                 <Input type="number" value={data.surface||""} onChange={e => setData({...data, surface: Number(e.target.value)})} className={inputClass} placeholder="0"/>
@@ -411,7 +642,7 @@ export default function EstimationEditor({
                                                 <Input type="number" value={data.rooms||""} onChange={e => setData({...data, rooms: Number(e.target.value)})} className={inputClass} placeholder="0"/>
                                             </div>
                                         </div>
-                                        <div className="grid grid-cols-3 gap-4">
+                                        <div className="grid grid-cols-3 gap-4 col-span-2 md:col-span-1">
                                             <div className="space-y-2">
                                                 <label className="text-xs font-semibold text-zinc-500 uppercase tracking-widest">Étage</label>
                                                 <Input value={data.floor||""} onChange={e => setData({...data, floor: e.target.value})} className={inputClass} placeholder="Ex: 3, RDC…"/>
@@ -658,7 +889,7 @@ export default function EstimationEditor({
 
                             {/* ÉTAPE 3 */}
                             {step === 3 && (
-                                <motion.div key="step3" initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -24 }} transition={{ duration: 0.25 }} className="space-y-8 h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
+                                <motion.div key="step3" initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -24 }} transition={{ duration: 0.25 }} className="space-y-8">
                                     <div className="flex items-center gap-3 mb-4">
                                         <div className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0" style={{ background: `linear-gradient(135deg, ${COLORS.primary}, ${COLORS.secondary})` }}>
                                             <TrendingUp size={18} className="text-white"/>
@@ -668,33 +899,104 @@ export default function EstimationEditor({
                                             <h2 className="text-2xl font-bold text-white display-font">Analyse du Marché</h2>
                                         </div>
                                     </div>
-                                    {(['sold', 'forSale'] as const).map(type => (
+
+                                    {/* ── RECHERCHE DVF (ventes réelles) ── */}
+                                    <div className="rounded-2xl border p-5 space-y-4" style={{ backgroundColor: 'rgba(16,185,129,0.04)', borderColor: 'rgba(16,185,129,0.18)' }}>
+                                        <div className="flex items-start justify-between gap-4 flex-wrap">
+                                            <div className="flex-1 min-w-[260px]">
+                                                <h3 className="text-sm font-bold text-emerald-300 flex items-center gap-2"><Search size={15}/> Ventes réelles DVF</h3>
+                                                <p className="text-xs text-zinc-500 mt-1">Actes notariés publiés par l&apos;État (data.gouv) — {data.propertyType === "Maison" ? "maisons" : "appartements"} de {data.surface ? formatSurface(data.surface) : "…"} m² ± {Math.round(dvfTolerance * 100)} % autour de l&apos;adresse du bien.</p>
+                                            </div>
+                                            {data.marketStats && (
+                                                <div className="text-right">
+                                                    <p className="text-[10px] uppercase tracking-widest text-zinc-500 font-semibold">Médiane secteur</p>
+                                                    <p className="text-lg font-black text-white">{formatPrice(data.marketStats.median)} <span className="text-xs text-zinc-400 font-semibold">€/m²</span></p>
+                                                    <p className="text-[10px] text-zinc-500">{data.marketStats.count} ventes · {data.marketStats.radius >= 1000 ? `${data.marketStats.radius / 1000} km` : `${data.marketStats.radius} m`} · {data.marketStats.years[0]}–{data.marketStats.years[data.marketStats.years.length - 1]}</p>
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            <select value={dvfRadius} onChange={e => setDvfRadius(Number(e.target.value))}
+                                                className="bg-black/50 border border-white/10 text-xs text-white outline-none px-3 h-9 rounded-xl cursor-pointer">
+                                                {[100, 250, 500, 1000, 2000].map(r => <option key={r} value={r} className="bg-zinc-800">Rayon {r >= 1000 ? `${r / 1000} km` : `${r} m`}</option>)}
+                                            </select>
+                                            <select value={dvfTolerance} onChange={e => setDvfTolerance(Number(e.target.value))}
+                                                className="bg-black/50 border border-white/10 text-xs text-white outline-none px-3 h-9 rounded-xl cursor-pointer">
+                                                {[0.1, 0.15, 0.25, 0.35].map(t => <option key={t} value={t} className="bg-zinc-800">Surface ± {Math.round(t * 100)} %</option>)}
+                                            </select>
+                                            {data.rooms > 0 && (
+                                                <label className="flex items-center gap-2 bg-black/50 border border-white/10 px-3 h-9 rounded-xl text-xs text-zinc-300 cursor-pointer">
+                                                    <input type="checkbox" checked={dvfSameRooms} onChange={e => setDvfSameRooms(e.target.checked)} className="accent-emerald-500"/>
+                                                    {data.rooms} pièces ± 1
+                                                </label>
+                                            )}
+                                            <Button onClick={handleAutoGenerateDVF} disabled={isGeneratingComps} size="sm" className="bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 rounded-xl h-9 px-4 text-xs font-bold">
+                                                {isGeneratingComps ? <Loader2 size={13} className="animate-spin mr-1.5"/> : <Wand2 size={13} className="mr-1.5"/>}
+                                                {isGeneratingComps ? "Recherche (≈ 5 s)…" : "Rechercher les ventes"}
+                                            </Button>
+                                        </div>
+                                        {dvfError && <p className="text-xs text-amber-300 flex items-center gap-1.5"><AlertCircle size={13}/> {dvfError}</p>}
+                                        {dvfInfo && <p className="text-xs text-emerald-300 flex items-center gap-1.5"><Check size={13}/> {dvfInfo}</p>}
+
+                                        {dvfResults && (
+                                            <div className="space-y-3">
+                                                <div className="flex items-center justify-between text-xs text-zinc-400 flex-wrap gap-2">
+                                                    <span>
+                                                        <b className="text-white">{dvfResults.stats?.count ?? dvfResults.sales.length}</b> ventes comparables ({dvfResults.years[0]}–{dvfResults.years[dvfResults.years.length - 1]})
+                                                        {dvfResults.stats && <> · médiane <b className="text-white">{formatPrice(dvfResults.stats.median)} €/m²</b> · 50 % entre {formatPrice(dvfResults.stats.p25)} et {formatPrice(dvfResults.stats.p75)} €/m²</>}
+                                                    </span>
+                                                    <button onClick={() => { setDvfResults(null); setDvfSelected(new Set()); }} className="text-zinc-500 hover:text-white">Fermer</button>
+                                                </div>
+                                                <div className="max-h-[340px] overflow-y-auto custom-scrollbar rounded-xl border border-white/5 divide-y divide-white/5">
+                                                    {dvfResults.sales.slice(0, dvfVisible).map(sale => {
+                                                        const checked = dvfSelected.has(sale.id);
+                                                        return (
+                                                            <label key={sale.id} className={`flex items-center gap-3 px-3 py-2.5 cursor-pointer transition-colors ${checked ? 'bg-emerald-500/10' : 'hover:bg-white/[0.03]'}`}>
+                                                                <input type="checkbox" checked={checked} className="accent-emerald-500 shrink-0"
+                                                                    onChange={() => setDvfSelected(prev => { const n = new Set(prev); if (n.has(sale.id)) n.delete(sale.id); else n.add(sale.id); return n; })}/>
+                                                                <div className="flex-1 min-w-0">
+                                                                    <p className="text-sm text-white truncate">{sale.address}</p>
+                                                                    <p className="text-[11px] text-zinc-500">
+                                                                        {new Date(sale.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })} · {formatSurface(sale.surface)} m² · {sale.rooms} p. · à {sale.distance} m
+                                                                        {sale.dependances > 0 && ` · +${sale.dependances} dépendance${sale.dependances > 1 ? 's' : ''}`}
+                                                                        {sale.landSurface > 0 && ` · terrain ${formatPrice(sale.landSurface)} m²`}
+                                                                    </p>
+                                                                </div>
+                                                                <div className="text-right shrink-0">
+                                                                    <p className="text-sm font-bold text-white">{formatPrice(sale.price)} €</p>
+                                                                    <p className="text-[11px] text-emerald-300 font-semibold">{formatPrice(sale.pricePerSqm)} €/m²</p>
+                                                                </div>
+                                                            </label>
+                                                        );
+                                                    })}
+                                                </div>
+                                                <div className="flex items-center justify-between gap-3">
+                                                    <span className="text-[11px] text-zinc-500">
+                                                        Triées par pertinence (récence, surface, distance)
+                                                        {dvfResults.sales.length > dvfVisible && (
+                                                            <> · <button onClick={() => setDvfVisible(v => v + 30)} className="text-zinc-300 underline underline-offset-2 hover:text-white">afficher {Math.min(30, dvfResults.sales.length - dvfVisible)} de plus</button></>
+                                                        )}
+                                                    </span>
+                                                    <Button onClick={addSelectedDvf} disabled={dvfSelected.size === 0} className="rounded-xl h-9 px-4 text-xs font-bold bg-white text-black hover:bg-zinc-200">
+                                                        <Plus size={14} className="mr-1"/> Ajouter {dvfSelected.size} vente{dvfSelected.size > 1 ? 's' : ''} aux comparables
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {(['sold', 'forSale'] as const).map(type => {
+                                        const list = type === 'sold' ? data.soldComparables : data.forSaleComparables;
+                                        const med = median(list.map(sqmOf));
+                                        return (
                                         <div key={type}>
                                             <div className="flex justify-between items-center mb-4">
-                                                <div className="flex items-center gap-3">
+                                                <div className="flex items-baseline gap-3">
                                                     <h3 className="text-base font-bold text-zinc-200">{type === 'sold' ? '🟢 Biens Vendus' : '🟡 En Vente actuellement'}</h3>
-                                                    {/* NOUVEAU BOUTON MAGIQUE */}
-                                                    {type === 'sold' && (
-                                                        <div className="flex items-center gap-2 bg-white/5 rounded-xl p-1 border border-white/10">
-                                                            <select 
-                                                                value={dvfRadius} 
-                                                                onChange={e => setDvfRadius(Number(e.target.value))}
-                                                                className="bg-transparent text-xs text-white outline-none pl-2 pr-1 h-7 cursor-pointer"
-                                                            >
-                                                                <option value={100} className="bg-zinc-800 text-white">100m</option>
-                                                                <option value={250} className="bg-zinc-800 text-white">250m</option>
-                                                                <option value={500} className="bg-zinc-800 text-white">500m</option>
-                                                                <option value={1000} className="bg-zinc-800 text-white">1 km</option>
-                                                                <option value={2000} className="bg-zinc-800 text-white">2 km</option>
-                                                            </select>
-                                                            <Button onClick={handleAutoGenerateDVF} disabled={isGeneratingComps} size="sm" className="bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 rounded-lg h-7 px-3 text-xs font-bold transition-all">
-                                                                {isGeneratingComps ? <Loader2 size={12} className="animate-spin mr-1.5" /> : <Wand2 size={12} className="mr-1.5" />} Auto-Générer
-                                                            </Button>
-                                                        </div>
-                                                    )}
+                                                    {list.length > 0 && med > 0 && <span className="text-xs text-zinc-500">médiane {formatPrice(Math.round(med))} €/m²</span>}
                                                 </div>
                                                 <Button onClick={() => {
-                                                    const newComp: Comparable = { id: Date.now().toString(), address: "", surface: 0, price: 0, photoUrl: "" };
+                                                    const newComp: Comparable = { id: Date.now().toString(), address: "", surface: 0, price: 0, photoUrl: "", source: "manual" };
                                                     setData(prev => type === 'sold'
                                                         ? { ...prev, soldComparables: [...prev.soldComparables, newComp] }
                                                         : { ...prev, forSaleComparables: [...prev.forSaleComparables, newComp] });
@@ -703,24 +1005,37 @@ export default function EstimationEditor({
                                                 </Button>
                                             </div>
                                             <div className="space-y-3">
-                                                {(type === 'sold' ? data.soldComparables : data.forSaleComparables).map(comp => {
+                                                {list.map(comp => {
                                                     const isUploadingPhoto = !!uploadingPhotos[`comp-${comp.id}`];
+                                                    const sqm = comp.price > 0 && comp.surface > 0 ? Math.round(comp.price / comp.surface) : 0;
                                                     return (
-                                                    <div key={comp.id} className="flex gap-3 p-4 rounded-2xl border items-center relative pr-12" style={{ backgroundColor: 'rgba(0,0,0,0.35)', borderColor: COLORS.darkBorder }}>
+                                                    <div key={comp.id} className="flex flex-wrap md:flex-nowrap gap-3 p-4 rounded-2xl border items-center relative pr-12" style={{ backgroundColor: 'rgba(0,0,0,0.35)', borderColor: COLORS.darkBorder }}>
                                                         <div className="w-14 h-14 shrink-0 relative border border-dashed rounded-xl flex items-center justify-center overflow-hidden" style={{ borderColor: isUploadingPhoto ? COLORS.secondary : 'rgba(255,255,255,0.15)' }}>
                                                             {isUploadingPhoto
                                                                 ? <Loader2 className="animate-spin text-zinc-500" size={18}/>
                                                                 : comp.photoUrl
                                                                     ? <img src={comp.photoUrl} className="w-full h-full object-cover"/>
                                                                     : <span className="text-[9px] text-zinc-600 text-center">Photo</span>}
-                                                            <input type="file" onChange={(e) => handleComparableImageUpload(e, type, comp.id)} className="absolute inset-0 opacity-0 cursor-pointer" disabled={isUploadingPhoto}/>
+                                                            <input type="file" accept="image/*" onChange={(e) => handleComparableImageUpload(e, type, comp.id)} className="absolute inset-0 opacity-0 cursor-pointer" disabled={isUploadingPhoto}/>
                                                         </div>
-                                                        <Input placeholder="Adresse du bien" value={comp.address} onChange={e => updateComparable(type, comp.id, 'address', e.target.value)} className="flex-1 bg-transparent border-white/8 rounded-xl"/>
+                                                        <div className="flex-1 min-w-[180px]">
+                                                            <Input placeholder="Adresse du bien" value={comp.address} onChange={e => updateComparable(type, comp.id, 'address', e.target.value)} className="bg-transparent border-white/8 rounded-xl"/>
+                                                            {(comp.source === "dvf" || sqm > 0) && (
+                                                                <p className="text-[10px] text-zinc-500 mt-1 pl-1">
+                                                                    {comp.source === "dvf" && <span className="text-emerald-400 font-semibold">DVF</span>}
+                                                                    {comp.source === "dvf" && comp.distance !== undefined && ` · à ${comp.distance} m`}
+                                                                    {sqm > 0 && `${comp.source === "dvf" ? " · " : ""}${formatPrice(sqm)} €/m²`}
+                                                                </p>
+                                                            )}
+                                                        </div>
+                                                        {type === 'sold' && (
+                                                            <Input type="date" title="Date de vente" value={comp.soldDate || ""} onChange={e => updateComparable(type, comp.id, 'soldDate', e.target.value)} className="w-36 bg-transparent border-white/8 rounded-xl text-xs text-zinc-300 [color-scheme:dark]"/>
+                                                        )}
                                                         <Input type="number" placeholder="m²" value={comp.surface||""} onChange={e => updateComparable(type, comp.id, 'surface', Number(e.target.value))} className="w-20 bg-transparent border-white/8 rounded-xl text-center"/>
                                                         <Input type="number" placeholder="Prix €" value={comp.price||""} onChange={e => updateComparable(type, comp.id, 'price', Number(e.target.value))} className="w-32 bg-transparent border-white/8 rounded-xl font-bold" style={{ color: COLORS.secondary }}/>
                                                         <button onClick={() => setData(prev => {
-                                                            const list = type === 'sold' ? prev.soldComparables : prev.forSaleComparables;
-                                                            const updated = list.filter(c => c.id !== comp.id);
+                                                            const l = type === 'sold' ? prev.soldComparables : prev.forSaleComparables;
+                                                            const updated = l.filter(c => c.id !== comp.id);
                                                             return type === 'sold' ? { ...prev, soldComparables: updated } : { ...prev, forSaleComparables: updated };
                                                         })} className="absolute right-4 text-zinc-600 hover:text-red-400 transition-colors">
                                                             <Trash2 size={15}/>
@@ -728,20 +1043,21 @@ export default function EstimationEditor({
                                                     </div>
                                                     );
                                                 })}
-                                                {type === 'sold' && data.soldComparables.length === 0 && (
+                                                {list.length === 0 && (
                                                     <div className="text-center py-6 text-sm text-zinc-500 italic border border-dashed border-white/10 rounded-2xl">
-                                                        Cliquez sur Auto-Générer ou ajoutez manuellement.
+                                                        {type === 'sold' ? "Lancez une recherche DVF ci-dessus ou ajoutez une vente manuellement." : "Ajoutez les biens concurrents actuellement en vente (prix affichés)."}
                                                     </div>
                                                 )}
                                             </div>
                                         </div>
-                                    ))}
+                                        );
+                                    })}
                                 </motion.div>
                             )}
 
                             {/* ÉTAPE 4 */}
                             {step === 4 && (
-                                <motion.div key="step4" initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -24 }} transition={{ duration: 0.25 }} className="space-y-6 h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
+                                <motion.div key="step4" initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -24 }} transition={{ duration: 0.25 }} className="space-y-6">
                                     <div className="flex items-center gap-3 mb-8">
                                         <div className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0" style={{ background: `linear-gradient(135deg, ${COLORS.primary}, ${COLORS.secondary})` }}>
                                             <CheckCircle size={18} className="text-white"/>
@@ -778,16 +1094,67 @@ export default function EstimationEditor({
                                         ))}
                                     </div>
 
+                                    {/* ── AIDE AU PRIX : références marché ── */}
+                                    {(() => {
+                                        const S = Number(data.surface) || 0;
+                                        const soldMed = median(data.soldComparables.map(sqmOf));
+                                        const saleMed = median(data.forSaleComparables.map(sqmOf));
+                                        const ms = data.marketStats;
+                                        if (!S || (!soldMed && !saleMed && !ms)) return null;
+                                        const ref = soldMed || ms?.median || saleMed;
+                                        const round1k = (v: number) => Math.round(v / 1000) * 1000;
+                                        const suggestion = { low: round1k(ref * S * 0.97), high: round1k(ref * S * 1.03) };
+                                        const central = centralPrice(data.lowPrice, data.highPrice);
+                                        const gap = central && ref ? Math.round(((central / S - ref) / ref) * 100) : null;
+                                        const refRows: { label: string; sqm: number; value: string }[] = [];
+                                        if (soldMed) refRows.push({ label: `Ventes retenues (${data.soldComparables.length})`, sqm: soldMed, value: `${formatPrice(round1k(soldMed * S))} €` });
+                                        if (ms) refRows.push({ label: `Marché DVF · ${ms.count} ventes à ${ms.radius >= 1000 ? `${ms.radius / 1000} km` : `${ms.radius} m`}`, sqm: ms.median, value: `${formatPrice(round1k(ms.p25 * S))} – ${formatPrice(round1k(ms.p75 * S))} €` });
+                                        if (saleMed) refRows.push({ label: `En vente (${data.forSaleComparables.length}) · prix affichés`, sqm: saleMed, value: `${formatPrice(round1k(saleMed * S))} €` });
+                                        return (
+                                            <div className="p-5 rounded-2xl border space-y-3" style={{ backgroundColor: 'rgba(0,0,0,0.3)', borderColor: COLORS.darkBorder }}>
+                                                <div className="flex items-center justify-between gap-3 flex-wrap">
+                                                    <h3 className="text-sm font-bold uppercase tracking-widest flex items-center gap-2 text-zinc-300"><Target size={15}/> Références pour {formatSurface(S)} m²</h3>
+                                                    <Button type="button" onClick={() => setData(prev => ({ ...prev, lowPrice: suggestion.low, highPrice: suggestion.high }))}
+                                                        variant="outline" size="sm" className="border-white/10 hover:bg-white/5 text-white rounded-xl h-8 text-xs">
+                                                        <Wand2 size={13} className="mr-1.5"/> Proposer {formatPrice(suggestion.low)} – {formatPrice(suggestion.high)} €
+                                                    </Button>
+                                                </div>
+                                                <div className="divide-y divide-white/5">
+                                                    {refRows.map(r => (
+                                                        <div key={r.label} className="flex items-center justify-between py-2 text-sm">
+                                                            <span className="text-zinc-400">{r.label}</span>
+                                                            <span className="flex items-baseline gap-4">
+                                                                <span className="text-zinc-500 text-xs">{formatPrice(Math.round(r.sqm))} €/m²</span>
+                                                                <span className="font-bold text-white w-44 text-right">{r.value}</span>
+                                                            </span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                                {gap !== null && (
+                                                    <p className="text-xs text-zinc-500">
+                                                        Votre prix central : <b className="text-white">{formatPrice(central)} €</b> soit {formatPrice(Math.round(central / S))} €/m²
+                                                        <span className={`ml-1 font-semibold ${Math.abs(gap) <= 5 ? 'text-emerald-400' : Math.abs(gap) <= 12 ? 'text-amber-300' : 'text-rose-400'}`}>
+                                                            ({gap > 0 ? '+' : ''}{gap} % vs {soldMed ? 'ventes retenues' : ms ? 'médiane DVF' : 'biens en vente'})
+                                                        </span>
+                                                    </p>
+                                                )}
+                                            </div>
+                                        );
+                                    })()}
+
                                     <div className="p-6 rounded-2xl border" style={{ background: `linear-gradient(135deg, ${COLORS.primary}18, ${COLORS.secondary}10)`, borderColor: `${COLORS.primary}35` }}>
                                         <h3 className="text-sm font-bold uppercase tracking-widest mb-4" style={{ color: COLORS.secondary }}>Valeur {data.isRented ? "Libre de toute occupation" : "Vénale Estimée"}</h3>
                                         <div className="grid grid-cols-2 gap-5">
                                             <div className="space-y-2">
                                                 <label className="text-xs font-semibold uppercase tracking-widest" style={{ color: COLORS.secondary }}>Fourchette Basse (€)</label>
                                                 <Input type="number" value={data.lowPrice||""} onChange={e => setData({...data, lowPrice: Number(e.target.value)})} className="bg-black/50 border-white/8 h-16 rounded-2xl text-2xl font-black text-white"/>
+                                                {data.lowPrice > 0 && <p className="text-[11px] text-zinc-500 pl-1">{formatPrice(data.lowPrice)} €{data.surface > 0 && ` · ${formatPrice(Math.round(data.lowPrice / data.surface))} €/m²`}</p>}
                                             </div>
                                             <div className="space-y-2">
                                                 <label className="text-xs font-semibold uppercase tracking-widest" style={{ color: COLORS.secondary }}>Fourchette Haute (€)</label>
                                                 <Input type="number" value={data.highPrice||""} onChange={e => setData({...data, highPrice: Number(e.target.value)})} className="bg-black/50 border-white/8 h-16 rounded-2xl text-2xl font-black text-white"/>
+                                                {data.highPrice > 0 && <p className="text-[11px] text-zinc-500 pl-1">{formatPrice(data.highPrice)} €{data.surface > 0 && ` · ${formatPrice(Math.round(data.highPrice / data.surface))} €/m²`}</p>}
+                                                {data.lowPrice > 0 && data.highPrice > 0 && data.highPrice < data.lowPrice && <p className="text-[11px] text-rose-400 pl-1">La fourchette haute est inférieure à la basse.</p>}
                                             </div>
                                         </div>
 
@@ -823,7 +1190,7 @@ export default function EstimationEditor({
 
                                     <div className="space-y-2">
                                         <label className="text-xs font-semibold text-zinc-500 uppercase tracking-widest">Analyse Personnalisée</label>
-                                        <textarea value={data.agentAnalysis} onChange={e => setData({...data, agentAnalysis: e.target.value})} className="w-full bg-black/50 border border-white/8 rounded-2xl p-4 text-white min-h-[140px] outline-none focus:border-[#d35f52] transition-colors resize-none" placeholder="Rédigez votre conclusion pour le client..."/>
+                                        <textarea value={data.agentAnalysis} onChange={e => setData({...data, agentAnalysis: e.target.value})} rows={Math.max(6, Math.ceil((data.agentAnalysis || "").length / 90) + (data.agentAnalysis || "").split("\n").length)} className="w-full bg-black/50 border border-white/8 rounded-2xl p-4 text-white min-h-[140px] outline-none focus:border-[#d35f52] transition-colors resize-y leading-relaxed" placeholder="Rédigez votre conclusion pour le client..."/>
                                     </div>
 
                                     {/* SÉLECTION DU COLLABORATEUR */}
@@ -863,7 +1230,14 @@ export default function EstimationEditor({
     // VUE 3 : RAPPORT PDF — ULTRA PREMIUM
     // =========================================================================
     const allComps = [...data.soldComparables, ...data.forSaleComparables];
-    const pricesPerSqm = allComps.map(c => c.price / (c.surface || 1)).filter(p => p > 0);
+    // Pagination dynamique (les pages Marché et Photos sont optionnelles)
+    const hasMarketPage = data.soldComparables.length > 0 || data.forSaleComparables.length > 0;
+    const hasPhotoPage = (data.extraPhotos ?? []).length > 0;
+    const totalPages = 3 + (hasMarketPage ? 1 : 0) + (hasPhotoPage ? 1 : 0);
+    const pageOf = (n: number) => `${n} / ${totalPages}`;
+    const conclusionPage = hasMarketPage ? 4 : 3;
+    const pad2 = (n: number) => String(n).padStart(2, "0");
+    const pricesPerSqm = allComps.map(sqmOf).filter(p => p > 0);
     const estimatedPriceSqm = ((data.lowPrice + data.highPrice) / 2) / (data.surface || 1);
     let minPriceGraph = Math.min(...pricesPerSqm, estimatedPriceSqm || Infinity);
     let maxPriceGraph = Math.max(...pricesPerSqm, estimatedPriceSqm || 0);
@@ -893,23 +1267,22 @@ export default function EstimationEditor({
         const agent = AGENTS.find(a => a.id === data.agentId);
         if (!agent) return null;
         return (
-            <div className="absolute bottom-2 right-2 flex items-end z-10 pointer-events-none opacity-95">
-                <div className="flex flex-col items-end z-10 pb-2">
-                    <p className="text-[13px] font-black text-zinc-800">{agent.name}</p>
-                    <p className="text-[9px] text-zinc-500 mb-2 uppercase tracking-widest">{agent.role}</p>
-                    <img 
-                        src={agent.signatureUrl} 
-                        alt="Signature" 
-                        className="h-28 w-auto object-contain mix-blend-multiply" 
-                        onError={(e) => e.currentTarget.style.display = 'none'} 
+            // Images recadrées sur l'encre (public/signatures) : tailles fixes et lisibles
+            <div className="absolute bottom-3 right-5 flex flex-col items-end z-10 pointer-events-none">
+                <p className="text-[12px] font-black text-zinc-800 leading-tight">{agent.name}</p>
+                <p className="text-[8.5px] text-zinc-500 uppercase tracking-widest">{agent.role}</p>
+                <div className="flex items-center gap-3 mt-1.5">
+                    <img
+                        src={agent.signatureUrl}
+                        alt="Signature"
+                        className="h-16 w-auto max-w-[150px] object-contain mix-blend-multiply"
+                        onError={(e) => e.currentTarget.style.display = 'none'}
                     />
-                </div>
-                <div className="relative -ml-20 -mb-4 z-0 opacity-80">
-                    <img 
-                        src="/signatures/signature-agence.png" 
-                        alt="Tampon Agence" 
-                        className="h-32 w-auto object-contain mix-blend-multiply" 
-                        onError={(e) => e.currentTarget.style.display = 'none'} 
+                    <img
+                        src="/signatures/signature-agence.png"
+                        alt="Tampon Agence"
+                        className="h-[60px] w-auto object-contain mix-blend-multiply opacity-85"
+                        onError={(e) => e.currentTarget.style.display = 'none'}
                     />
                 </div>
             </div>
@@ -1072,7 +1445,7 @@ export default function EstimationEditor({
                             <p className="text-[15px] font-bold text-white leading-tight">{data.propertyAddress || "Adresse non renseignée"}</p>
                             <div className="flex items-center gap-2.5 mt-2.5 flex-wrap">
                                 <span className="text-[10px] font-semibold px-2.5 py-1 rounded-full border text-zinc-300" style={{ borderColor: 'rgba(255,255,255,0.15)' }}>{data.propertyType}</span>
-                                {data.surface > 0 && <span className="text-[10px] font-semibold px-2.5 py-1 rounded-full border text-zinc-300" style={{ borderColor: 'rgba(255,255,255,0.15)' }}>{data.surface} m²</span>}
+                                {data.surface > 0 && <span className="text-[10px] font-semibold px-2.5 py-1 rounded-full border text-zinc-300" style={{ borderColor: 'rgba(255,255,255,0.15)' }}>{formatSurface(data.surface)} m²</span>}
                                 {data.rooms > 0 && <span className="text-[10px] font-semibold px-2.5 py-1 rounded-full border text-zinc-300" style={{ borderColor: 'rgba(255,255,255,0.15)' }}>{data.rooms} pièces</span>}
                                 {data.floor && <span className="text-[10px] font-semibold px-2.5 py-1 rounded-full border text-zinc-300" style={{ borderColor: 'rgba(255,255,255,0.15)' }}>{getDisplayFloor(data.floor)}</span>}
                             </div>
@@ -1088,7 +1461,7 @@ export default function EstimationEditor({
                         <span className="text-white text-[9.5px] font-medium">05.61.99.08.08</span>
                         <span className="text-white/40 text-[9px]">|</span>
                         <span className="text-white text-[9.5px] font-medium">www.patrim.fr</span>
-                        <div className="ml-auto text-white/60 text-[9px] font-mono">1 / 4</div>
+                        <div className="ml-auto text-white/60 text-[9px] font-mono">{pageOf(1)}</div>
                     </div>
                 </div>
 
@@ -1105,7 +1478,7 @@ export default function EstimationEditor({
                         </div>
                         <div className="flex items-center gap-4">
                             <img src="/logo-patrim.png" alt="PATRIM" className="h-6 object-contain opacity-60"/>
-                            <span className="text-[8px] font-mono text-zinc-400 bg-zinc-200 px-2 py-0.5 rounded-full">2 / 4</span>
+                            <span className="text-[8px] font-mono text-zinc-400 bg-zinc-200 px-2 py-0.5 rounded-full">{pageOf(2)}</span>
                         </div>
                     </div>
 
@@ -1116,7 +1489,7 @@ export default function EstimationEditor({
                                     <div className="absolute inset-x-0 top-0 h-[3px]" style={{ background: `linear-gradient(90deg, ${COLORS.primary}, ${COLORS.secondary})` }}></div>
                                     <p className="text-[10px] uppercase font-bold tracking-widest text-zinc-400 mb-2">Surface</p>
                                     <div className="flex items-end justify-center gap-1.5 leading-none">
-                                        <span className="text-5xl font-black pdf-display" style={{ color: COLORS.gray }}>{data.surface}</span>
+                                        <span className={`${Number.isInteger(Number(data.surface)) ? 'text-5xl' : 'text-4xl'} font-black pdf-display`} style={{ color: COLORS.gray }}>{formatSurface(data.surface)}</span>
                                         <span className="text-lg font-bold text-zinc-400 mb-1">m²</span>
                                     </div>
                                 </div>
@@ -1259,7 +1632,7 @@ export default function EstimationEditor({
                                             <Home size={30} style={{ color: COLORS.secondary }}/>
                                         </div>
                                         <p className="text-3xl font-black pdf-display text-zinc-800 mb-2">{data.propertyType}</p>
-                                        <p className="text-[13px] uppercase font-bold text-zinc-400 tracking-widest mb-3">{data.surface} m² — {data.rooms} pièces</p>
+                                        <p className="text-[13px] uppercase font-bold text-zinc-400 tracking-widest mb-3">{formatSurface(data.surface)} m² — {data.rooms} pièces</p>
                                         <div className="flex items-center gap-2.5 justify-center flex-wrap">
                                             <span className="text-[11px] font-bold px-3.5 py-1.5 rounded-full border text-zinc-600" style={{ borderColor: 'rgba(0,0,0,0.1)', backgroundColor: '#f5f5f7' }}>DPE {data.dpe}</span>
                                             <span className="text-[11px] font-bold px-3.5 py-1.5 rounded-full border text-zinc-600" style={{ borderColor: 'rgba(0,0,0,0.1)', backgroundColor: '#f5f5f7' }}>GES {data.ges}</span>
@@ -1304,13 +1677,21 @@ export default function EstimationEditor({
                             </div>
                             <div className="flex items-center gap-3">
                                 <img src="/logo-patrim.png" alt="PATRIM" className="h-6 object-contain opacity-60"/>
-                                <span className="text-[8px] font-mono text-zinc-400 bg-zinc-200 px-2 py-0.5 rounded-full">3 / 4</span>
+                                <span className="text-[8px] font-mono text-zinc-400 bg-zinc-200 px-2 py-0.5 rounded-full">{pageOf(3)}</span>
                             </div>
                         </div>
 
                         {(data.lowPrice > 0 && allComps.length > 0) && (
                             <div className="premium-card bg-white rounded-[20px] p-7 mb-4 shadow-sm border border-zinc-200 shrink-0" style={{ minHeight: '90px' }}>
-                                <h4 className="text-[11px] uppercase tracking-widest font-bold mb-7 text-zinc-400 flex items-center gap-2"><BarChart3 size={14}/> Positionnement Prix / m²</h4>
+                                <div className="flex items-center justify-between mb-7 gap-4">
+                                    <h4 className="text-[11px] uppercase tracking-widest font-bold text-zinc-400 flex items-center gap-2"><BarChart3 size={14}/> Positionnement Prix / m²</h4>
+                                    {data.marketStats && (
+                                        <p className="text-[9.5px] text-zinc-500 font-medium text-right">
+                                            Référence DVF : médiane <b className="text-zinc-700">{formatPrice(data.marketStats.median)} €/m²</b> sur {data.marketStats.count} ventes comparables
+                                            à moins de {data.marketStats.radius >= 1000 ? `${data.marketStats.radius / 1000} km` : `${data.marketStats.radius} m`} ({data.marketStats.years[0]}–{data.marketStats.years[data.marketStats.years.length - 1]})
+                                        </p>
+                                    )}
+                                </div>
                                 <div className="relative w-full" style={{ height: '64px' }}>
                                     <div className="absolute left-0 w-full h-[4px] bg-zinc-100 rounded-full" style={{ top: '32px' }}></div>
                                     <div className="absolute h-[4px] rounded-full opacity-20" style={{ backgroundColor: COLORS.primary, top: '32px', left: `${getPositionPercent(data.lowPrice / (data.surface || 1))}%`, width: `${Math.max(0, getPositionPercent(data.highPrice / (data.surface || 1)) - getPositionPercent(data.lowPrice / (data.surface || 1)))}%` }}></div>
@@ -1318,11 +1699,11 @@ export default function EstimationEditor({
                                     <div className="absolute -translate-x-1/2 w-7 h-7 rounded-full border-[3px] border-white z-20 shadow-lg" style={{ top: '18px', left: `${getPositionPercent(estimatedPriceSqm)}%`, background: `linear-gradient(135deg, ${COLORS.primary}, ${COLORS.secondary})` }}>
                                         <div className="absolute -top-9 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-bold text-center leading-tight" style={{ color: COLORS.primary }}>
                                             <span className="block font-semibold">Notre estimation</span>
-                                            <span className="block font-black text-[12px]">{Math.round(estimatedPriceSqm)} €/m²</span>
+                                            <span className="block font-black text-[12px]">{formatPrice(Math.round(estimatedPriceSqm))} €/m²</span>
                                         </div>
                                     </div>
                                     {(() => {
-                                        const points = allComps.map((c, i) => ({
+                                        const points = allComps.filter(c => sqmOf(c) > 0).map((c, i) => ({
                                             c, i,
                                             pct: getPositionPercent(c.price / (c.surface || 1)),
                                             sqm: Math.round(c.price / (c.surface || 1)),
@@ -1342,7 +1723,7 @@ export default function EstimationEditor({
                                                     style={{ top: '26px', left: `${pt.pct}%`, backgroundColor: '#a3a3b3' }}>
                                                     <div className={`absolute left-1/2 -translate-x-1/2 whitespace-nowrap text-[9px] text-zinc-600 font-bold`}
                                                         style={side === 'bottom' ? { top: '16px' } : { bottom: '16px' }}>
-                                                        {pt.sqm} €/m²
+                                                        {formatPrice(pt.sqm)} €/m²
                                                     </div>
                                                 </div>
                                             );
@@ -1370,12 +1751,16 @@ export default function EstimationEditor({
                                         {comp.photoUrl ? <img src={comp.photoUrl} className={`${photoSize} object-cover rounded-xl shrink-0`}/> : <div className={`${photoSize} bg-zinc-200 rounded-xl shrink-0 flex items-center justify-center`}><Home size={maxRows <= 2 ? 18 : 14} className="text-zinc-400"/></div>}
                                         <div className="flex-1 min-w-0">
                                             <p className={`font-bold ${addrClass} text-zinc-800 truncate`}>{comp.address}</p>
-                                            <p className={`text-zinc-400 ${metaClass} font-medium mt-0.5`}>{comp.surface} m²</p>
+                                            <p className={`text-zinc-400 ${metaClass} font-medium mt-0.5`}>
+                                                {formatSurface(comp.surface)} m²
+                                                {comp.soldDate && ` · vendu en ${formatMonthYear(comp.soldDate)}`}
+                                                {comp.distance !== undefined && comp.distance !== null && ` · à ${comp.distance} m`}
+                                            </p>
                                         </div>
                                         <div className="text-right shrink-0 flex flex-col items-end gap-1">
                                             <p className={`${priceClass} font-black text-zinc-800`}>{formatPrice(comp.price)} €</p>
                                             <div className="flex items-center gap-1.5">
-                                                <p className={`${metaClass} font-bold`} style={{ color: accentColor }}>{Math.round(compSqm)} €/m²</p>
+                                                <p className={`${metaClass} font-bold`} style={{ color: accentColor }}>{formatPrice(Math.round(compSqm))} €/m²</p>
                                                 {delta !== null && <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full ${delta > 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>{delta > 0 ? '+' : ''}{delta}%</span>}
                                             </div>
                                         </div>
@@ -1409,13 +1794,13 @@ export default function EstimationEditor({
                     <div className="flex justify-between items-center mb-4 pb-3 border-b border-zinc-200 shrink-0">
                         <div className="flex items-center gap-3">
                             <div className="w-6 h-6 rounded-lg flex items-center justify-center" style={{ background: `linear-gradient(135deg, ${COLORS.primary}, ${COLORS.secondary})` }}>
-                                <span className="text-white text-[9px] font-black">03</span>
+                                <span className="text-white text-[9px] font-black">{pad2(hasMarketPage ? 3 : 2)}</span>
                             </div>
                             <h2 className="text-[11px] font-black uppercase tracking-[0.3em]" style={{ color: COLORS.primary }}>Conclusion & Valorisation</h2>
                         </div>
                         <div className="flex items-center gap-3">
                             <img src="/logo-patrim.png" alt="PATRIM" className="h-6 object-contain opacity-60"/>
-                            <span className="text-[8px] font-mono text-zinc-400 bg-zinc-200 px-2 py-0.5 rounded-full">4 / 4</span>
+                            <span className="text-[8px] font-mono text-zinc-400 bg-zinc-200 px-2 py-0.5 rounded-full">{pageOf(conclusionPage)}</span>
                         </div>
                     </div>
                     {(data.lowPrice > 0 && data.highPrice > 0) && (
@@ -1426,7 +1811,7 @@ export default function EstimationEditor({
                             </div>
                             <div className="inner-card bg-white rounded-[14px] px-4 py-3 border border-zinc-200 flex flex-col justify-center">
                                 <p className="text-[9px] uppercase font-bold text-zinc-400 tracking-wider mb-1">Prix / m² estimé</p>
-                                <p className="text-xl font-black pdf-display text-zinc-800 leading-none">{Math.round(((data.lowPrice + data.highPrice) / 2) / (data.surface || 1))} <span className="text-sm font-bold text-zinc-500">€/m²</span></p>
+                                <p className="text-xl font-black pdf-display text-zinc-800 leading-none">{formatPrice(Math.round(((data.lowPrice + data.highPrice) / 2) / (data.surface || 1)))} <span className="text-sm font-bold text-zinc-500">€/m²</span></p>
                             </div>
                             <div className="inner-card bg-white rounded-[14px] px-4 py-3 border border-zinc-200 flex flex-col justify-center">
                                 <p className="text-[9px] uppercase font-bold text-zinc-400 tracking-wider mb-1">Amplitude de fourchette</p>
@@ -1558,7 +1943,7 @@ export default function EstimationEditor({
                                                     <span className="text-xl font-black text-zinc-700">€</span>
                                                 </div>
                                                 <div className="mt-2.5 flex justify-end">
-                                                    <span className="text-[10px] text-zinc-500 font-semibold font-mono bg-zinc-100 px-3 py-1 rounded-full border border-zinc-200">{Math.round(data.lowPrice / (data.surface || 1))} €/m²</span>
+                                                    <span className="text-[10px] text-zinc-500 font-semibold font-mono bg-zinc-100 px-3 py-1 rounded-full border border-zinc-200">{formatPrice(Math.round(data.lowPrice / (data.surface || 1)))} €/m²</span>
                                                 </div>
                                             </div>
                                             <div className="flex flex-col items-center justify-center shrink-0 px-1">
@@ -1571,7 +1956,7 @@ export default function EstimationEditor({
                                                     <span className="text-xl font-black" style={{ color: COLORS.secondary }}>€</span>
                                                 </div>
                                                 <div className="mt-2.5">
-                                                    <span className="text-[10px] text-zinc-500 font-semibold font-mono bg-zinc-100 px-3 py-1 rounded-full border border-zinc-200">{Math.round(data.highPrice / (data.surface || 1))} €/m²</span>
+                                                    <span className="text-[10px] text-zinc-500 font-semibold font-mono bg-zinc-100 px-3 py-1 rounded-full border border-zinc-200">{formatPrice(Math.round(data.highPrice / (data.surface || 1)))} €/m²</span>
                                                 </div>
                                             </div>
                                         </div>
@@ -1625,14 +2010,14 @@ export default function EstimationEditor({
                         <div className="flex justify-between items-center mb-5 pb-3.5 border-b border-zinc-200 shrink-0">
                             <div className="flex items-center gap-3">
                                 <div className="w-6 h-6 rounded-lg flex items-center justify-center" style={{ background: `linear-gradient(135deg, ${COLORS.primary}, ${COLORS.secondary})` }}>
-                                    <span className="text-white text-[9px] font-black">04</span>
+                                    <span className="text-white text-[9px] font-black">{pad2(hasMarketPage ? 4 : 3)}</span>
                                 </div>
                                 <h2 className="text-[11px] font-black uppercase tracking-[0.3em] pdf-font" style={{ color: COLORS.primary }}>Dossier Photographique</h2>
                             </div>
                             <div className="flex items-center gap-3">
                                 <img src="/logo-patrim.png" alt="PATRIM" className="h-6 object-contain opacity-60"/>
                                 <span className="text-[8px] font-mono text-zinc-400 bg-zinc-200 px-2 py-0.5 rounded-full">
-                                    {(data.soldComparables.length > 0 || data.forSaleComparables.length > 0) ? '5 / 5' : '4 / 4'}
+                                    {pageOf(totalPages)}
                                 </span>
                             </div>
                         </div>

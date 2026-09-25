@@ -7,7 +7,8 @@
 
    Gestion des cas :
    - ID invalide / introuvable → redirige vers /mes-biens
-   - Pas connecté → redirige vers /mes-biens (ou ta page login)
+   - Pas connecté → redirige vers /login?next=… (retour ici après connexion)
+   - ?view=print → ouvre directement l'avis de valeur (PDF)
    - Chargement en cours → skeleton sobre
    ============================================================ */
 
@@ -24,6 +25,7 @@ export default function EditEstimationPage() {
 
     const [loading, setLoading] = useState(true);
     const [data, setData] = useState<EstimationData | null>(null);
+    const [initialView, setInitialView] = useState<"EDIT" | "PRINT">("EDIT");
 
     useEffect(() => {
         if (!id) {
@@ -33,9 +35,10 @@ export default function EditEstimationPage() {
 
         const fetchEstimation = async () => {
             setLoading(true);
+            if (new URLSearchParams(window.location.search).get("view") === "print") setInitialView("PRINT");
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) {
-                router.replace("/mes-biens");
+                router.replace(`/login?next=${encodeURIComponent(`/estimation/${id}`)}`);
                 return;
             }
 
@@ -93,7 +96,7 @@ export default function EditEstimationPage() {
         <EstimationEditor
             initialData={data}
             existingId={id!}
-            initialView="EDIT"
+            initialView={initialView}
         />
     );
 }

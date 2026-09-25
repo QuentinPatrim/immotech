@@ -21,4 +21,5 @@ export const formatCompact = (v: number) =>
 
 /** Formate un nombre sans devise : 1234 → "1 234" */
 export const formatNumber = (v: number) =>
-  new Intl.NumberFormat("fr-FR").format(v);
+  // espace insécable classique (l'espace fine U+202F est quasi invisible dans les polices d'affichage)
+  new Intl.NumberFormat("fr-FR").format(v).replace(/\u202f/g, "\u00a0");

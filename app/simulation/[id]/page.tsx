@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useMemo, ReactNode } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { supabase } from "@/lib/supabaseClient";
+import { fetchSharedEstimation, fetchSharedQrCode } from "@/lib/sharedEstimation";
 import { formatNumber as formatPrice } from "@/lib/formatters";
 import {
     Calculator, Wallet, TrendingUp, AlertCircle, Percent, Clock, Key,
@@ -84,11 +84,7 @@ export default function SimulateurAcquereur() {
         const fetchData = async () => {
             // --- ÉTAPE 1 : on cherche d'abord dans la table estimations ---
             // (format historique : toutes les données sont dans data_json)
-            const { data: estim } = await supabase
-                .from('estimations')
-                .select('data_json')
-                .eq('id', estimationId)
-                .maybeSingle();
+            const estim = { data_json: await fetchSharedEstimation(estimationId) };
 
             if (estim && estim.data_json) {
                 setData(estim.data_json);
@@ -101,11 +97,7 @@ export default function SimulateurAcquereur() {
             // (nouvelle table : les champs sont à plat en snake_case)
             // On les normalise pour qu'ils ressemblent au format data_json attendu
             // par le reste du simulateur (mainPhoto, highPrice, etc.)
-            const { data: qr } = await supabase
-                .from('qr_codes')
-                .select('*')
-                .eq('id', estimationId)
-                .maybeSingle();
+            const qr = await fetchSharedQrCode(estimationId);
 
             if (qr) {
                 const normalized = {

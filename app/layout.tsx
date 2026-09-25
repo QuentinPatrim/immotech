@@ -32,7 +32,7 @@ export default function RootLayout({
       </head>
       <body className={`${inter.className} bg-[#050505] text-white overflow-x-hidden`}>
         <div className="flex">
-          <div className="flex-1">
+          <div className="flex-1 min-w-0">
             {children}
           </div>
         </div>

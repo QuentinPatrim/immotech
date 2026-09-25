@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
+import { fetchSharedEstimation } from "@/lib/sharedEstimation";
 import { formatNumber as formatPrice } from "@/lib/formatters";
 import {
     ArrowLeft, Printer, Sparkles, MapPin,
@@ -74,7 +75,7 @@ export default function PlaquetteManager() {
         }
         if (!estimationId) return;
         const fetchEstimation = async () => {
-            const { data } = await supabase.from('estimations').select('data_json').eq('id', estimationId).single();
+            const data = { data_json: await fetchSharedEstimation(estimationId) };
             if (data && data.data_json) {
                 setBaseData(data.data_json);
                 setSellingPriceFAI(data.data_json.highPrice || 0);

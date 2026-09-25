@@ -1,9 +1,10 @@
 "use client";
 
 /* ============================================================
-   PAGE HUB "MES BIENS" — v2
-   Point d'entrée central de l'app. 2 onglets :
-   - Estimations : biens avec estimation complète
+   PAGE HUB "MES BIENS" — v3
+   Point d'entrée central de l'espace agent. 2 onglets :
+   - Estimations : dossiers d'avis de valeur + suivi commercial
+     (statut, relances, mandats) stocké dans data_json
    - QR Codes    : biens créés via le générateur QR
 
    Un bien peut apparaître dans les DEUX onglets si :
@@ -12,16 +13,21 @@
    Un badge "LIÉ" est affiché dans ces cas-là.
    ============================================================ */
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import {
     Plus, Search, ChevronRight, QrCode, FileText, Home as HomeIcon,
     Image as ImageIcon, Calculator, MoreVertical, Trash2, Copy, Check,
     Sparkles, ArrowUpRight, Link2, Edit3, Wand2, Building2,
+    BellRing, ChevronDown, StickyNote, Printer, CopyPlus, ArrowUpDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+    DOSSIER_STATUSES, DossierStatus, statusMeta, needsFollowUp, daysSince, followUpBase,
+    centralPrice, formatSurface, formatEuroShort, completeness, PATRIM_AGENTS,
+} from "@/lib/dossier";
 
 // --- CHARTE GRAPHIQUE PATRIM ---
 const COLORS = {
@@ -36,6 +42,8 @@ const COLORS = {
 
 // --- TYPES ---
 type TabKey = "estimations" | "qr_codes";
+type StatusFilter = "all" | "relance" | "actifs" | DossierStatus;
+type SortKey = "recent" | "ancien" | "prix" | "client";
 
 interface EstimationRow {
     id: string;
@@ -59,6 +67,9 @@ interface QrCodeRow {
     created_at: string;
 }
 
+const agentName = (id?: string) => PATRIM_AGENTS.find(a => a.id === id)?.name ?? "";
+const statusOf = (e: EstimationRow): DossierStatus => (e.data_json?.status as DossierStatus) || "en_cours";
+
 export default function MesBiensPage() {
     const router = useRouter();
     const [activeTab, setActiveTab] = useState<TabKey>("estimations");
@@ -66,6 +77,8 @@ export default function MesBiensPage() {
     const [estimations, setEstimations] = useState<EstimationRow[]>([]);
     const [qrCodes, setQrCodes] = useState<QrCodeRow[]>([]);
     const [searchQuery, setSearchQuery] = useState("");
+    const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+    const [sortBy, setSortBy] = useState<SortKey>("recent");
     const [openMenuId, setOpenMenuId] = useState<string | null>(null);
     const [copiedId, setCopiedId] = useState<string | null>(null);
 
@@ -75,16 +88,28 @@ export default function MesBiensPage() {
         if (typeof window !== "undefined") setOrigin(window.location.origin);
     }, []);
 
+    // Fermer les menus au clic extérieur
+    useEffect(() => {
+        if (!openMenuId) return;
+        const close = () => setOpenMenuId(null);
+        window.addEventListener("click", close);
+        return () => window.removeEventListener("click", close);
+    }, [openMenuId]);
+
     // --- FETCH DES DEUX LISTES ---
     useEffect(() => {
         fetchAll();
+        // Rafraîchit la liste quand on revient sur l'onglet (dossier modifié ailleurs)
+        const onVisible = () => { if (document.visibilityState === "visible") fetchAll(true); };
+        document.addEventListener("visibilitychange", onVisible);
+        return () => document.removeEventListener("visibilitychange", onVisible);
     }, []);
 
-    const fetchAll = async () => {
-        setLoading(true);
+    const fetchAll = async (silent = false) => {
+        if (!silent) setLoading(true);
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) {
-            setLoading(false);
+            router.replace("/login?next=/mes-biens");
             return;
         }
 
@@ -107,15 +132,43 @@ export default function MesBiensPage() {
         setLoading(false);
     };
 
-    // --- RECHERCHE FILTRÉE ---
+    // --- INDICATEURS DE SUIVI ---
+    const kpis = useMemo(() => {
+        const counts: Record<string, number> = { all: estimations.length, relance: 0 };
+        DOSSIER_STATUSES.forEach(s => { counts[s.id] = 0; });
+        let portfolio = 0;
+        estimations.forEach(e => {
+            const st = statusOf(e);
+            counts[st]++;
+            if (needsFollowUp(e.data_json, e.created_at)) counts.relance++;
+            if (st === "mandat" || st === "compromis") portfolio += centralPrice(e.data_json?.lowPrice, e.data_json?.highPrice);
+        });
+        const delivered = estimations.length - counts.en_cours;
+        const won = counts.mandat + counts.compromis + counts.vendu;
+        return { counts, portfolio, conversion: delivered > 0 ? Math.round((won / delivered) * 100) : null, won, delivered };
+    }, [estimations]);
+
+    // --- RECHERCHE + FILTRE + TRI ---
     const filteredEstimations = useMemo(() => {
         const q = searchQuery.toLowerCase().trim();
-        if (!q) return estimations;
-        return estimations.filter(e =>
-            (e.address || "").toLowerCase().includes(q) ||
-            (e.client_name || "").toLowerCase().includes(q)
-        );
-    }, [estimations, searchQuery]);
+        let list = estimations.filter(e => {
+            if (statusFilter === "relance" && !needsFollowUp(e.data_json, e.created_at)) return false;
+            if (statusFilter === "actifs" && !["mandat", "compromis"].includes(statusOf(e))) return false;
+            if (statusFilter !== "all" && statusFilter !== "relance" && statusFilter !== "actifs" && statusOf(e) !== statusFilter) return false;
+            if (!q) return true;
+            return (e.address || "").toLowerCase().includes(q) ||
+                (e.client_name || "").toLowerCase().includes(q) ||
+                agentName(e.data_json?.agentId).toLowerCase().includes(q);
+        });
+        const price = (e: EstimationRow) => centralPrice(e.data_json?.lowPrice, e.data_json?.highPrice);
+        list = [...list].sort((a, b) => {
+            if (sortBy === "ancien") return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+            if (sortBy === "prix") return price(b) - price(a);
+            if (sortBy === "client") return (a.client_name || "").localeCompare(b.client_name || "", "fr");
+            return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        });
+        return list;
+    }, [estimations, searchQuery, statusFilter, sortBy]);
 
     const filteredQrCodes = useMemo(() => {
         const q = searchQuery.toLowerCase().trim();
@@ -138,8 +191,76 @@ export default function MesBiensPage() {
     const deleteItem = async (table: 'estimations' | 'qr_codes', id: string) => {
         if (!confirm("Supprimer définitivement ce dossier ?")) return;
         await supabase.from(table).delete().eq('id', id);
-        fetchAll();
+        fetchAll(true);
         setOpenMenuId(null);
+    };
+
+    // Mise à jour partielle de data_json (statut, note…) :
+    // affichage immédiat, puis écriture sur la version À JOUR en base (relue juste avant),
+    // les mises à jour étant enchaînées une par une pour ne jamais s'écraser.
+    const patchQueue = useRef<Promise<void>>(Promise.resolve());
+    const patchEstimation = (estim: EstimationRow, patch: Record<string, any>) => {
+        setEstimations(prev => prev.map(e => e.id === estim.id ? { ...e, data_json: { ...(e.data_json || {}), ...patch } } : e));
+        setOpenMenuId(null);
+        patchQueue.current = patchQueue.current.then(async () => {
+            const { data: row, error: readError } = await supabase.from('estimations').select('data_json').eq('id', estim.id).maybeSingle();
+            if (readError || !row) throw readError || new Error("Dossier introuvable");
+            const fresh = { ...(row.data_json || {}), ...patch };
+            const { error } = await supabase.from('estimations').update({ data_json: fresh }).eq('id', estim.id);
+            if (error) throw error;
+            setEstimations(prev => prev.map(e => e.id === estim.id ? { ...e, data_json: fresh } : e));
+        }).catch(() => {
+            alert("La mise à jour n'a pas pu être enregistrée.");
+            fetchAll(true);
+        });
+    };
+
+    const changeStatus = (estim: EstimationRow, status: DossierStatus, mandateType?: "simple" | "exclusif") =>
+        patchEstimation(estim, {
+            status,
+            statusUpdatedAt: new Date().toISOString(),
+            ...(status === "mandat" ? { mandateType: mandateType || estim.data_json?.mandateType || "simple" } : {}),
+        });
+
+    const markFollowedUp = (estim: EstimationRow) =>
+        patchEstimation(estim, { lastFollowUpAt: new Date().toISOString() });
+
+    const editNote = (estim: EstimationRow) => {
+        const note = window.prompt("Note de suivi (visible uniquement dans Mes biens) :", estim.data_json?.followUpNote || "");
+        if (note === null) return;
+        patchEstimation(estim, { followUpNote: note.trim() });
+    };
+
+    // Duplication : même immeuble / même typologie → on garde le bien et le marché,
+    // on repart d'un client, de photos et d'un suivi vierges.
+    const duplicatingRef = useRef(false);
+    const duplicateEstimation = async (estim: EstimationRow) => {
+        if (duplicatingRef.current) return; // évite deux copies sur double-clic
+        duplicatingRef.current = true;
+        setOpenMenuId(null);
+        try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) return;
+            const d = estim.data_json || {};
+            const copy = {
+                ...d,
+                clientName: "", clientAddress: "",
+                mainPhoto: "", secondaryPhotos: [], extraPhotos: [],
+                status: "en_cours", statusUpdatedAt: "", mandateType: "", followUpNote: "", lastFollowUpAt: "",
+            };
+            const { data: inserted, error } = await supabase
+                .from('estimations')
+                .insert({ user_id: user.id, client_name: "Dossier Sans Nom", address: (estim.address || "").trim(), data_json: copy })
+                .select('id')
+                .single();
+            if (error || !inserted) {
+                alert("Impossible de dupliquer ce dossier.");
+                return;
+            }
+            router.push(`/estimation/${inserted.id}`);
+        } finally {
+            duplicatingRef.current = false;
+        }
     };
 
     /* ============================================================
@@ -221,6 +342,8 @@ export default function MesBiensPage() {
                 .stagger-item {
                     animation: fadeInUp 0.4s ease-out backwards;
                 }
+                .no-scrollbar::-webkit-scrollbar { display: none; }
+                .no-scrollbar { scrollbar-width: none; }
             `}}/>
 
             {/* =================== HEADER ÉDITORIAL =================== */}
@@ -282,18 +405,31 @@ export default function MesBiensPage() {
                                 Mes biens
                             </h1>
                         </div>
-                        <div className="text-right">
-                            <div className="flex items-baseline gap-6">
-                                <div>
-                                    <span className="font-display text-3xl font-bold text-white">{estimations.length}</span>
-                                    <span className="text-[10px] uppercase tracking-widest text-zinc-500 ml-1.5 font-body">est.</span>
-                                </div>
-                                <div className="h-10 w-px bg-white/10"/>
-                                <div>
-                                    <span className="font-display text-3xl font-bold text-white">{qrCodes.length}</span>
-                                    <span className="text-[10px] uppercase tracking-widest text-zinc-500 ml-1.5 font-body">QR</span>
-                                </div>
-                            </div>
+                        {/* Indicateurs de suivi */}
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 w-full md:w-auto">
+                            <KpiTile
+                                label="À relancer"
+                                value={String(kpis.counts.relance)}
+                                hint={kpis.counts.relance > 0 ? "avis remis ≥ 7 j" : "rien en attente"}
+                                accent={kpis.counts.relance > 0 ? "#fbbf24" : undefined}
+                                onClick={() => { setActiveTab("estimations"); setStatusFilter(kpis.counts.relance > 0 ? "relance" : "all"); }}
+                            />
+                            <KpiTile
+                                label="Mandats actifs"
+                                value={String(kpis.counts.mandat + kpis.counts.compromis)}
+                                hint={kpis.counts.compromis > 0 ? `dont ${kpis.counts.compromis} sous compromis` : "en portefeuille"}
+                                onClick={() => { setActiveTab("estimations"); setStatusFilter("actifs"); }}
+                            />
+                            <KpiTile
+                                label="Transformation"
+                                value={kpis.conversion === null ? "—" : `${kpis.conversion} %`}
+                                hint={kpis.delivered > 0 ? `${kpis.won} mandat${kpis.won > 1 ? "s" : ""} / ${kpis.delivered} avis` : "aucun avis remis"}
+                            />
+                            <KpiTile
+                                label="Volume mandats"
+                                value={kpis.portfolio > 0 ? formatEuroShort(kpis.portfolio) : "—"}
+                                hint="prix centraux estimés"
+                            />
                         </div>
                     </div>
 
@@ -344,11 +480,39 @@ export default function MesBiensPage() {
                             <Input
                                 value={searchQuery}
                                 onChange={e => setSearchQuery(e.target.value)}
-                                placeholder="Rechercher par adresse..."
+                                placeholder={activeTab === "estimations" ? "Adresse, client, collaborateur…" : "Rechercher par adresse..."}
                                 className="bg-white/5 border-white/10 h-10 pl-10 rounded-full text-sm text-white focus:border-[#d35f52] font-body"
                             />
                         </div>
                     </div>
+
+                    {/* Filtres de statut + tri (onglet Estimations) */}
+                    {activeTab === "estimations" && estimations.length > 0 && (
+                        <div className="flex items-center justify-between gap-4 pb-4 -mt-1">
+                            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar min-w-0 flex-1">
+                                <FilterChip active={statusFilter === "all"} onClick={() => setStatusFilter("all")} label="Tous" count={kpis.counts.all}/>
+                                {kpis.counts.relance > 0 && (
+                                    <FilterChip active={statusFilter === "relance"} onClick={() => setStatusFilter("relance")} label="À relancer" count={kpis.counts.relance} color="#fbbf24" icon={<BellRing size={11}/>}/>
+                                )}
+                                {statusFilter === "actifs" && (
+                                    <FilterChip active onClick={() => setStatusFilter("all")} label="Mandats actifs" count={kpis.counts.mandat + kpis.counts.compromis} color={COLORS.secondary}/>
+                                )}
+                                {DOSSIER_STATUSES.map(st => kpis.counts[st.id] > 0 && (
+                                    <FilterChip key={st.id} active={statusFilter === st.id} onClick={() => setStatusFilter(st.id)} label={st.short} count={kpis.counts[st.id]} color={st.color}/>
+                                ))}
+                            </div>
+                            <div className="relative shrink-0">
+                                <ArrowUpDown size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none"/>
+                                <select value={sortBy} onChange={e => setSortBy(e.target.value as SortKey)}
+                                    className="appearance-none bg-white/5 border border-white/10 h-8 pl-8 pr-3 rounded-full text-xs text-zinc-300 outline-none cursor-pointer font-body">
+                                    <option value="recent" className="bg-zinc-900">Plus récents</option>
+                                    <option value="ancien" className="bg-zinc-900">Plus anciens</option>
+                                    <option value="prix" className="bg-zinc-900">Prix décroissant</option>
+                                    <option value="client" className="bg-zinc-900">Client A → Z</option>
+                                </select>
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -360,7 +524,7 @@ export default function MesBiensPage() {
                     filteredEstimations.length === 0 ? (
                         <EmptyState
                             tab="estimations"
-                            hasSearch={searchQuery.length > 0}
+                            hasSearch={searchQuery.length > 0 || statusFilter !== "all"}
                             onCreate={() => router.push('/estimation/new')}
                         />
                     ) : (
@@ -376,7 +540,13 @@ export default function MesBiensPage() {
                                     copiedId={copiedId}
                                     onCopy={handleCopy}
                                     onOpen={() => router.push(`/estimation/${estim.id}`)}
+                                    onOpenPdf={() => router.push(`/estimation/${estim.id}?view=print`)}
+                                    onOpenPlaquette={() => router.push(`/plaquette/${estim.id}`)}
                                     onDelete={() => deleteItem('estimations', estim.id)}
+                                    onDuplicate={() => duplicateEstimation(estim)}
+                                    onChangeStatus={(st: DossierStatus, mt?: "simple" | "exclusif") => changeStatus(estim, st, mt)}
+                                    onFollowedUp={() => markFollowedUp(estim)}
+                                    onEditNote={() => editNote(estim)}
                                     delay={i * 0.04}
                                 />
                             ))}
@@ -469,7 +639,7 @@ function EmptyState({ tab, hasSearch, onCreate }: {
             </h3>
             <p className="text-sm text-zinc-500 mb-6 font-body">
                 {hasSearch
-                    ? "Essayez un autre terme de recherche."
+                    ? "Essayez un autre filtre ou terme de recherche."
                     : isEstim
                         ? "Créez votre première estimation complète pour vos clients."
                         : "Générez un QR Code pour partager simulateur et galerie d'un bien."}
@@ -488,34 +658,83 @@ function EmptyState({ tab, hasSearch, onCreate }: {
     );
 }
 
+/* --------- TUILE KPI --------- */
+function KpiTile({ label, value, hint, accent, onClick }: {
+    label: string; value: string; hint?: string; accent?: string; onClick?: () => void;
+}) {
+    const Tag = onClick ? "button" : "div";
+    return (
+        <Tag
+            onClick={onClick}
+            className={`text-left rounded-2xl border px-4 py-3 min-w-[128px] transition-colors ${onClick ? 'hover:bg-white/[0.06] cursor-pointer' : ''}`}
+            style={{ backgroundColor: 'rgba(255,255,255,0.03)', borderColor: accent ? accent + '55' : COLORS.darkBorder }}
+        >
+            <p className="text-[9px] uppercase tracking-[0.2em] font-bold font-body" style={{ color: accent || '#71717a' }}>{label}</p>
+            <p className="font-display text-2xl text-white mt-0.5 leading-none" style={{ fontWeight: 600 }}>{value}</p>
+            {hint && <p className="text-[10px] text-zinc-500 mt-1 font-body truncate">{hint}</p>}
+        </Tag>
+    );
+}
+
+/* --------- PUCE DE FILTRE --------- */
+function FilterChip({ active, onClick, label, count, color, icon }: {
+    active: boolean; onClick: () => void; label: string; count: number; color?: string; icon?: React.ReactNode;
+}) {
+    return (
+        <button
+            onClick={onClick}
+            className={`shrink-0 h-8 px-3 rounded-full flex items-center gap-1.5 text-xs font-semibold border transition-all font-body ${active ? 'text-white' : 'text-zinc-400 hover:text-white border-transparent hover:bg-white/5'}`}
+            style={active ? { backgroundColor: (color || '#ffffff') + '22', borderColor: (color || '#ffffff') + '66' } : {}}
+        >
+            {icon ?? (color && <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: color }}/>)}
+            {label}
+            <span className="text-[10px] text-zinc-500">{count}</span>
+        </button>
+    );
+}
+
 /* --------- CARTE ESTIMATION --------- */
 function EstimationCard({
-    estim, origin, hasQrLink, openMenuId, setOpenMenuId, copiedId, onCopy, onOpen, onDelete, delay,
+    estim, origin, hasQrLink, openMenuId, setOpenMenuId, copiedId, onCopy, onOpen, onOpenPdf, onOpenPlaquette,
+    onDelete, onDuplicate, onChangeStatus, onFollowedUp, onEditNote, delay,
 }: any) {
-    const mainPhoto = estim.data_json?.mainPhoto;
-    const price = estim.data_json?.highPrice;
-    const surface = estim.data_json?.surface;
-    const rooms = estim.data_json?.rooms;
-    const propertyType = estim.data_json?.propertyType || "Bien";
+    const d = estim.data_json || {};
+    const mainPhoto = d.mainPhoto;
+    const low = Number(d.lowPrice) || 0;
+    const high = Number(d.highPrice) || 0;
+    const surface = Number(d.surface) || 0;
+    const rooms = d.rooms;
+    const propertyType = d.propertyType || "Bien";
+    const status: DossierStatus = d.status || "en_cours";
+    const meta = statusMeta(status);
+    const relance = needsFollowUp(d, estim.created_at);
+    const relanceDays = daysSince(followUpBase(d, estim.created_at));
+    const statusDays = d.statusUpdatedAt ? daysSince(d.statusUpdatedAt) : null;
+    const { score, missing } = completeness(d);
+    const agent = PATRIM_AGENTS.find(a => a.id === d.agentId);
+    const central = centralPrice(low, high);
 
     const menuOpen = openMenuId === estim.id;
+    const statusMenuOpen = openMenuId === estim.id + '-status';
 
     const formattedDate = new Date(estim.created_at).toLocaleDateString('fr-FR', {
         day: 'numeric', month: 'short', year: 'numeric'
     });
 
+    const itemClass = "w-full px-4 py-2.5 text-left text-xs text-white hover:bg-white/5 transition-colors flex items-center gap-2 font-body";
+
     return (
         <div
-            className={`stagger-item group relative rounded-2xl border transition-all hover:border-white/15 ${menuOpen ? 'z-40' : ''}`}
+            className={`stagger-item group relative rounded-2xl border transition-all hover:border-white/15 ${menuOpen || statusMenuOpen ? 'z-40' : ''}`}
             style={{
                 backgroundColor: COLORS.darkCard,
-                borderColor: COLORS.darkBorder,
+                borderColor: relance ? 'rgba(251,191,36,0.35)' : COLORS.darkBorder,
                 animationDelay: `${delay}s`,
             }}
         >
             <div className="flex items-stretch">
                 {/* Photo */}
-                <button onClick={onOpen} className="w-24 sm:w-32 flex-shrink-0 bg-black/30 cursor-pointer overflow-hidden rounded-l-2xl">
+                <button onClick={onOpen} className="w-24 sm:w-32 flex-shrink-0 bg-black/30 cursor-pointer overflow-hidden rounded-l-2xl relative">
                     {mainPhoto ? (
                         <img src={mainPhoto} className="w-full h-full object-cover transition-transform group-hover:scale-105" alt=""/>
                     ) : (
@@ -526,9 +745,48 @@ function EstimationCard({
                 </button>
 
                 {/* Infos */}
-                <button onClick={onOpen} className="flex-1 min-w-0 text-left p-4 sm:p-5">
-                    <div className="flex items-center gap-2 mb-1.5">
+                <div className="flex-1 min-w-0 p-4 sm:p-5">
+                    <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                        {/* Statut (cliquable) */}
+                        <div className="relative">
+                            <button
+                                onClick={(e) => { e.stopPropagation(); setOpenMenuId(statusMenuOpen ? null : estim.id + '-status'); }}
+                                className="inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider font-body border transition-colors hover:brightness-125"
+                                style={{ color: meta.color, borderColor: meta.color + '55', backgroundColor: meta.color + '14' }}
+                            >
+                                <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: meta.color }}/>
+                                {status === "mandat" && d.mandateType ? `Mandat ${d.mandateType}` : meta.short}
+                                <ChevronDown size={10}/>
+                            </button>
+                            {statusMenuOpen && (
+                                <div onClick={e => e.stopPropagation()} className="absolute top-full left-0 mt-2 w-56 rounded-2xl border shadow-2xl overflow-hidden z-50"
+                                    style={{ backgroundColor: COLORS.darkCardHover, borderColor: COLORS.darkBorder }}>
+                                    {DOSSIER_STATUSES.flatMap(st => st.id === "mandat"
+                                        ? (["simple", "exclusif"] as const).map(mt => (
+                                            <button key={`mandat-${mt}`} onClick={() => onChangeStatus("mandat", mt)} className={itemClass}>
+                                                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: st.color }}/>
+                                                Mandat {mt}
+                                                {status === "mandat" && (d.mandateType || "simple") === mt && <Check size={12} className="ml-auto"/>}
+                                            </button>
+                                        ))
+                                        : [(
+                                            <button key={st.id} onClick={() => onChangeStatus(st.id)} className={itemClass}>
+                                                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: st.color }}/>
+                                                {st.label}
+                                                {status === st.id && <Check size={12} className="ml-auto"/>}
+                                            </button>
+                                        )])}
+                                </div>
+                            )}
+                        </div>
                         <span className="text-[9px] uppercase tracking-[0.2em] font-bold text-zinc-500 font-body">{propertyType}</span>
+                        {relance && (
+                            <button onClick={(e) => { e.stopPropagation(); onFollowedUp(); }}
+                                title="Marquer comme relancé (le compteur repart à zéro)"
+                                className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider font-body bg-amber-400/15 text-amber-300 hover:bg-amber-400/25">
+                                <BellRing size={9}/> À relancer · J+{relanceDays}
+                            </button>
+                        )}
                         {hasQrLink && (
                             <span
                                 className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider font-body"
@@ -538,30 +796,58 @@ function EstimationCard({
                             </span>
                         )}
                     </div>
-                    <p className="font-display text-white text-lg leading-tight truncate" style={{ fontWeight: 500 }}>
-                        {estim.address}
-                    </p>
-                    {estim.client_name && estim.client_name !== "Dossier Sans Nom" && (
-                        <p className="text-xs text-zinc-400 mt-0.5 truncate font-body">{estim.client_name}</p>
-                    )}
-                    <div className="flex items-center gap-3 mt-2 text-[11px] text-zinc-500 font-body">
-                        {rooms > 0 && <span>{rooms} pièces</span>}
-                        {surface > 0 && <><span>·</span><span>{surface} m²</span></>}
-                        {price > 0 && (
-                            <>
-                                <span>·</span>
-                                <span className="font-bold" style={{ color: COLORS.secondary }}>
-                                    {Number(price).toLocaleString('fr-FR')} €
-                                </span>
-                            </>
+                    <button onClick={onOpen} className="block w-full text-left">
+                        <p className="font-display text-white text-lg leading-tight truncate" style={{ fontWeight: 500 }}>
+                            {(estim.address || "").trim()}
+                        </p>
+                        {estim.client_name && estim.client_name !== "Dossier Sans Nom" && (
+                            <p className="text-xs text-zinc-400 mt-0.5 truncate font-body">{estim.client_name}</p>
                         )}
-                    </div>
-                </button>
+                        <div className="flex items-center gap-x-3 gap-y-1 mt-2 text-[11px] text-zinc-500 font-body flex-wrap">
+                            {rooms > 0 && <span>{rooms} pièce{rooms > 1 ? "s" : ""}</span>}
+                            {surface > 0 && <><span>·</span><span>{formatSurface(surface)} m²</span></>}
+                            {central > 0 && (
+                                <>
+                                    <span>·</span>
+                                    <span className="font-bold" style={{ color: COLORS.secondary }}>
+                                        {low && high && low !== high
+                                            ? (high < 1_000_000
+                                                ? `${Math.round(low / 1000).toLocaleString('fr-FR')} – ${Math.round(high / 1000).toLocaleString('fr-FR')} k€`
+                                                : `${formatEuroShort(low)} – ${formatEuroShort(high)}`)
+                                            : `${Number(central).toLocaleString('fr-FR')} €`}
+                                    </span>
+                                    {surface > 0 && <span className="text-zinc-600">({Math.round(central / surface).toLocaleString('fr-FR')} €/m²)</span>}
+                                </>
+                            )}
+                        </div>
+                        {d.followUpNote && (
+                            <p className="text-[11px] text-zinc-400 mt-2 italic truncate font-body flex items-center gap-1.5">
+                                <StickyNote size={11} className="shrink-0 text-zinc-600"/> {d.followUpNote}
+                            </p>
+                        )}
+                        {score < 100 && status === "en_cours" && (
+                            <div className="flex items-center gap-2 mt-2.5">
+                                <div className="h-1 w-24 rounded-full bg-white/5 overflow-hidden">
+                                    <div className="h-full rounded-full" style={{ width: `${score}%`, backgroundColor: COLORS.secondary }}/>
+                                </div>
+                                <span className="text-[10px] text-zinc-600 font-body truncate">À compléter : {missing.join(', ')}</span>
+                            </div>
+                        )}
+                    </button>
+                </div>
 
                 {/* Actions */}
                 <div className="flex items-center gap-2 pr-4 pl-2">
-                    <div className="hidden sm:block text-right pr-2">
+                    <div className="hidden sm:flex flex-col items-end pr-2 gap-1">
                         <p className="text-[10px] uppercase tracking-widest text-zinc-600 font-bold font-body">{formattedDate}</p>
+                        {statusDays !== null && status !== "en_cours" && (
+                            <p className="text-[10px] text-zinc-600 font-body">{meta.short} {statusDays === 0 ? "aujourd'hui" : `il y a ${statusDays} j`}</p>
+                        )}
+                        {agent && (
+                            <span title={agent.name} className="text-[9px] font-bold text-zinc-400 bg-white/5 border border-white/10 rounded-full px-1.5 py-0.5 font-body">
+                                {agent.name.split(' ').map((p: string) => p[0]).join('')}
+                            </span>
+                        )}
                     </div>
                     <button
                         onClick={onOpen}
@@ -571,7 +857,7 @@ function EstimationCard({
                         Ouvrir <ArrowUpRight size={13}/>
                     </button>
 
-                    {/* Menu mobile / secondaire */}
+                    {/* Menu secondaire */}
                     <div className="relative">
                         <button
                             onClick={(e) => { e.stopPropagation(); setOpenMenuId(menuOpen ? null : estim.id); }}
@@ -581,28 +867,47 @@ function EstimationCard({
                         </button>
                         {menuOpen && (
                             <div
-                                className="absolute top-full right-0 mt-2 w-52 rounded-2xl border shadow-2xl overflow-hidden z-50"
+                                onClick={e => e.stopPropagation()}
+                                className="absolute top-full right-0 mt-2 w-60 rounded-2xl border shadow-2xl overflow-hidden z-50"
                                 style={{ backgroundColor: COLORS.darkCardHover, borderColor: COLORS.darkBorder }}
                             >
-                                <button onClick={onOpen} className="w-full px-4 py-3 text-left text-xs text-white hover:bg-white/5 transition-colors flex items-center gap-2 font-body md:hidden">
+                                <button onClick={onOpen} className={`${itemClass} md:hidden`}>
                                     <Edit3 size={13}/> Ouvrir le dossier
                                 </button>
+                                <button onClick={onOpenPdf} className={itemClass}>
+                                    <Printer size={13}/> Voir l&apos;avis de valeur (PDF)
+                                </button>
+                                <button onClick={onOpenPlaquette} className={itemClass}>
+                                    <Sparkles size={13}/> Plaquette commerciale
+                                </button>
+                                <button onClick={onEditNote} className={itemClass}>
+                                    <StickyNote size={13}/> {d.followUpNote ? "Modifier la note de suivi" : "Ajouter une note de suivi"}
+                                </button>
+                                {status === "remise" && (
+                                    <button onClick={onFollowedUp} className={itemClass}>
+                                        <BellRing size={13}/> Marquer comme relancé
+                                    </button>
+                                )}
+                                <button onClick={onDuplicate} className={itemClass}>
+                                    <CopyPlus size={13}/> Dupliquer (même immeuble)
+                                </button>
+                                <div className="h-px bg-white/5"/>
                                 <button
                                     onClick={() => onCopy(`${origin}/simulation/${estim.id}`, estim.id + '-sim')}
-                                    className="w-full px-4 py-3 text-left text-xs text-white hover:bg-white/5 transition-colors flex items-center gap-2 font-body"
+                                    className={itemClass}
                                 >
                                     {copiedId === estim.id + '-sim' ? <><Check size={13}/> Lien simu copié</> : <><Calculator size={13}/> Copier lien simulateur</>}
                                 </button>
                                 <button
                                     onClick={() => onCopy(`${origin}/galerie/${estim.id}`, estim.id + '-gal')}
-                                    className="w-full px-4 py-3 text-left text-xs text-white hover:bg-white/5 transition-colors flex items-center gap-2 font-body"
+                                    className={itemClass}
                                 >
                                     {copiedId === estim.id + '-gal' ? <><Check size={13}/> Lien galerie copié</> : <><ImageIcon size={13}/> Copier lien galerie</>}
                                 </button>
                                 <div className="h-px bg-white/5"/>
                                 <button
                                     onClick={onDelete}
-                                    className="w-full px-4 py-3 text-left text-xs hover:bg-red-500/10 transition-colors flex items-center gap-2 font-body"
+                                    className="w-full px-4 py-2.5 text-left text-xs hover:bg-red-500/10 transition-colors flex items-center gap-2 font-body"
                                     style={{ color: '#ff6b6b' }}
                                 >
                                     <Trash2 size={13}/> Supprimer
@@ -613,10 +918,10 @@ function EstimationCard({
                 </div>
             </div>
 
-            {/* Barre latérale décorative */}
+            {/* Barre latérale : couleur du statut */}
             <div
-                className="absolute left-0 top-0 bottom-0 w-[3px] opacity-0 group-hover:opacity-100 transition-opacity rounded-l-2xl pointer-events-none"
-                style={{ background: `linear-gradient(to bottom, ${COLORS.primary}, ${COLORS.secondary})` }}
+                className="absolute left-0 top-0 bottom-0 w-[3px] rounded-l-2xl pointer-events-none transition-opacity opacity-70 group-hover:opacity-100"
+                style={{ background: relance ? '#fbbf24' : meta.color }}
             />
         </div>
     );

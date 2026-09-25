@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
+import { fetchSharedEstimation } from "@/lib/sharedEstimation";
 import { X, ChevronLeft, ChevronRight, ImageIcon, Search, Camera, ZoomIn, Calculator, ArrowRight } from "lucide-react";
 
 /* ============================================================
@@ -34,7 +35,7 @@ export default function GalerieAutomatique() {
 
     useEffect(() => {
         const fetchPhotos = async () => {
-            const { data } = await supabase.from('estimations').select('data_json').eq('id', params.id).single();
+            const data = { data_json: await fetchSharedEstimation(String(params.id)) };
             if (data?.data_json) {
                 const d = data.data_json;
                 setAddress(d.propertyAddress || "");

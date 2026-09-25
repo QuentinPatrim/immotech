@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
+import { fetchSharedEstimation } from "@/lib/sharedEstimation";
 import { formatNumber as formatPrice } from "@/lib/formatters";
 import {
     Maximize, Grid, Layers, Leaf, Banknote,
@@ -65,7 +66,7 @@ export default function BrochureClient() {
         if (typeof window !== "undefined") setDomain(window.location.origin);
         if (!estimationId) return;
         const fetchEstimation = async () => {
-            const { data } = await supabase.from('estimations').select('data_json').eq('id', estimationId).single();
+            const data = { data_json: await fetchSharedEstimation(estimationId) };
             if (data && data.data_json) setBaseData(data.data_json);
             setLoading(false);
         };
