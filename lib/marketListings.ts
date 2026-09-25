@@ -85,6 +85,23 @@ export function portalFromUrl(url: string): string {
     return host;
 }
 
+/**
+ * Adresse stable d'une annonce : les portails ajoutent à leurs liens des
+ * paramètres de recherche ou de suivi qui changent d'une capture à l'autre.
+ * Quand l'identifiant de l'annonce est dans le chemin, on retire la requête.
+ */
+export function canonicalListingUrl(url: string): string {
+    try {
+        const u = new URL(url);
+        u.hash = "";
+        if (/\d{5,}/.test(u.pathname)) u.search = "";
+        else [...u.searchParams.keys()].filter(k => /^(utm_|xtor|at_|gclid|fbclid)/i.test(k)).forEach(k => u.searchParams.delete(k));
+        return u.toString();
+    } catch {
+        return url;
+    }
+}
+
 /** Prix de départ connu (le plus ancien relevé) */
 export function initialPrice(l: Pick<MarketListing, "price" | "priceHistory">): number {
     const events = [...(l.priceHistory || [])].sort((a, b) => a.date.localeCompare(b.date));

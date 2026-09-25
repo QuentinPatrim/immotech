@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import type { CapturePayload } from "@/lib/marketListings";
+import { canonicalListingUrl, type CapturePayload } from "@/lib/marketListings";
 
 /* ============================================================
    EXTRACTION + ANALYSE DES ANNONCES CAPTURÉES (serveur)
@@ -95,13 +95,14 @@ function systemPrompt(capturedAt: string) {
 L'agent a capturé une page d'un portail immobilier (liste de résultats ou annonce). Tu extrais les annonces de biens EN VENTE et tu les compares au bien estimé.
 
 Règles :
-- N'invente jamais une valeur : null si l'information n'apparaît pas.
-- Ignore les publicités, les biens en location, les agences, les programmes neufs sans prix, les liens de navigation (isForSale = false).
+- Liste de cartes : renvoie exactement UNE entrée par carte fournie, dans l'ordre, avec son numéro (card) ; isForSale = false pour ce qui n'est pas une vente.
+- Les caractéristiques d'une annonce (surface, pièces, étage, DPE, prestations, quartier…) viennent UNIQUEMENT de son propre texte. N'y recopie jamais celles du bien estimé ; null si l'information n'apparaît pas.
+- Le bien estimé sert seulement à écrire highlight, pros, cons et relevance. Une information absente de l'annonce n'est ni un avantage ni un inconvénient.
+- isForSale = false pour les locations (loyer, « /mois », « charges comprises »), publicités, agences, programmes neufs sans prix, liens de navigation.
 - Prix, surfaces : nombres sans espace ni symbole (295000, 68.5).
 - Date de capture : ${day}. Convertis les dates relatives (« aujourd'hui », « hier », « il y a 3 jours », « publiée le 12 septembre ») en AAAA-MM-JJ.
 - previousPrice uniquement si un ancien prix ou une baisse est explicitement affiché ; sinon null.
-- Analyse en français, concise et utile pour argumenter une estimation (prestations en plus ou en moins, état, étage, extérieur, stationnement, DPE, emplacement).
-- Une annonce par carte au maximum ; garde le numéro de carte fourni.`;
+- Analyse en français, concise et utile pour argumenter une estimation (prestations en plus ou en moins, état, étage, extérieur, stationnement, DPE, emplacement).`;
 }
 
 function subjectText(s: SubjectProperty) {
@@ -133,6 +134,20 @@ async function callModel(client: OpenAI, capturedAt: string, content: string): P
 }
 
 const clip = (s: string | undefined, n: number) => (s || "").replace(/\s+/g, " ").trim().slice(0, n);
+
+/** Numéros de carte fiables : si le modèle renvoie une entrée par carte mais se trompe de numéros, on s'en tient à l'ordre */
+function alignCards<T extends { card: number | null }>(rs: T[], ids: number[]): T[] {
+    const valid = rs.every(r => r.card !== null && ids.includes(r.card)) && new Set(rs.map(r => r.card)).size === rs.length;
+    if (valid) return rs;
+    if (rs.length === ids.length) return rs.map((r, k) => ({ ...r, card: ids[k] }));
+    return rs.filter(r => r.card !== null && ids.includes(r.card));
+}
+
+/** Le modèle écrit parfois « null », « N/A » ou « non précisé » au lieu de null */
+const cleanText = (v: string | null | undefined) => {
+    const t = (v || "").trim();
+    return !t || /^(null|n\/?a|nc|non (précisé|renseigné|communiqué)|inconnu|-)$/i.test(t) ? null : t;
+};
 
 const LISTING_TYPES = /^(Product|Offer|RealEstateListing|Residence|Apartment|House|SingleFamilyResidence|Accommodation)$/;
 const RESULTS_TYPES = /^(ItemList|SearchResultsPage|OfferCatalog)$/;
@@ -188,8 +203,8 @@ export async function extractListings(payload: CapturePayload, subject: SubjectP
     if (kind !== "detail") {
         for (let k = 0; k < cards.length; k += CARDS_PER_BATCH) {
             const batch = cards.slice(k, k + CARDS_PER_BATCH);
-            const content = `${header}\n\nCARTES D'ANNONCES :\n${batch.map(c => `[carte ${c.i}] ${clip(c.text, 700)}`).join("\n\n")}`;
-            jobs.push(callModel(client, payload.capturedAt, content));
+            const content = `${header}\n\n${batch.length} CARTES D'ANNONCES (une entrée par carte) :\n${batch.map(c => `[carte ${c.i}] ${clip(c.text, 700)}`).join("\n\n")}`;
+            jobs.push(callModel(client, payload.capturedAt, content).then(rs => alignCards(rs, batch.map(c => c.i))));
         }
     }
     if (kind !== "results") {
@@ -218,10 +233,18 @@ Texte de la page : ${clip(payload.text, 12000)}`;
             url = card.href;
             photoUrl = card.img;
         }
+        const dpe = (cleanText(r.dpe) || "").toUpperCase();
         out.push({
             ...r,
-            url,
+            url: canonicalListingUrl(url),
             photoUrl,
+            title: cleanText(r.title) || "",
+            city: cleanText(r.city),
+            district: cleanText(r.district),
+            floor: cleanText(r.floor),
+            dpe: /^[A-G]$/.test(dpe) ? dpe : null,
+            highlight: cleanText(r.highlight),
+            description: cleanText(r.description),
             relevance: Math.max(0, Math.min(100, Math.round(r.relevance || 0))),
             features: (r.features || []).slice(0, 6),
             pros: (r.pros || []).slice(0, 3),
