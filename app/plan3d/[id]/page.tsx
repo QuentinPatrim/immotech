@@ -29,6 +29,7 @@ import { autoFurnish } from "@/lib/plan3d/furnish";
 import { fileToPlanImage, isPdfFile } from "@/lib/plan3d/pdfToImage";
 import { analyzeDdt, openPdf, pageThumbnail, type CarrezTable, type DdtAnalysis } from "@/lib/plan3d/ddt";
 import DdtReview from "@/components/plan3d/DdtReview";
+import { planFromDrawing, refineWithTable, seedsFromPlan, seedsFromTexts } from "@/lib/plan3d/readDrawing";
 import { defaultRoomSpecs, indoorArea, kindLabel, schematicPlan, type RoomSpec } from "@/lib/plan3d/geometry";
 import { STYLE_LIST } from "@/lib/plan3d/styles";
 import { DEFAULT_WALL_HEIGHT, OUTDOOR_KINDS, ROOM_KINDS, type ExtractResponse, type Plan3D, type RoomKind, type StyleId } from "@/lib/plan3d/types";
@@ -572,24 +573,47 @@ export default function Plan3DPage() {
             if (upErr) throw new Error("Envoi du plan impossible. Vérifiez votre connexion et réessayez.");
             const { data: { publicUrl } } = supabase.storage.from("estimation-photos").getPublicUrl(path);
             advance(1);
+            const declaredSurface = positiveOrUndef(data?.surface);
 
-            const res = await fetch("/api/plan3d/extract", {
-                method: "POST",
-                headers: { ...(await getAuthHeaders()), "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    image: publicUrl, width: image.width, height: image.height,
-                    surface: positiveOrUndef(data?.surface), rooms: positiveOrUndef(data?.rooms), propertyType: data?.propertyType || undefined,
-                    carrez: carrez ? { rooms: carrez.rooms, outdoor: carrez.outdoor, total: carrez.total } : undefined,
-                }),
-            });
-            const json: ExtractResponse = await res.json().catch(() => ({ success: false }));
-            const notesOf = Array.isArray(json.notes) ? json.notes.filter((n): n is string => typeof n === "string") : [];
-            const got = res.ok && json.success ? toPlan(json.plan) : null;
-            if (!got) {
-                const err = new Error(json.error || "Le plan n'a pas pu être lu. Essayez une image plus nette ou créez le plan à partir des surfaces.");
-                setImp(s => ({ ...s, notes: notesOf }));
-                throw err;
+            // 1. Lecture directe du dessin (noms de pièces lus dans le PDF), sans IA
+            let result: { plan: Plan3D; notes: string[] } | null = null;
+            const textSeeds = seedsFromTexts(image.texts, carrez);
+            if (textSeeds.length >= 2) {
+                const direct = planFromDrawing(image, textSeeds, carrez, { declared: declaredSurface, imageUrl: publicUrl, textBoxes: image.texts });
+                const plan = direct ? toPlan(direct.plan) : null;
+                if (direct && plan) result = { plan, notes: direct.notes };
             }
+
+            // 2. Sinon lecture par l'IA, puis affinée sur le dessin et recalée sur le tableau des surfaces
+            if (!result) {
+                const res = await fetch("/api/plan3d/extract", {
+                    method: "POST",
+                    headers: { ...(await getAuthHeaders()), "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        image: publicUrl, width: image.width, height: image.height,
+                        surface: declaredSurface, rooms: positiveOrUndef(data?.rooms), propertyType: data?.propertyType || undefined,
+                        carrez: carrez ? { rooms: carrez.rooms, outdoor: carrez.outdoor, total: carrez.total } : undefined,
+                    }),
+                });
+                const json: ExtractResponse = await res.json().catch(() => ({ success: false }));
+                const notesOf = Array.isArray(json.notes) ? json.notes.filter((n): n is string => typeof n === "string") : [];
+                const got = res.ok && json.success ? toPlan(json.plan) : null;
+                if (!got) {
+                    const err = new Error(json.error || "Le plan n'a pas pu être lu. Essayez une image plus nette ou créez le plan à partir des surfaces.");
+                    setImp(s => ({ ...s, notes: notesOf }));
+                    throw err;
+                }
+                const aiSeeds = seedsFromPlan(got, carrez);
+                const drawn = planFromDrawing(image, aiSeeds, carrez, { declared: declaredSurface, imageUrl: publicUrl });
+                const drawnPlan = drawn ? toPlan(drawn.plan) : null;
+                if (drawn && drawnPlan) result = { plan: drawnPlan, notes: ["Pièces identifiées par l'IA, contours relevés sur le dessin.", ...drawn.notes.slice(1)] };
+                else {
+                    const refined = refineWithTable(got, carrez);
+                    result = { plan: toPlan(refined.plan) ?? got, notes: refined.note ? [...notesOf, refined.note] : notesOf };
+                }
+            }
+            const got = result.plan;
+            const notesOf = result.notes;
             clearStepTimers();
             advance(3);
             const built: Plan3D = { ...got, furniture: autoFurnish(got) };

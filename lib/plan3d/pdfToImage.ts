@@ -10,7 +10,22 @@ import { loadPdfjs } from "@/lib/plan3d/pdfjs";
 const MAX_SIDE = 2400;
 const QUALITY = 0.9;
 
-export interface PlanImage { blob: Blob; width: number; height: number }
+/** Texte de la page (PDF), boîte en pixels de l'image rendue */
+export interface PlanText { str: string; x0: number; y0: number; x1: number; y1: number }
+
+export interface PlanImage {
+    blob: Blob;
+    width: number;
+    height: number;
+    /** Pixels RGBA de l'image (lecture directe du dessin) */
+    pixels: { width: number; height: number; data: Uint8ClampedArray };
+    /** Textes positionnés (PDF uniquement) */
+    texts: PlanText[];
+}
+
+function pixelsOf(canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D) {
+    return { width: canvas.width, height: canvas.height, data: ctx.getImageData(0, 0, canvas.width, canvas.height).data };
+}
 
 function toJpeg(canvas: HTMLCanvasElement): Promise<Blob> {
     return new Promise((resolve, reject) => {
@@ -37,9 +52,21 @@ async function pdfToImage(file: File, pageIndex: number): Promise<PlanImage> {
         const base = page.getViewport({ scale: 1 });
         const scale = MAX_SIDE / Math.max(base.width, base.height, 1);
         const viewport = page.getViewport({ scale });
-        const { canvas } = whiteCanvas(Math.round(viewport.width), Math.round(viewport.height));
+        const { canvas, ctx } = whiteCanvas(Math.round(viewport.width), Math.round(viewport.height));
         await page.render({ canvas, viewport, background: "#ffffff" }).promise;
-        return { blob: await toJpeg(canvas), width: canvas.width, height: canvas.height };
+        // Textes de la page : position de chaque nom de pièce, repère PDF → pixels
+        const texts: PlanText[] = [];
+        try {
+            const content = await page.getTextContent();
+            for (const item of content.items) {
+                if (!("str" in item) || !item.str.trim()) continue;
+                const [a, b, c, d, e, f] = item.transform;
+                const h = Math.hypot(c, d) || Math.hypot(a, b) || item.height || 10;
+                const p1 = viewport.convertToViewportPoint(e, f), p2 = viewport.convertToViewportPoint(e + (item.width || 0), f + h);
+                texts.push({ str: item.str, x0: Math.min(p1[0], p2[0]), y0: Math.min(p1[1], p2[1]), x1: Math.max(p1[0], p2[0]), y1: Math.max(p1[1], p2[1]) });
+            }
+        } catch { /* page sans texte exploitable */ }
+        return { blob: await toJpeg(canvas), width: canvas.width, height: canvas.height, pixels: pixelsOf(canvas, ctx), texts };
     } finally {
         void pdf.destroy();
     }
@@ -64,7 +91,7 @@ async function rasterToImage(file: File): Promise<PlanImage> {
     const { canvas, ctx } = whiteCanvas(width, height);
     ctx.imageSmoothingQuality = "high";
     ctx.drawImage(img, 0, 0, width, height);
-    return { blob: await toJpeg(canvas), width, height };
+    return { blob: await toJpeg(canvas), width, height, pixels: pixelsOf(canvas, ctx), texts: [] };
 }
 
 export const isPdfFile = (file: File) => file.type === "application/pdf" || /\.pdf$/i.test(file.name);

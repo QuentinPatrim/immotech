@@ -137,7 +137,7 @@ export default function DdtReview({ fileName, analysis, page, thumbs, declared, 
                 )}
             </div>
             <p className="text-xs text-[var(--p-muted)] mt-3 max-w-2xl">
-                Le croquis d&apos;un diagnostiqueur est souvent sommaire : l&apos;IA le relève, les surfaces du rapport donnent l&apos;échelle et les noms des pièces. Si le dessin est inexploitable, préférez le plan à partir des surfaces, puis ajustez-le dans l&apos;éditeur 2D.
+                Le croquis est lu directement (murs, portes, fenêtres, noms des pièces), puis chaque cloison est recalée pour que les pièces aient exactement les surfaces du rapport : le croquis d&apos;un diagnostiqueur n&apos;est pas toujours à l&apos;échelle. Si le dessin est inexploitable, préférez le plan à partir des surfaces, puis ajustez-le dans l&apos;éditeur 2D.
             </p>
         </motion.section>
     );
