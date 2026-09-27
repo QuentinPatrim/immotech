@@ -17,7 +17,7 @@ import dynamic from "next/dynamic";
 import { AnimatePresence, motion } from "framer-motion";
 import {
     AlertTriangle, ArrowLeft, Box, Check, ChevronLeft, CircleAlert, FileUp, Info, LayoutGrid, Loader2, Plus, Presentation,
-    Redo2, RotateCcw, Sofa, Sparkles, Sun as SunIcon, Trash2, Undo2, Wand2, X,
+    Redo2, RotateCcw, RotateCw, Sofa, Sparkles, Sun as SunIcon, Trash2, Undo2, Wand2, X,
 } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { getAuthHeaders } from "@/lib/apiHelpers";
@@ -25,6 +25,9 @@ import { usePatrimTheme } from "@/lib/patrimTheme";
 import ThemeToggle from "@/components/estimation/ThemeToggle";
 import PlanEditor2D, { OpeningInspector, RoomInspector } from "@/components/plan3d/PlanEditor2D";
 import LightPanel from "@/components/plan3d/LightPanel";
+import CatalogPanel from "@/components/plan3d/CatalogPanel";
+import { typeFor, type LibraryItem } from "@/lib/plan3d/library";
+import { FURNITURE_CATALOG, furnitureLabel } from "@/lib/plan3d/furnish";
 import { geocodePoint } from "@/lib/listingArea";
 import { NEW_ROOM, countedArea, deleteRoom, duplicateRoom, hasTargets, patchOpening, placardGroups, relock, setRoomArea, setRoomSize, setRoomTarget } from "@/lib/plan3d/edit";
 import type { ViewMode } from "@/components/plan3d/Scene3D";
@@ -33,7 +36,7 @@ import { fileToPlanImage, isPdfFile } from "@/lib/plan3d/pdfToImage";
 import { analyzeDdt, openPdf, pageThumbnail, type CarrezTable, type DdtAnalysis } from "@/lib/plan3d/ddt";
 import DdtReview from "@/components/plan3d/DdtReview";
 import { planFromDrawing, refineWithTable, seedsFromPlan, seedsFromTexts } from "@/lib/plan3d/readDrawing";
-import { defaultRoomSpecs, indoorArea, kindLabel, schematicPlan, type RoomSpec } from "@/lib/plan3d/geometry";
+import { centroid, defaultRoomSpecs, indoorArea, kindLabel, polygonArea, schematicPlan, uid, type RoomSpec } from "@/lib/plan3d/geometry";
 import { STYLE_LIST } from "@/lib/plan3d/styles";
 import { DEFAULT_WALL_HEIGHT, OUTDOOR_KINDS, ROOM_KINDS, type ExtractResponse, type Plan3D, type RoomKind, type StyleId } from "@/lib/plan3d/types";
 
@@ -335,6 +338,11 @@ export default function Plan3DPage() {
     const [hour, setHour] = useState(() => Math.min(19, Math.max(9, new Date().getHours() + new Date().getMinutes() / 60)));
     const [walkFov, setWalkFov] = useState(85);
     const [lightOpen, setLightOpen] = useState(false);
+    // Meubles : aucun (logement vide), simples, réalistes (bibliothèque 3D) ; catalogue ; meuble sélectionné
+    const [furnMode, setFurnMode] = useState<"none" | "simple" | "real">("real");
+    const [furnMenu, setFurnMenu] = useState(false);
+    const [catalogFor, setCatalogFor] = useState<{ replacing: string | null } | null>(null);
+    const [selFurniture, setSelFurniture] = useState<string | null>(null);
     const geoTried = useRef(false);
     const [furniture, setFurniture] = useState(true);
     const [pane, setPane] = useState<Pane>("3d");
@@ -724,6 +732,27 @@ export default function Plan3DPage() {
     // Panneau d'édition dans la vue 3D : toujours pour une ouverture, pour une pièce sur téléphone
     // (sur ordinateur, l'inspecteur du plan 2D voisin est déjà affiché)
     const editPlan = (next: Plan3D) => onEditorChange(next);
+    const selFurn = plan && selFurniture ? plan.furniture.find(f => f.id === selFurniture) ?? null : null;
+    /** Meuble du catalogue : remplace le meuble sélectionné, ou s'ajoute au centre de la pièce choisie */
+    const pickFromCatalog = (item: LibraryItem) => {
+        if (!plan || !catalogFor) return;
+        const dims = item.dims ? { w: Math.round(item.dims[0] * 100) / 100, h: Math.round(item.dims[1] * 100) / 100, d: Math.round(item.dims[2] * 100) / 100 } : null;
+        if (catalogFor.replacing) {
+            editPlan({ ...plan, furniture: plan.furniture.map(f => (f.id === catalogFor.replacing ? { ...f, model: item.id, ...(dims ?? {}) } : f)) });
+        } else {
+            const indoor = plan.rooms.filter(r => r.polygon.length >= 3 && !OUTDOOR_KINDS.includes(r.kind));
+            const room = selRoom3d ?? indoor.reduce<(typeof indoor)[number] | null>((a, r) => (!a || Math.abs(polygonArea(r.polygon)) > Math.abs(polygonArea(a.polygon)) ? r : a), null);
+            if (!room) return;
+            const c = centroid(room.polygon);
+            const type = typeFor(item);
+            const base = FURNITURE_CATALOG[type];
+            const f = { id: uid("f"), type, roomId: room.id, x: c.x, y: c.y, rotation: 0, w: dims?.w ?? base.w, d: dims?.d ?? base.d, h: dims?.h ?? base.h, model: item.id };
+            editPlan({ ...plan, furniture: [...plan.furniture, f] });
+            setSelFurniture(f.id);
+            setSelected(null);
+        }
+        setCatalogFor(null);
+    };
     const lockAreas = !!plan && hasTargets(plan) && plan.lockAreas !== false;
     const show2D = isDesktop || pane === "2d";
     const show3D = isDesktop || pane === "3d";
@@ -782,7 +811,8 @@ export default function Plan3DPage() {
                         {/* La scène 3D reste montée (masquée sur téléphone en mode Plan 2D) : pas de démontage du canvas à chaque bascule */}
                         {(
                             <section className={`relative min-h-0 rounded-[24px] overflow-hidden border border-[var(--p-line)] shadow-[var(--p-shadow)] ${show3D ? "" : "hidden"}`} style={{ backgroundColor: "var(--p-card)" }} aria-label="Vue 3D" aria-hidden={!show3D}>
-                                <Scene3D plan={plan} view={view} showFurniture={furniture} showLabels selectedRoomId={selectedRoomId}
+                                <Scene3D plan={plan} view={view} showFurniture={furnMode !== "none"} realFurniture={furnMode === "real"} showLabels selectedRoomId={selectedRoomId}
+                                    selectedFurnitureId={selFurniture} onSelectFurniture={id => { setSelFurniture(id); if (id) { setSelected(null); setOpening3d(null); } }}
                                     onSelectRoom={id => { setSelected(id); setOpening3d(null); }}
                                     onEdit={onEditorChange} lockAreas={lockAreas} walkFov={walkFov} hour={hour} floorLevel={floorLevel} selectedOpeningId={selOpening3d?.id ?? null}
                                     onSelectOpening={id => { setOpening3d(id); const o = plan.openings.find(x => x.id === id); if (o) setSelected(o.roomId); }}
@@ -793,7 +823,7 @@ export default function Plan3DPage() {
                                     <Segmented label="Vue" value={view} onChange={setView} options={VIEWS} glass/>
                                     <div className="pointer-events-auto flex items-center gap-0.5 p-1 rounded-xl border border-[var(--p-line)] backdrop-blur-xl shadow-lg" style={{ backgroundColor: "var(--p-glass)" }}>
                                         <GlassButton label="Lumière" icon={<SunIcon size={15}/>} active={lightOpen} onClick={() => setLightOpen(v => !v)}/>
-                                        <GlassButton label="Meubles" icon={<Sofa size={15}/>} active={furniture} onClick={() => setFurniture(v => !v)}/>
+                                        <GlassButton label="Meubles" icon={<Sofa size={15}/>} active={furnMenu || furnMode !== "none"} onClick={() => setFurnMenu(v => !v)}/>
                                         <GlassButton label="Réaménager" icon={<Wand2 size={15}/>} onClick={refurnish}/>
                                         <GlassButton label="Recommencer" icon={<RotateCcw size={15}/>} onClick={() => setConfirmReset(true)}/>
                                         <span className="w-px h-5 bg-[var(--p-line)] mx-0.5"/>
@@ -801,6 +831,24 @@ export default function Plan3DPage() {
                                         <GlassButton label="Rétablir" iconOnly icon={<Redo2 size={15}/>} disabled={!canRedo} onClick={redo}/>
                                     </div>
                                 </div>
+                                {furnMenu && (
+                                    <div className="absolute top-16 right-3 z-20 pointer-events-auto w-[min(92vw,300px)] rounded-[22px] p-2 border border-[var(--p-line)] backdrop-blur-xl shadow-[var(--p-shadow)]"
+                                        style={{ backgroundColor: "var(--p-glass)" }} role="menu" aria-label="Meubles">
+                                        {([["real", "Meubles réalistes", "Modèles 3D détaillés"], ["simple", "Meubles simples", "Léger, pour un téléphone modeste"], ["none", "Logement vide", "Sans aucun meuble"]] as const).map(([id, label, hint]) => (
+                                            <button key={id} type="button" role="menuitemradio" aria-checked={furnMode === id}
+                                                onClick={() => { setFurnMode(id); setFurniture(id !== "none"); setFurnMenu(false); setSelFurniture(null); }}
+                                                className={`w-full text-left px-3 py-2.5 rounded-xl flex items-center justify-between gap-2 ${furnMode === id ? "bg-[var(--p-accent-soft)]" : "hover:bg-[var(--p-hover)]"}`}>
+                                                <span><span className="block text-sm font-semibold text-[var(--p-fg)]">{label}</span><span className="block text-[11.5px] text-[var(--p-muted)]">{hint}</span></span>
+                                                {furnMode === id && <Check size={15} className="text-[var(--p-accent)]"/>}
+                                            </button>
+                                        ))}
+                                        <div className="h-px bg-[var(--p-line)] my-1.5"/>
+                                        <button type="button" onClick={() => { setCatalogFor({ replacing: null }); setFurnMenu(false); if (furnMode === "none") { setFurnMode("real"); setFurniture(true); } }}
+                                            className="w-full text-left px-3 py-2.5 rounded-xl hover:bg-[var(--p-hover)] text-sm font-semibold text-[var(--p-accent)] flex items-center gap-2">
+                                            <Plus size={15}/> Ajouter un meuble du catalogue
+                                        </button>
+                                    </div>
+                                )}
                                 {lightOpen && (
                                     <div className="absolute top-16 right-3 z-20">
                                         <LightPanel hour={hour} onHour={setHour} north={plan.north ?? 0} onNorth={setNorth} fov={walkFov} onFov={setWalkFov}
@@ -816,7 +864,27 @@ export default function Plan3DPage() {
                                             Tirez les pastilles rouges pour pousser un mur · glissez une porte ou la pièce
                                         </p>
                                     )}
-                                    {panel3d ? (
+                                    {catalogFor ? (
+                                        <CatalogPanel replacing={catalogFor.replacing} onPick={pickFromCatalog} onClose={() => setCatalogFor(null)}/>
+                                    ) : selFurn ? (
+                                        <div className="pointer-events-auto w-full sm:w-80 sm:self-end rounded-[24px] p-4 border border-[var(--p-line)] backdrop-blur-xl shadow-[var(--p-shadow)] space-y-3"
+                                            style={{ backgroundColor: "var(--p-glass)" }} role="dialog" aria-label="Meuble sélectionné">
+                                            <div className="flex items-center justify-between gap-2">
+                                                <div className="min-w-0">
+                                                    <p className="text-[15px] font-bold text-[var(--p-fg)] truncate">{furnitureLabel(selFurn.type)}</p>
+                                                    <p className="text-[12px] text-[var(--p-muted)] truncate">{selFurn.model ? selFurn.model.replace(/_/g, " ") : "Modèle choisi automatiquement"} · glissez la pastille pour le déplacer</p>
+                                                </div>
+                                                <button type="button" onClick={() => setSelFurniture(null)} aria-label="Fermer" className="w-8 h-8 shrink-0 rounded-full flex items-center justify-center bg-[var(--p-sunken)] text-[var(--p-muted)]"><X size={15}/></button>
+                                            </div>
+                                            <div className="grid grid-cols-3 gap-2">
+                                                <button type="button" onClick={() => setCatalogFor({ replacing: selFurn.id })} className="h-10 rounded-xl text-[13px] font-semibold bg-[var(--p-sunken)] text-[var(--p-fg)]">Remplacer</button>
+                                                <button type="button" onClick={() => editPlan({ ...plan, furniture: plan.furniture.map(f => (f.id === selFurn.id ? { ...f, rotation: f.rotation + Math.PI / 2 } : f)) })}
+                                                    className="h-10 rounded-xl text-[13px] font-semibold bg-[var(--p-sunken)] text-[var(--p-fg)] inline-flex items-center justify-center gap-1"><RotateCw size={14}/> Pivoter</button>
+                                                <button type="button" onClick={() => { editPlan({ ...plan, furniture: plan.furniture.filter(f => f.id !== selFurn.id) }); setSelFurniture(null); }}
+                                                    className="h-10 rounded-xl text-[13px] font-semibold bg-[var(--p-sunken)] text-[var(--p-negative)]">Supprimer</button>
+                                            </div>
+                                        </div>
+                                    ) : panel3d ? (
                                         <div className="pointer-events-auto w-full sm:w-80 sm:self-end max-h-[44vh] overflow-y-auto rounded-[24px] p-4 border border-[var(--p-line)] backdrop-blur-xl shadow-[var(--p-shadow)]"
                                             style={{ backgroundColor: "var(--p-glass)" }}>
                                             {selOpening3d ? (

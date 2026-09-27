@@ -52,7 +52,7 @@ export default function VisitSection({ plan }: { plan: Plan3D }) {
     return (
         <div>
             <div className="relative rounded-[28px] overflow-hidden border border-[var(--p-line)] h-[64vh] min-h-[420px] max-h-[760px]" style={{ backgroundColor: "var(--p-card)" }}>
-                <Scene3D plan={shown} view={view} showFurniture={furniture} showLabels selectedRoomId={selected} onSelectRoom={setSelected} theme={theme} className="absolute inset-0"/>
+                <Scene3D plan={shown} view={view} showFurniture={furniture} realFurniture showLabels selectedRoomId={selected} onSelectRoom={setSelected} theme={theme} className="absolute inset-0"/>
                 {/* Commandes */}
                 <div className="absolute top-3 inset-x-3 flex flex-wrap items-center justify-between gap-2 pointer-events-none">
                     <div className="pointer-events-auto flex p-1 rounded-[14px] gap-0.5 backdrop-blur-xl border border-[var(--p-line)]" style={{ backgroundColor: "var(--p-glass)" }} role="radiogroup" aria-label="Vue">

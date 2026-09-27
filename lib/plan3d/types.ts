@@ -82,6 +82,8 @@ export interface Furniture {
     w: number;
     d: number;
     h: number;
+    /** Modèle réaliste choisi dans la bibliothèque (identifiant) ; sinon choix automatique */
+    model?: string;
 }
 
 export type StyleId = "scandinave" | "contemporain" | "haussmannien" | "industriel";

@@ -25,6 +25,9 @@ import { STYLES, type StylePalette } from "@/lib/plan3d/styles";
 import { FLOOR_ROUGHNESS, disposeTextures, makeFloorTexture } from "@/components/plan3d/materials";
 import { FurnitureMesh, disposeFurnitureResources } from "@/components/plan3d/furnitureModels";
 import EditHandles3D from "@/components/plan3d/EditHandles3D";
+import RealFurniture from "@/components/plan3d/RealFurniture";
+import FurnitureHandle3D from "@/components/plan3d/FurnitureHandle3D";
+import { loadCatalog, modelFor, type LibraryItem } from "@/lib/plan3d/library";
 
 export type ViewMode = "dollhouse" | "top" | "walk";
 
@@ -48,6 +51,13 @@ export interface Scene3DProps {
     floorLevel?: number;
     /** Rendu soigné (occlusion ambiante, anticrénelage) ; désactivable sur appareil modeste */
     quality?: "high" | "low";
+    /** Meubles réalistes (bibliothèque 3D) plutôt que simples */
+    realFurniture?: boolean;
+    /** Meuble sélectionné (déplacement à la pastille, panneau de la page) */
+    selectedFurnitureId?: string | null;
+    onSelectFurniture?: (id: string | null) => void;
+    /** Catalogue chargé (ou échec) : informe la page */
+    onCatalog?: (state: "loading" | "ready" | "error") => void;
     selectedOpeningId?: string | null;
     onSelectOpening?: (id: string | null) => void;
 }
@@ -277,15 +287,33 @@ function Floors({ plan, palette, ox, oy, selectedRoomId, onFloorClick, ceilings 
 
 /* ─────────────────────────── MOBILIER ─────────────────────────── */
 
-function FurnitureLayer({ plan, palette, ox, oy }: { plan: Plan3D; palette: StylePalette; ox: number; oy: number }) {
+function FurnitureLayer({ plan, palette, ox, oy, catalog, selectedId, onSelect }: {
+    plan: Plan3D; palette: StylePalette; ox: number; oy: number;
+    /** Catalogue chargé : meubles réalistes (sinon meubles simples) */
+    catalog: LibraryItem[] | null;
+    selectedId?: string | null;
+    onSelect?: (id: string) => void;
+}) {
     return (
         <group>
-            {(plan.furniture ?? []).map(f => (
-                // Rotation du plan r (sens x → y) = rotation.y de -r en monde (Y vers le haut)
-                <group key={f.id} position={[f.x - ox, 0, f.y - oy]} rotation={[0, -f.rotation, 0]}>
-                    <FurnitureMesh item={f} palette={palette} />
-                </group>
-            ))}
+            {(plan.furniture ?? []).map(f => {
+                const simple = <FurnitureMesh item={f} palette={palette} />;
+                const id = catalog ? modelFor(catalog, f) : null;
+                return (
+                    // Rotation du plan r (sens x → y) = rotation.y de -r en monde (Y vers le haut)
+                    <group key={f.id} position={[f.x - ox, 0, f.y - oy]} rotation={[0, -f.rotation, 0]}
+                        onClick={onSelect ? e => { if (e.delta > 6) return; e.stopPropagation(); onSelect(f.id); } : undefined}>
+                        {id ? <RealFurniture id={id} item={f} fallback={simple} /> : simple}
+                        {selectedId === f.id && (
+                            // Sélection : cadre au sol autour du meuble
+                            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.012, 0]}>
+                                <ringGeometry args={[Math.hypot(f.w, f.d) / 2 + 0.05, Math.hypot(f.w, f.d) / 2 + 0.11, 48]} />
+                                <meshBasicMaterial color={ACCENT} transparent opacity={0.9} toneMapped={false} />
+                            </mesh>
+                        )}
+                    </group>
+                );
+            })}
         </group>
     );
 }
@@ -622,9 +650,10 @@ function CameraRig({ view, plan, bb, ox, oy, autoRotate, walkRequestRef, walkFov
 
 /* ─────────────────────────── SCÈNE ─────────────────────────── */
 
-function SceneContent({ plan, dragging, onDraft, labels, labelEls, view, showFurniture, selectedRoomId, onSelectRoom, dark, autoRotate, onEdit, lockAreas, selectedOpeningId, onSelectOpening, walkFov, hour, floorLevel, quality }: {
+function SceneContent({ plan, dragging, onDraft, labels, labelEls, view, showFurniture, selectedRoomId, onSelectRoom, dark, autoRotate, onEdit, lockAreas, selectedOpeningId, onSelectOpening, walkFov, hour, floorLevel, quality, catalog, selectedFurnitureId, onSelectFurniture }: {
     plan: Plan3D; dragging: boolean; onDraft: (p: Plan3D | null) => void; labels: LabelItem[]; labelEls: RefObject<Map<string, HTMLElement>>;
     walkFov: number; hour: number; floorLevel: number; quality: "high" | "low";
+    catalog: LibraryItem[] | null; selectedFurnitureId: string | null; onSelectFurniture?: (id: string | null) => void;
     view: ViewMode; showFurniture: boolean; selectedRoomId: string | null;
     onSelectRoom?: (id: string | null) => void; dark: boolean; autoRotate: boolean;
     onEdit?: (plan: Plan3D) => void; lockAreas: boolean; selectedOpeningId: string | null; onSelectOpening?: (id: string | null) => void;
@@ -713,7 +742,14 @@ function SceneContent({ plan, dragging, onDraft, labels, labelEls, view, showFur
 
             <Floors plan={plan} palette={palette} ox={ox} oy={oy} selectedRoomId={selectedRoomId} onFloorClick={onFloorClick} ceilings={walking} />
             <Walls plan={plan} palette={palette} ox={ox} oy={oy} />
-            {showFurniture && <FurnitureLayer plan={plan} palette={palette} ox={ox} oy={oy} />}
+            {showFurniture && (
+                <FurnitureLayer plan={plan} palette={palette} ox={ox} oy={oy} catalog={catalog}
+                    selectedId={selectedFurnitureId} onSelect={onSelectFurniture && view !== "walk" ? id => onSelectFurniture(id) : undefined} />
+            )}
+            {showFurniture && onEdit && view !== "walk" && (() => {
+                const item = selectedFurnitureId ? plan.furniture.find(f => f.id === selectedFurnitureId) : null;
+                return item ? <FurnitureHandle3D plan={plan} item={item} ox={ox} oy={oy} size={handleSize} onDraft={onDraft} onCommit={onEdit} /> : null;
+            })()}
             <LabelProjector items={labels} ox={ox} oy={oy} elements={labelEls} />
             {editRoom && onEdit && (
                 <EditHandles3D
@@ -752,6 +788,10 @@ export default function Scene3D({
     hour = 15,
     floorLevel = 1,
     quality = "high",
+    realFurniture = false,
+    selectedFurnitureId = null,
+    onSelectFurniture,
+    onCatalog,
     selectedOpeningId = null,
     onSelectOpening,
 }: Scene3DProps) {
@@ -761,6 +801,18 @@ export default function Scene3D({
     const [draft, setDraft] = useState<Plan3D | null>(null);
     const shown = draft ?? plan;
     const labelEls = useRef(new Map<string, HTMLElement>());
+    // Bibliothèque de meubles réalistes, chargée à la demande
+    const [catalog, setCatalog] = useState<LibraryItem[] | null>(null);
+    useEffect(() => {
+        if (!realFurniture) return;
+        let live = true;
+        onCatalog?.("loading");
+        loadCatalog().then(
+            items => { if (live) { setCatalog(items); onCatalog?.("ready"); } },
+            () => { if (live) onCatalog?.("error"); },
+        );
+        return () => { live = false; };
+    }, [realFurniture, onCatalog]);
     const labels = useMemo(() => (showLabels && view !== "walk" ? labelItemsOf(shown.rooms) : []), [shown.rooms, showLabels, view]);
 
     // Textures et géométries partagées libérées quand la dernière scène disparaît
@@ -794,7 +846,7 @@ export default function Scene3D({
                 onPointerMissed={e => {
                     const d = down.current;
                     if (view === "walk" || !onSelectRoom || !d) return;
-                    if (Math.hypot(e.clientX - d.x, e.clientY - d.y) < 6) { onSelectRoom(null); onSelectOpening?.(null); }
+                    if (Math.hypot(e.clientX - d.x, e.clientY - d.y) < 6) { onSelectRoom(null); onSelectOpening?.(null); onSelectFurniture?.(null); }
                 }}
             >
                 <SceneContent
@@ -815,6 +867,9 @@ export default function Scene3D({
                     hour={hour}
                     floorLevel={floorLevel}
                     quality={quality}
+                    catalog={realFurniture ? catalog : null}
+                    selectedFurnitureId={selectedFurnitureId}
+                    onSelectFurniture={onSelectFurniture}
                     selectedOpeningId={selectedOpeningId}
                     onSelectOpening={onSelectOpening}
                 />
