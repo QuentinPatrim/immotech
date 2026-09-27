@@ -277,3 +277,6 @@ html[data-patrim-theme="light"] .patrim-ui .p-tint { filter: brightness(0.66) sa
 
 html[data-patrim-theme="light"] .patrim-ui ::-webkit-scrollbar { background-color: #f3f0eb; }
 html[data-patrim-theme="light"] .patrim-ui ::-webkit-scrollbar-thumb { background-color: #d8d0c6; }
+
+/* Signature manuscrite lisible en thème sombre */
+html:not([data-patrim-theme="light"]) .patrim-ui .dark-invert { filter: invert(1) brightness(1.4); }

@@ -20,7 +20,7 @@ import {
     Plus, Search, ChevronRight, QrCode, FileText, Home as HomeIcon,
     Image as ImageIcon, Calculator, MoreVertical, Trash2, Copy, Check,
     Sparkles, ArrowUpRight, Link2, Edit3, Wand2, Building2,
-    BellRing, ChevronDown, StickyNote, Printer, CopyPlus, ArrowUpDown,
+    BellRing, ChevronDown, StickyNote, Printer, CopyPlus, ArrowUpDown, Presentation, Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -322,7 +322,7 @@ export default function MesBiensPage() {
 
     // --- RENDU ---
     return (
-        <div className="patrim-ui min-h-screen" style={{ backgroundColor: "var(--p-bg)" }}>
+        <div className="patrim-ui min-h-screen pb-24 md:pb-0" style={{ backgroundColor: "var(--p-bg)" }}>
             {/* Import de la typo Fraunces (élégante) + Inter Tight (body) */}
             <style dangerouslySetInnerHTML={{ __html: `
                 @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700;9..144,900&family=Inter+Tight:wght@400;500;600;700;800&display=swap');
@@ -389,6 +389,12 @@ export default function MesBiensPage() {
                                 <QrCode size={15} className="mr-2"/> Nouveau QR Code
                             </Button>
                             <Button
+                                onClick={() => router.push('/estimation/express')}
+                                className="rounded-full h-11 px-5 font-bold text-sm bg-[var(--p-card)] hover:bg-[var(--p-card-2)] text-[var(--p-fg)] border border-[var(--p-line-strong)] transition-colors font-body"
+                            >
+                                <Zap size={15} className="mr-2 text-[var(--p-accent)]"/> Estimation express
+                            </Button>
+                            <Button
                                 onClick={() => router.push('/estimation/new')}
                                 className="rounded-full h-11 px-5 font-bold text-sm text-[#fff] shadow-xl transition-transform hover:scale-105 font-body"
                                 style={{ background: `linear-gradient(135deg, ${COLORS.primary}, ${COLORS.secondary})` }}
@@ -437,22 +443,6 @@ export default function MesBiensPage() {
                         </div>
                     </div>
 
-                    {/* Bouton création mobile (en bas du header) */}
-                    <div className="flex md:hidden gap-3 mt-6">
-                        <Button
-                            onClick={() => router.push('/generateur-qr')}
-                            className="flex-1 rounded-full h-11 font-bold text-xs bg-[var(--p-card)] hover:bg-[var(--p-card-2)] text-[var(--p-fg)] border border-[var(--p-line-strong)] font-body"
-                        >
-                            <QrCode size={14} className="mr-1.5"/> QR Code
-                        </Button>
-                        <Button
-                            onClick={() => router.push('/estimation/new')}
-                            className="flex-1 rounded-full h-11 font-bold text-xs text-[#fff] font-body"
-                            style={{ background: `linear-gradient(135deg, ${COLORS.primary}, ${COLORS.secondary})` }}
-                        >
-                            <Plus size={14} className="mr-1.5"/> Estimation
-                        </Button>
-                    </div>
                 </div>
             </header>
 
@@ -544,6 +534,7 @@ export default function MesBiensPage() {
                                     copiedId={copiedId}
                                     onCopy={handleCopy}
                                     onOpen={() => router.push(`/estimation/${estim.id}`)}
+                                    onPresent={() => router.push(`/rdv/${estim.id}`)}
                                     onOpenPdf={() => router.push(`/estimation/${estim.id}?view=print`)}
                                     onOpenPlaquette={() => router.push(`/plaquette/${estim.id}`)}
                                     onDelete={() => deleteItem('estimations', estim.id)}
@@ -585,6 +576,19 @@ export default function MesBiensPage() {
                     )
                 )}
             </main>
+
+            {/* Barre d'actions mobile (pouce) */}
+            <div className="md:hidden fixed inset-x-0 bottom-0 z-40 border-t border-[var(--p-line)] backdrop-blur-xl" style={{ backgroundColor: "var(--p-glass)", paddingBottom: "env(safe-area-inset-bottom)" }}>
+                <div className="px-4 py-3 grid grid-cols-[auto_1fr_1.3fr] gap-2">
+                    <button onClick={() => router.push('/generateur-qr')} aria-label="Nouveau QR Code"
+                        className="h-12 w-12 rounded-2xl border border-[var(--p-line-strong)] flex items-center justify-center text-[var(--p-fg)] font-body"><QrCode size={17}/></button>
+                    <button onClick={() => router.push('/estimation/new')}
+                        className="h-12 rounded-2xl border border-[var(--p-line-strong)] text-sm font-semibold text-[var(--p-fg)] flex items-center justify-center gap-1.5 font-body"><Plus size={16}/> Dossier</button>
+                    <button onClick={() => router.push('/estimation/express')}
+                        className="h-12 rounded-2xl text-sm font-semibold text-[#fff] flex items-center justify-center gap-1.5 font-body shadow-lg"
+                        style={{ background: `linear-gradient(135deg, ${COLORS.primary}, ${COLORS.secondary})` }}><Zap size={16}/> Estimation express</button>
+                </div>
+            </div>
         </div>
     );
 }
@@ -699,7 +703,7 @@ function FilterChip({ active, onClick, label, count, color, icon }: {
 
 /* --------- CARTE ESTIMATION --------- */
 function EstimationCard({
-    estim, origin, hasQrLink, openMenuId, setOpenMenuId, copiedId, onCopy, onOpen, onOpenPdf, onOpenPlaquette,
+    estim, origin, hasQrLink, openMenuId, setOpenMenuId, copiedId, onCopy, onOpen, onPresent, onOpenPdf, onOpenPlaquette,
     onDelete, onDuplicate, onChangeStatus, onFollowedUp, onEditNote, delay,
 }: any) {
     const d = estim.data_json || {};
@@ -853,6 +857,13 @@ function EstimationCard({
                             </span>
                         )}
                     </div>
+                    <button
+                        onClick={onPresent}
+                        title="Présenter au client (mode rendez-vous)"
+                        className="flex items-center gap-1.5 h-9 w-9 md:w-auto md:px-3.5 justify-center rounded-full text-xs font-bold text-[var(--p-fg)] border border-[var(--p-line-strong)] hover:bg-[var(--p-hover)] transition-colors font-body"
+                    >
+                        <Presentation size={14}/><span className="hidden md:inline">RDV</span>
+                    </button>
                     <button
                         onClick={onOpen}
                         className="hidden md:flex items-center gap-1.5 h-9 px-4 rounded-full text-xs font-bold text-[#fff] transition-colors font-body"

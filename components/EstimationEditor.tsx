@@ -145,7 +145,7 @@ interface DvfSaleResult {
 
 // Champs de suivi gérés depuis "Mes biens" : l'éditeur ne les écrase jamais
 // (on reprend la valeur en base au moment d'enregistrer).
-const HUB_KEYS = ["status", "statusUpdatedAt", "lastFollowUpAt", "mandateType", "followUpNote"] as const;
+const HUB_KEYS = ["status", "statusUpdatedAt", "lastFollowUpAt", "mandateType", "followUpNote", "meeting", "shareAvis"] as const;
 
 // Prix au m² d'un comparable (0 si surface ou prix manquant, exclu des médianes)
 const sqmOf = (c: { price: number; surface: number }) => (c.price > 0 && c.surface > 0 ? c.price / c.surface : 0);
