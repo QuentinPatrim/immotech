@@ -34,7 +34,7 @@ export interface LibraryItem {
 
 export interface Catalog { fetchedAt: number; items: LibraryItem[] }
 
-export const isModelId = (id: string) => /^[a-z0-9_]{2,80}$/.test(id);
+export const isModelId = (id: string) => /^[A-Za-z0-9_-]{2,50}$/.test(id);
 
 function admin(): SupabaseClient {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;

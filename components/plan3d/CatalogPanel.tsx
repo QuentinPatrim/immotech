@@ -78,7 +78,7 @@ export default function CatalogPanel({ replacing, onPick, onClose }: {
                         ))}
                     </div>
                 )}
-                <p className="text-[10.5px] text-[var(--p-muted)] mt-3">Modèles 3D libres de droits (CC0, Poly Haven), hébergés par Patrim.</p>
+                <p className="text-[10.5px] text-[var(--p-muted)] mt-3">Powered by Poly Haven — modèles 3D libres de droits (CC0), hébergés par Patrim.</p>
             </div>
         </div>
     );
