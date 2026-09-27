@@ -40,6 +40,11 @@ export interface Room {
     kind: RoomKind;
     /** Contour dans le sens horaire ou anti-horaire, ≥ 3 points, en mètres */
     polygon: Pt[];
+    /**
+     * Surface de référence (m²) : tableau du DDT, surfaces saisies. Tant qu'elle
+     * est posée, la pièce la garde quand on déplace ses murs (les autres murs se recalent).
+     */
+    targetArea?: number;
 }
 
 export type OpeningKind = "door" | "window" | "french";
@@ -100,6 +105,8 @@ export interface Plan3D {
     style: StyleId;
     /** Plan schématique généré à partir des seules surfaces (pas de plan 2D fourni) */
     schematic?: boolean;
+    /** Surfaces de référence verrouillées à l'édition (vrai par défaut quand elles existent) */
+    lockAreas?: boolean;
     updatedAt?: string;
 }
 

@@ -24,7 +24,7 @@ import { getAuthHeaders } from "@/lib/apiHelpers";
 import { usePatrimTheme } from "@/lib/patrimTheme";
 import ThemeToggle from "@/components/estimation/ThemeToggle";
 import PlanEditor2D, { OpeningInspector, RoomInspector } from "@/components/plan3d/PlanEditor2D";
-import { NEW_ROOM, deleteRoom, duplicateRoom, patchOpening, setRoomArea, setRoomSize } from "@/lib/plan3d/edit";
+import { NEW_ROOM, countedArea, deleteRoom, duplicateRoom, hasTargets, patchOpening, placardGroups, relock, setRoomArea, setRoomSize, setRoomTarget } from "@/lib/plan3d/edit";
 import type { ViewMode } from "@/components/plan3d/Scene3D";
 import { autoFurnish } from "@/lib/plan3d/furnish";
 import { fileToPlanImage, isPdfFile } from "@/lib/plan3d/pdfToImage";
@@ -692,6 +692,7 @@ export default function Plan3DPage() {
     // Panneau d'édition dans la vue 3D : toujours pour une ouverture, pour une pièce sur téléphone
     // (sur ordinateur, l'inspecteur du plan 2D voisin est déjà affiché)
     const editPlan = (next: Plan3D) => onEditorChange(next);
+    const lockAreas = !!plan && hasTargets(plan) && plan.lockAreas !== false;
     const show2D = isDesktop || pane === "2d";
     const show3D = isDesktop || pane === "3d";
     const panel3d = plan && show3D && view !== "walk" && (selOpening3d || (selRoom3d && !isDesktop));
@@ -751,7 +752,7 @@ export default function Plan3DPage() {
                             <section className={`relative min-h-0 rounded-[24px] overflow-hidden border border-[var(--p-line)] shadow-[var(--p-shadow)] ${show3D ? "" : "hidden"}`} style={{ backgroundColor: "var(--p-card)" }} aria-label="Vue 3D" aria-hidden={!show3D}>
                                 <Scene3D plan={plan} view={view} showFurniture={furniture} showLabels selectedRoomId={selectedRoomId}
                                     onSelectRoom={id => { setSelected(id); setOpening3d(null); }}
-                                    onEdit={onEditorChange} selectedOpeningId={selOpening3d?.id ?? null}
+                                    onEdit={onEditorChange} lockAreas={lockAreas} selectedOpeningId={selOpening3d?.id ?? null}
                                     onSelectOpening={id => { setOpening3d(id); const o = plan.openings.find(x => x.id === id); if (o) setSelected(o.roomId); }}
                                     theme={theme} className="absolute inset-0"/>
 
@@ -794,8 +795,11 @@ export default function Plan3DPage() {
                                                     onDuplicate={() => { const res = duplicateRoom(plan, selRoom3d.id); if (res) { editPlan(res.plan); setSelected(res.id); } }}
                                                     onDelete={() => { editPlan(deleteRoom(plan, selRoom3d.id)); setSelected(null); }}
                                                     onClose={() => setSelected(null)}
+                                                    counted={countedArea(plan, selRoom3d)}
+                                                    groupedIn={(() => { const o = placardGroups(plan).get(selRoom3d.id); return o ? plan.rooms.find(r => r.id === o)?.name ?? null : null; })()}
+                                                    onTarget={t => editPlan(t ? relock(setRoomTarget(plan, selRoom3d.id, t)) : setRoomTarget(plan, selRoom3d.id, null))}
                                                     onArea={a => editPlan(setRoomArea(plan, selRoom3d.id, a))}
-                                                    onSize={(axis, v) => editPlan(setRoomSize(plan, selRoom3d.id, axis, v))}/>
+                                                    onSize={(axis, v) => editPlan(setRoomSize(plan, selRoom3d.id, axis, v, lockAreas))}/>
                                             )}
                                         </div>
                                     ) : (

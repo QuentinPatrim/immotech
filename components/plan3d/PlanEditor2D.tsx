@@ -13,7 +13,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import {
-    AppWindow, ChevronDown, ChevronUp, Columns2, Copy, DoorOpen, Maximize2, Minus, Plus, Redo2, SquarePlus, Trash2, TriangleAlert, Undo2, X,
+    AppWindow, Check, ChevronDown, ChevronUp, Columns2, Copy, DoorOpen, Lock, LockOpen, Maximize2, Minus, Plus, Redo2, SquarePlus, Trash2, TriangleAlert, Undo2, X,
 } from "lucide-react";
 import {
     ROOM_KINDS, type Opening, type OpeningKind, type Plan3D, type Pt, type Room, type RoomKind, type Wall,
@@ -24,7 +24,7 @@ import {
 } from "@/lib/plan3d/geometry";
 import {
     NEW_ROOM, OPENING_WIDTH, addOpening, addRoom, clamp, deleteRoom, deleteVertex, duplicateRoom, grabWall, insertVertex,
-    mapRoom, moveOpening, moveWall, openingEnds, patchOpening as patchOpeningOp, r3, resizeOpening, setRoomArea, setRoomSize,
+    countedArea, dragWall, hasTargets, mapRoom, placardGroups, setRoomTarget, moveOpening, openingEnds, relock, targetGaps, patchOpening as patchOpeningOp, r3, resizeOpening, setRoomArea, setRoomSize,
     setVertex, snapGrid, translateRoom, wallHandleT, wallOffset, type WallGrab,
 } from "@/lib/plan3d/edit";
 
@@ -100,7 +100,7 @@ type Gesture =
     }
     | {
         type: "wall"; id: number; start: Pt; thr: number; moved: boolean;
-        grab: WallGrab; off0: number; base: Plan3D; result: Plan3D | null; stops: number[];
+        grab: WallGrab; off0: number; base: Plan3D; result: Plan3D | null; stops: number[]; d: number;
     }
     | {
         type: "opening"; id: number; start: Pt; thr: number; moved: boolean;
@@ -400,8 +400,15 @@ const isAxisRect = (room: Room) => room.polygon.length === 4 && room.polygon.eve
     return Math.abs(p.x - q.x) < 0.02 || Math.abs(p.y - q.y) < 0.02;
 });
 
-export function RoomInspector({ room, onRename, onKind, onDuplicate, onDelete, onClose, onArea, onSize }: {
+export function RoomInspector({ room, counted, groupedIn, compact, onTarget, onRename, onKind, onDuplicate, onDelete, onClose, onArea, onSize }: {
     room: Room;
+    /** Fiche repliée au départ (peu de place pour le plan) */
+    compact?: boolean;
+    /** Surface comptée (avec les placards rattachés) */
+    counted: number;
+    /** Placard compté dans la surface d'une autre pièce (son nom) */
+    groupedIn?: string | null;
+    onTarget: (target: number | null) => void;
     onRename: (name: string) => void;
     onKind: (kind: RoomKind) => void;
     onDuplicate: () => void;
@@ -413,13 +420,14 @@ export function RoomInspector({ room, onRename, onKind, onDuplicate, onDelete, o
     const bb = bbox(room.polygon);
     const rect = isAxisRect(room);
     // Téléphone : fiche repliée (nom + surface) pour laisser le plan visible
-    const [open, setOpen] = useState(() => typeof window === "undefined" || window.innerWidth >= 640);
+    const [open, setOpen] = useState(() => (compact !== undefined ? !compact : typeof window === "undefined" || window.innerWidth >= 640));
     if (!open) {
         return (
             <div className="flex items-center gap-2">
                 <span className="w-3 h-3 rounded-full shrink-0 border border-[var(--p-line-strong)]" style={{ backgroundColor: kindFill(room.kind, 1) }}/>
                 <span className="flex-1 min-w-0 text-[15px] font-semibold text-[var(--p-fg)] truncate">{room.name}</span>
-                <NumberField value={roomArea(room)} unit="m²" label="Surface de la pièce" min={0.5} max={400} onCommit={onArea} width="w-[76px]"/>
+                {room.targetArea && <Lock size={13} className="shrink-0 text-[var(--p-muted)]" aria-label="Surface verrouillée"/>}
+                <NumberField value={counted} unit="m²" label="Surface de la pièce" min={0.5} max={400} onCommit={onArea} width="w-[76px]"/>
                 <button type="button" onClick={() => setOpen(true)} aria-label="Plus d'options" className="w-8 h-8 shrink-0 rounded-full flex items-center justify-center bg-[var(--p-sunken)] text-[var(--p-fg-2)] hover:text-[var(--p-fg)]">
                     <ChevronUp size={16}/>
                 </button>
@@ -438,7 +446,7 @@ export function RoomInspector({ room, onRename, onKind, onDuplicate, onDelete, o
                     onChange={e => onRename(e.target.value)}
                     aria-label="Nom de la pièce"
                     className="flex-1 min-w-0 h-10 px-3 rounded-xl bg-[var(--p-field)] border border-[var(--p-line)] text-[15px] font-semibold text-[var(--p-fg)] outline-none focus:border-[var(--p-accent)]"/>
-                <button type="button" onClick={() => setOpen(false)} aria-label="Réduire" className="sm:hidden w-8 h-8 shrink-0 rounded-full flex items-center justify-center bg-[var(--p-sunken)] text-[var(--p-fg-2)] hover:text-[var(--p-fg)]">
+                <button type="button" onClick={() => setOpen(false)} aria-label="Réduire" className="w-8 h-8 shrink-0 rounded-full flex items-center justify-center bg-[var(--p-sunken)] text-[var(--p-fg-2)] hover:text-[var(--p-fg)]">
                     <ChevronDown size={16}/>
                 </button>
                 <button type="button" onClick={onClose} aria-label="Fermer" className="w-8 h-8 shrink-0 rounded-full flex items-center justify-center bg-[var(--p-sunken)] text-[var(--p-muted)] hover:text-[var(--p-fg)]">
@@ -468,7 +476,21 @@ export function RoomInspector({ room, onRename, onKind, onDuplicate, onDelete, o
                 </div>
             </div>
             <div className="rounded-2xl bg-[var(--p-card)] border border-[var(--p-line)] divide-y divide-[var(--p-line)]">
-                <Row label="Surface"><NumberField value={roomArea(room)} unit="m²" label="Surface de la pièce" min={0.5} max={400} onCommit={onArea}/></Row>
+                <Row label="Surface"><NumberField value={counted} unit="m²" label="Surface de la pièce" min={0.5} max={400} onCommit={onArea}/></Row>
+                {groupedIn ? (
+                    <div className="px-3.5 py-2.5 text-[12.5px] text-[var(--p-muted)]">Comptée dans la surface de {groupedIn}, comme au DDT.</div>
+                ) : room.targetArea ? (
+                    <div className="flex items-center justify-between gap-2 px-3.5 py-2.5 text-[13px]">
+                        <span className={`flex items-center gap-1.5 ${Math.abs(counted - room.targetArea) > Math.max(0.05, room.targetArea * 0.01) ? "text-[var(--p-warning)] font-semibold" : "text-[var(--p-muted)]"}`}>
+                            <Lock size={13}/> Référence {fmt2.format(room.targetArea)} m²
+                        </span>
+                        <button type="button" onClick={() => onTarget(null)} className="text-[12.5px] font-semibold text-[var(--p-accent)] hover:opacity-80">Libérer</button>
+                    </div>
+                ) : (
+                    <button type="button" onClick={() => onTarget(counted)} className="w-full flex items-center gap-1.5 px-3.5 py-2.5 text-[13px] font-semibold text-[var(--p-accent)] hover:bg-[var(--p-hover)]">
+                        <Lock size={13}/> Verrouiller cette surface
+                    </button>
+                )}
                 {rect ? (
                     <>
                         <Row label="Largeur ↔"><NumberField value={bb.w} unit="m" label="Largeur de la pièce" min={0.5} max={40} onCommit={v => onSize("x", v)}/></Row>
@@ -487,7 +509,7 @@ export function RoomInspector({ room, onRename, onKind, onDuplicate, onDelete, o
                 </button>
             </div>
             <p className="px-1 text-[11.5px] leading-snug text-[var(--p-muted)]">
-                Tirez une pastille rouge pour pousser un mur (la pièce voisine suit), glissez la pièce pour la déplacer, un sommet pour le tordre. « + » ajoute un sommet, deux touchers le retirent. Une surface saisie recale les cloisons.
+                Tirez une pastille rouge pour pousser un mur : avec les surfaces verrouillées, la pièce garde sa surface (l&apos;autre dimension s&apos;ajuste) et les voisines se recalent. Glissez la pièce pour la déplacer, un sommet pour le tordre ; « + » ajoute un sommet, deux touchers le retirent.
             </p>
         </div>
     );
@@ -635,6 +657,10 @@ export default function PlanEditor2D({
     const selOpening = shown.openings.find(o => o.id === openingId && o.roomId === selectedRoomId) ?? null;
 
     const area = indoorArea(shown);
+    // Surfaces de référence (DDT) : verrouillées sauf si l'utilisateur les libère
+    const targeted = hasTargets(shown);
+    const lock = targeted && plan.lockAreas !== false;
+    const gaps = targeted ? targetGaps(shown) : [];
     const declared = declaredSurface && declaredSurface > 0 ? declaredSurface : null;
     const gap = declared && area > 0 ? Math.abs(area - declared) / declared : 0;
 
@@ -778,7 +804,7 @@ export default function PlanEditor2D({
                 // Arrêts magnétiques : alignement sur les autres cloisons parallèles (coordonnée le long de n)
                 const moving = new Set(grab.refs.map(r => `${r.roomId}:${r.index}`));
                 const stops = shown.rooms.flatMap(r => r.polygon.filter((_, i) => !moving.has(`${r.id}:${i}`)).map(p => wallOffset(grab, p)));
-                gesture.current = { type: "wall", id: e.pointerId, start: local, thr, moved: false, grab, off0: wallOffset(grab, world), base: shown, result: null, stops };
+                gesture.current = { type: "wall", id: e.pointerId, start: local, thr, moved: false, grab, off0: wallOffset(grab, world), base: shown, result: null, stops, d: 0 };
                 return;
             }
         }
@@ -848,7 +874,9 @@ export default function PlanEditor2D({
             let off = snapGrid(raw), guide: number | null = null, bd = tol;
             for (const st of g.stops) if (Math.abs(st - raw) < bd) { bd = Math.abs(st - raw); off = st; guide = st; }
             const d = clamp(off - wallOffset(g.grab, g.grab.a), g.grab.min, g.grab.max);
-            g.result = moveWall(g.base, g.grab, d);
+            g.d = d;
+            // Surfaces verrouillées : aperçu rapide du recalage pendant le glissé
+            g.result = dragWall(g.base, g.grab, d, { lock, fast: true });
             setDraft(g.result);
             const { a, b, n } = { ...g.grab };
             setSnap(guide !== null
@@ -900,6 +928,11 @@ export default function PlanEditor2D({
 
         if (g.type === "pan") {
             if (!g.moved) handleTap(g.tap, toWorld(localPt(e), view, size));
+            return;
+        }
+        if (g.type === "wall" && g.moved && lock) {
+            // Relâché : recalage complet (surfaces exactes)
+            commit(dragWall(g.base, g.grab, g.d, { lock }));
             return;
         }
         if (g.type === "room" || g.type === "wall" || g.type === "openingEnd") {
@@ -1152,12 +1185,36 @@ export default function PlanEditor2D({
                 <div className={`order-2 sm:order-1 pointer-events-auto self-start max-w-full rounded-2xl px-3 py-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] ${glass}`}>
                     <span className="text-[var(--p-muted)]">Surface habitable</span>
                     <b className="font-bold tabular-nums text-[var(--p-fg)]">{fmt1.format(area)} m²</b>
-                    {declared && (
+                    {targeted ? (
+                        <>
+                            <button
+                                type="button"
+                                onClick={() => commit({ ...plan, lockAreas: !lock })}
+                                aria-pressed={lock}
+                                title={lock ? "Les pièces gardent leur surface du DDT quand vous déplacez un mur" : "Surfaces libres"}
+                                className={`h-7 px-2.5 rounded-full inline-flex items-center gap-1 text-[12px] font-semibold ${lock ? "bg-[var(--p-invert-bg)] text-[var(--p-invert-fg)]" : "bg-[var(--p-sunken)] text-[var(--p-muted)]"}`}>
+                                {lock ? <Lock size={12}/> : <LockOpen size={12}/>} Surfaces DDT
+                            </button>
+                            {gaps.length ? (
+                                <>
+                                    <span className="flex items-center gap-1 text-[var(--p-warning)] font-semibold">
+                                        <TriangleAlert size={13}/>{gaps.length} pièce{gaps.length > 1 ? "s" : ""} à ajuster
+                                    </span>
+                                    <button type="button" onClick={() => commit(relock(plan))}
+                                        className="h-7 px-2.5 rounded-full text-[12px] font-semibold bg-[var(--p-accent-soft)] text-[var(--p-accent)] hover:opacity-85">
+                                        Recaler
+                                    </button>
+                                </>
+                            ) : (
+                                <span className="flex items-center gap-1 text-[var(--p-positive)] font-semibold"><Check size={13}/> justes</span>
+                            )}
+                        </>
+                    ) : declared && (
                         <span className={`flex items-center gap-1 tabular-nums ${gap > 0.03 ? "text-[var(--p-warning)] font-semibold" : "text-[var(--p-muted)]"}`}>
                             {gap > 0.03 && <TriangleAlert size={13}/>}· déclarée {fmt0.format(declared)} m²
                         </span>
                     )}
-                    {declared && area > 0 && gap > 0.005 && (
+                    {!targeted && declared && area > 0 && gap > 0.005 && (
                         <button
                             type="button"
                             onClick={() => { onChange(scaleToArea(plan, declared)); setViewState(null); }}
@@ -1231,8 +1288,12 @@ export default function PlanEditor2D({
                                 }}
                                 onDelete={deleteSelection}
                                 onClose={() => selectRoom(null)}
+                                compact={size.w < 720}
+                                counted={countedArea(shown, selRoom)}
+                                groupedIn={(() => { const o = placardGroups(shown).get(selRoom.id); return o ? shown.rooms.find(r => r.id === o)?.name ?? null : null; })()}
+                                onTarget={t => commit(t ? relock(setRoomTarget(plan, selRoom.id, t)) : setRoomTarget(plan, selRoom.id, null))}
                                 onArea={a => commit(setRoomArea(plan, selRoom.id, a))}
-                                onSize={(axis, v) => commit(setRoomSize(plan, selRoom.id, axis, v))}/>
+                                onSize={(axis, v) => commit(setRoomSize(plan, selRoom.id, axis, v, lock))}/>
                         )}
                     </div>
                 )}

@@ -37,6 +37,8 @@ export interface Scene3DProps {
     autoRotate?: boolean;
     /** Édition directe (poignées de murs, d'ouvertures et de pièce) en vues Maquette et Dessus */
     onEdit?: (plan: Plan3D) => void;
+    /** Surfaces de référence verrouillées pendant l'édition */
+    lockAreas?: boolean;
     selectedOpeningId?: string | null;
     onSelectOpening?: (id: string | null) => void;
 }
@@ -533,11 +535,11 @@ function CameraRig({ view, plan, bb, ox, oy, autoRotate, walkRequestRef }: {
 
 /* ─────────────────────────── SCÈNE ─────────────────────────── */
 
-function SceneContent({ plan, dragging, onDraft, labels, labelEls, view, showFurniture, selectedRoomId, onSelectRoom, dark, autoRotate, onEdit, selectedOpeningId, onSelectOpening }: {
+function SceneContent({ plan, dragging, onDraft, labels, labelEls, view, showFurniture, selectedRoomId, onSelectRoom, dark, autoRotate, onEdit, lockAreas, selectedOpeningId, onSelectOpening }: {
     plan: Plan3D; dragging: boolean; onDraft: (p: Plan3D | null) => void; labels: LabelItem[]; labelEls: RefObject<Map<string, HTMLElement>>;
     view: ViewMode; showFurniture: boolean; selectedRoomId: string | null;
     onSelectRoom?: (id: string | null) => void; dark: boolean; autoRotate: boolean;
-    onEdit?: (plan: Plan3D) => void; selectedOpeningId: string | null; onSelectOpening?: (id: string | null) => void;
+    onEdit?: (plan: Plan3D) => void; lockAreas: boolean; selectedOpeningId: string | null; onSelectOpening?: (id: string | null) => void;
 }) {
     const palette = STYLES[plan.style] ?? STYLES.contemporain;
     const rooms = plan.rooms;
@@ -598,7 +600,7 @@ function SceneContent({ plan, dragging, onDraft, labels, labelEls, view, showFur
             <LabelProjector items={labels} ox={ox} oy={oy} elements={labelEls} />
             {editRoom && onEdit && (
                 <EditHandles3D
-                    plan={plan} room={editRoom} ox={ox} oy={oy} size={handleSize}
+                    plan={plan} room={editRoom} ox={ox} oy={oy} size={handleSize} lock={lockAreas}
                     selectedOpeningId={selectedOpeningId} onSelectOpening={id => onSelectOpening?.(id)}
                     onDraft={onDraft} onCommit={onEdit}/>
             )}
@@ -620,6 +622,7 @@ export default function Scene3D({
     theme = "light",
     autoRotate = false,
     onEdit,
+    lockAreas = false,
     selectedOpeningId = null,
     onSelectOpening,
 }: Scene3DProps) {
@@ -678,6 +681,7 @@ export default function Scene3D({
                     dark={dark}
                     autoRotate={autoRotate}
                     onEdit={onEdit}
+                    lockAreas={lockAreas}
                     selectedOpeningId={selectedOpeningId}
                     onSelectOpening={onSelectOpening}
                 />

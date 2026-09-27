@@ -91,7 +91,16 @@ export interface FitResult { plan: Plan3D; before: number; after: number; fitted
  */
 export function fitAreas(
     plan: Plan3D, targets: Map<string, number>, groups: Map<string, string> = new Map(),
-    opts: { weights?: Map<string, number>; preserve?: boolean } = {},
+    opts: {
+        weights?: Map<string, number>; preserve?: boolean;
+        /** Sommets (« idPièce:index ») dont la coordonnée x / y ne doit pas bouger (mur tenu par l'utilisateur) */
+        fixed?: { x: Set<string>; y: Set<string> };
+        /** Sommets dont les droites résistent davantage (façade : l'emprise du logement bouge en dernier) */
+        stiff?: Set<string>;
+        maxIter?: number;
+        /** Poids du rappel vers la position d'origine (0,02 par défaut) */
+        reg?: number;
+    } = {},
 ): FitResult {
     const rooms = plan.rooms;
     const verts: { r: number; v: number; p: Pt }[] = [];
@@ -108,6 +117,15 @@ export function fitAreas(
     const ys = splitDisjoint(clusters(verts.map(o => o.p.y)), verts.map(o => o.p.x), edges);
     const nx = xs.centers.length, ny = ys.centers.length;
     const x0 = xs.centers.slice(), y0 = ys.centers.slice();
+    // Droites figées : celles qui portent un sommet tenu
+    const fixedX = new Set<number>(), fixedY = new Set<number>();
+    const stiffX = new Set<number>(), stiffY = new Set<number>();
+    verts.forEach((o, k) => {
+        const key = `${rooms[o.r].id}:${o.v}`;
+        if (opts.fixed?.x.has(key)) fixedX.add(xs.index[k]);
+        if (opts.fixed?.y.has(key)) fixedY.add(ys.index[k]);
+        if (opts.stiff?.has(key)) { stiffX.add(xs.index[k]); stiffY.add(ys.index[k]); }
+    });
     // Sommet → (droite x, droite y)
     const ref = rooms.map(room => room.polygon.map(() => [0, 0] as [number, number]));
     verts.forEach((o, k) => { ref[o.r][o.v] = [xs.index[k], ys.index[k]]; });
@@ -117,18 +135,6 @@ export function fitAreas(
     const own = (X: number[], Y: number[], r: number) => polygonArea(ref[r].map(([i, j]) => ({ x: X[i], y: Y[j] })));
     const areaOf = (X: number[], Y: number[], r: number) => members[r].reduce((a, k) => a + own(X, Y, k), own(X, Y, r));
     const span = Math.max(x0[nx - 1] - x0[0], y0[ny - 1] - y0[0], 1);
-    const cost = (X: number[], Y: number[]) => {
-        let c = 0;
-        for (const r of idx) {
-            const t = targets.get(rooms[r].id) as number;
-            const e = (areaOf(X, Y, r) - t) / t;
-            c += e * e * (opts.weights?.get(rooms[r].id) ?? 1);
-        }
-        let reg = 0;
-        for (let i = 0; i < nx; i++) reg += ((X[i] - x0[i]) / span) ** 2;
-        for (let j = 0; j < ny; j++) reg += ((Y[j] - y0[j]) / span) ** 2;
-        return c + 0.02 * reg;
-    };
     // Écart relatif moyen (pondéré si des poids sont donnés)
     const wOf = (r: number) => opts.weights?.get(rooms[r].id) ?? 1;
     const wSum = idx.reduce((s, r) => s + wOf(r), 0) || 1;
@@ -154,30 +160,90 @@ export function fitAreas(
         return pairs;
     };
     const px = pairsOf(0, x0), py = pairsOf(1, y0);
-    const clamp = (V: number[], pairs: [number, number, number][]) => {
+    const clamp = (V: number[], pairs: [number, number, number][], fixed: Set<number>) => {
         for (let pass = 0; pass < 6; pass++) {
             let ok = true;
             for (const [lo, hi, gap] of pairs) {
                 const miss = V[lo] + gap - V[hi];
-                if (miss > 1e-9) { V[lo] -= miss / 2; V[hi] += miss / 2; ok = false; }
+                if (miss <= 1e-9) continue;
+                const fl = fixed.has(lo), fh = fixed.has(hi);
+                if (fl && fh) continue;
+                if (fl) V[hi] += miss; else if (fh) V[lo] -= miss; else { V[lo] -= miss / 2; V[hi] += miss / 2; }
+                ok = false;
             }
             if (ok) break;
         }
     };
+    /* Levenberg-Marquardt sur les résidus (écarts relatifs de surface + rappel vers la
+       position d'origine) : les cloisons étant couplées (une droite borde plusieurs
+       pièces), la résolution conjointe converge là où une descente pas à pas s'enlise. */
+    const vars: { axis: 0 | 1; i: number }[] = [];
+    for (let i = 0; i < nx; i++) if (!fixedX.has(i)) vars.push({ axis: 0, i });
+    for (let j = 0; j < ny; j++) if (!fixedY.has(j)) vars.push({ axis: 1, i: j });
+    const regW = (v: { axis: 0 | 1; i: number }) => Math.sqrt((opts.reg ?? 0.02) * ((v.axis === 0 ? stiffX : stiffY).has(v.i) ? 3 : 1)) / span;
+    const residuals = (X: number[], Y: number[]) => {
+        const r: number[] = [];
+        for (const k of idx) {
+            const t = targets.get(rooms[k].id) as number;
+            r.push(Math.sqrt(opts.weights?.get(rooms[k].id) ?? 1) * (areaOf(X, Y, k) - t) / t);
+        }
+        for (const v of vars) r.push(regW(v) * ((v.axis === 0 ? X[v.i] - x0[v.i] : Y[v.i] - y0[v.i])));
+        // Largeurs minimales : pénalité douce (une projection bloquerait la convergence)
+        for (const [lo, hi, gap] of px) r.push(4 * Math.max(0, X[lo] + gap - X[hi]));
+        for (const [lo, hi, gap] of py) r.push(4 * Math.max(0, Y[lo] + gap - Y[hi]));
+        return r;
+    };
+    const sq = (r: number[]) => r.reduce((s, v) => s + v * v, 0);
     let X = x0.slice(), Y = y0.slice();
-    let c = cost(X, Y);
-    let step = span * 0.02;
-    const h = 1e-4;
-    for (let it = 0; it < 1500 && step > 1e-5; it++) {
-        const gx = X.map((_, i) => { const P = X.slice(); P[i] += h; return (cost(P, Y) - c) / h; });
-        const gy = Y.map((_, j) => { const P = Y.slice(); P[j] += h; return (cost(X, P) - c) / h; });
-        const norm = Math.hypot(...gx, ...gy) || 1;
-        const NX = X.map((v, i) => v - (step * gx[i]) / norm);
-        const NY = Y.map((v, j) => v - (step * gy[j]) / norm);
-        clamp(NX, px); clamp(NY, py);
-        const nc = cost(NX, NY);
-        if (nc < c) { X = NX; Y = NY; c = nc; step *= 1.15; } else step *= 0.5;
+    let res = residuals(X, Y), c = sq(res);
+    let mu = 1e-3;
+    const h = 1e-5;
+    const iters = Math.max(20, Math.min(120, Math.round((opts.maxIter ?? 1500) / 12)));
+    for (let it = 0; it < iters && c > 1e-12 && mu < 1e10; it++) {
+        const n = vars.length, m = res.length;
+        // Jacobien par différences finies
+        const J: number[][] = vars.map(v => {
+            const PX = X.slice(), PY = Y.slice();
+            if (v.axis === 0) PX[v.i] += h; else PY[v.i] += h;
+            const r2 = residuals(PX, PY);
+            return r2.map((val, q) => (val - res[q]) / h);
+        });
+        const A = Array.from({ length: n }, (_, a) => Array.from({ length: n }, (_, b) => {
+            let sum = 0;
+            for (let q = 0; q < m; q++) sum += J[a][q] * J[b][q];
+            return sum;
+        }));
+        const g = Array.from({ length: n }, (_, a) => { let sum = 0; for (let q = 0; q < m; q++) sum += J[a][q] * res[q]; return sum; });
+        let improved = false;
+        for (let tries = 0; tries < 8 && !improved; tries++) {
+            // (JᵀJ + μ·diag) δ = −Jᵀr, élimination de Gauss avec pivot partiel
+            const M = A.map((row, a) => [...row.map((v, b) => (a === b ? v * (1 + mu) + 1e-12 : v)), -g[a]]);
+            for (let col = 0; col < n; col++) {
+                let piv = col;
+                for (let rr = col + 1; rr < n; rr++) if (Math.abs(M[rr][col]) > Math.abs(M[piv][col])) piv = rr;
+                [M[col], M[piv]] = [M[piv], M[col]];
+                const d = M[col][col] || 1e-12;
+                for (let rr = col + 1; rr < n; rr++) {
+                    const f = M[rr][col] / d;
+                    if (f) for (let k = col; k <= n; k++) M[rr][k] -= f * M[col][k];
+                }
+            }
+            const delta = new Array<number>(n).fill(0);
+            for (let rr = n - 1; rr >= 0; rr--) {
+                let sum = M[rr][n];
+                for (let k = rr + 1; k < n; k++) sum -= M[rr][k] * delta[k];
+                delta[rr] = sum / (M[rr][rr] || 1e-12);
+            }
+            const NX = X.slice(), NY = Y.slice();
+            vars.forEach((v, a) => { const dv = Math.max(-1.5, Math.min(1.5, delta[a])); if (v.axis === 0) NX[v.i] += dv; else NY[v.i] += dv; });
+            const nr = residuals(NX, NY), nc = sq(nr);
+            if (nc < c) { X = NX; Y = NY; res = nr; c = nc; mu = Math.max(1e-7, mu / 3); improved = true; }
+            else mu *= 4;
+        }
+        if (!improved) break;
     }
+    // Ordre des droites garanti en sortie
+    clamp(X, px, fixedX); clamp(Y, py, fixedY);
     const after = meanErr(X, Y);
     if (after >= before) return { plan, before, after: before, fitted: 0 };
 

@@ -13,6 +13,7 @@ import { centroid, polygonArea } from "@/lib/plan3d/geometry";
 import { fitAreas } from "@/lib/plan3d/fitAreas";
 import { kindFromLabel, type CarrezTable } from "@/lib/plan3d/ddt";
 import { planFromModel } from "@/lib/plan3d/modelPlan";
+import { placardGroups } from "@/lib/plan3d/edit";
 import { vectorizePlan, type Seed, type TextBox } from "@/lib/plan3d/vectorize";
 import type { PlanImage, PlanText } from "@/lib/plan3d/pdfToImage";
 import type { Plan3D, RoomKind } from "@/lib/plan3d/types";
@@ -82,17 +83,14 @@ export function refineWithTable(plan: Plan3D, table: CarrezTable | null): { plan
         if (row) targets.set(r.id, row.area);
     }
     // Placard non listé au tableau : compté dans la pièce qu'il dessert (« Placard Entrée » → Entrée)
-    const groups = new Map<string, string>();
-    for (const r of plan.rooms) {
-        if (targets.has(r.id) || !/^placard/.test(norm(r.name))) continue;
-        const owner = plan.rooms.find(o => o !== r && targets.has(o.id) && norm(r.name) === `placard${norm(o.name)}`);
-        if (owner) groups.set(r.id, owner.id);
-    }
+    const groups = new Map([...placardGroups(plan)].filter(([pid, owner]) => !targets.has(pid) && targets.has(owner)));
     if (targets.size < 2) return { plan, note: null };
+    // Surfaces du rapport posées comme références : elles restent justes quand on édite le plan
+    const withTargets = (p: Plan3D): Plan3D => ({ ...p, rooms: p.rooms.map(r => (targets.has(r.id) ? { ...r, targetArea: targets.get(r.id) } : r)) });
     const fit = fitAreas(plan, targets, groups);
-    if (!fit.fitted || fit.after >= fit.before) return { plan, note: null };
+    if (!fit.fitted || fit.after >= fit.before) return { plan: withTargets(plan), note: null };
     return {
-        plan: fit.plan,
+        plan: withTargets(fit.plan),
         note: `Cloisons recalées sur les surfaces du diagnostic (écart moyen ${fr(fit.before * 100)} % → ${fr(fit.after * 100)} %) : le croquis n'était pas à l'échelle.`,
     };
 }

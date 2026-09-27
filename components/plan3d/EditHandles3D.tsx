@@ -18,12 +18,12 @@ import * as THREE from "three";
 import { useThree, type ThreeEvent } from "@react-three/fiber";
 import type { Plan3D, Pt, Room } from "@/lib/plan3d/types";
 import { centroid, edgePoint, pointInPolygon, roomEdge } from "@/lib/plan3d/geometry";
-import { grabWall, moveOpening, moveWall, openingEnds, resizeOpening, snapGrid, translateRoom, wallHandleT, wallOffset, type WallGrab } from "@/lib/plan3d/edit";
+import { dragWall, grabWall, moveOpening, openingEnds, resizeOpening, snapGrid, translateRoom, wallHandleT, wallOffset, type WallGrab } from "@/lib/plan3d/edit";
 
 const ACCENT = "#d35f52";
 
 type Drag =
-    | { type: "wall"; grab: WallGrab; off0: number; base: Plan3D }
+    | { type: "wall"; grab: WallGrab; off0: number; base: Plan3D; d: number }
     | { type: "opening"; id: string; offset: Pt; base: Plan3D }
     | { type: "end"; id: string; end: "a" | "b"; base: Plan3D }
     | { type: "room"; id: string; p0: Pt; base: Plan3D };
@@ -35,13 +35,15 @@ interface Props {
     oy: number;
     /** Taille des poignées (m), selon l'emprise du plan */
     size: number;
+    /** Surfaces de référence verrouillées : les autres murs se recalent */
+    lock: boolean;
     selectedOpeningId: string | null;
     onSelectOpening: (id: string | null) => void;
     onDraft: (plan: Plan3D | null) => void;
     onCommit: (plan: Plan3D) => void;
 }
 
-export default function EditHandles3D({ plan, room, ox, oy, size, selectedOpeningId, onSelectOpening, onDraft, onCommit }: Props) {
+export default function EditHandles3D({ plan, room, ox, oy, size, lock, selectedOpeningId, onSelectOpening, onDraft, onCommit }: Props) {
     const get = useThree(s => s.get);
     /** Caméra figée pendant un glissé */
     const freeze = (on: boolean) => {
@@ -77,7 +79,10 @@ export default function EditHandles3D({ plan, room, ox, oy, size, selectedOpenin
         const p = planPoint(e);
         if (!p) return;
         let next: Plan3D;
-        if (d.type === "wall") next = moveWall(d.base, d.grab, snapGrid(wallOffset(d.grab, p) - d.off0));
+        if (d.type === "wall") {
+            d.d = snapGrid(wallOffset(d.grab, p) - d.off0);
+            next = dragWall(d.base, d.grab, d.d, { lock, fast: true });
+        }
         else if (d.type === "opening") next = moveOpening(d.base, d.id, { x: p.x + d.offset.x, y: p.y + d.offset.y });
         else if (d.type === "end") next = resizeOpening(d.base, d.id, d.end, p);
         else next = translateRoom(d.base, d.id, { x: snapGrid(p.x - d.p0.x), y: snapGrid(p.y - d.p0.y) });
@@ -96,7 +101,7 @@ export default function EditHandles3D({ plan, room, ox, oy, size, selectedOpenin
         const result = live.current.last;
         live.current.last = null;
         onDraft(null);
-        if (moved && result) onCommit(result);
+        if (moved && result) onCommit(d.type === "wall" && lock ? dragWall(d.base, d.grab, d.d, { lock }) : result);
         else if (d.type === "opening") onSelectOpening(d.id);
     };
 
@@ -134,7 +139,7 @@ export default function EditHandles3D({ plan, room, ox, oy, size, selectedOpenin
                             onPointerDown={e => {
                                 const g = grabWall(plan, room.id, ed.i);
                                 const p = planPoint(e);
-                                if (g && p) begin(e, { type: "wall", grab: g, off0: wallOffset(g, p), base: plan });
+                                if (g && p) begin(e, { type: "wall", grab: g, off0: wallOffset(g, p), base: plan, d: 0 });
                             }}>
                             <boxGeometry args={[Math.min(ed.length * 0.8, s * 2.2), 0.05, s * 1.6]}/>
                             <meshBasicMaterial {...top} toneMapped={false} opacity={0} />

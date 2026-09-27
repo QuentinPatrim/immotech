@@ -11,6 +11,7 @@
    ============================================================ */
 
 import { dist, edgePoint, nearestEdge, pointInPolygon, polygonArea, roomArea, roomEdge, uid } from "@/lib/plan3d/geometry";
+import { fitAreas } from "@/lib/plan3d/fitAreas";
 import type { Opening, OpeningKind, Plan3D, Pt, Room } from "@/lib/plan3d/types";
 
 export const OPENING_WIDTH: Record<OpeningKind, number> = { door: 0.83, window: 1.2, french: 2 };
@@ -217,14 +218,129 @@ export function moveWall(plan: Plan3D, grab: WallGrab, d: number): Plan3D {
 /** Position actuelle d'une cloison saisie (pour convertir un pointeur en déplacement) */
 export const wallOffset = (grab: WallGrab, p: Pt) => (p.x - grab.a.x) * grab.n.x + (p.y - grab.a.y) * grab.n.y;
 
-/* ─────────────────────────── SURFACE ET DIMENSIONS ─────────────────────────── */
+/* ─────────────────────────── SURFACES DE RÉFÉRENCE ─────────────────────────── */
+
+const norm = (v: string) => v.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
 
 /**
- * Surface souhaitée pour une pièce : on pousse d'abord une cloison partagée avec
- * une voisine (la plus longue, donc le plus petit déplacement) — l'emprise du
- * logement ne change pas ; à défaut, un mur de façade. Recalage fin au besoin.
+ * Placards rattachés à la pièce qu'ils desservent (« Placard Entrée » → Entrée) :
+ * leur surface est comptée dans la surface de référence de cette pièce, comme au DDT.
+ */
+export function placardGroups(plan: Pick<Plan3D, "rooms">): Map<string, string> {
+    const groups = new Map<string, string>();
+    for (const r of plan.rooms) {
+        if (r.targetArea || !/^placard/.test(norm(r.name))) continue;
+        const owner = plan.rooms.find(o => o !== r && norm(r.name) === `placard${norm(o.name)}`);
+        if (owner) groups.set(r.id, owner.id);
+    }
+    return groups;
+}
+
+/** Surface comptée pour une pièce (avec ses placards rattachés) */
+export function countedArea(plan: Pick<Plan3D, "rooms">, room: Room): number {
+    const groups = placardGroups(plan);
+    return plan.rooms.reduce((s, r) => s + (r.id === room.id || groups.get(r.id) === room.id ? roomArea(r) : 0), 0);
+}
+
+export const hasTargets = (plan: Pick<Plan3D, "rooms">) => plan.rooms.some(r => !!r.targetArea);
+
+/** Pièces dont la surface s'écarte de sa référence (au-delà de 1 % et 5 cm²) */
+export function targetGaps(plan: Pick<Plan3D, "rooms">): { room: Room; area: number; target: number }[] {
+    return plan.rooms
+        .filter(r => r.targetArea)
+        .map(r => ({ room: r, area: countedArea(plan, r), target: r.targetArea as number }))
+        .filter(g => Math.abs(g.area - g.target) > Math.max(0.05, g.target * 0.01));
+}
+
+type Pins = { x: Set<string>; y: Set<string> };
+
+/** Sommets des côtés de façade (aucune pièce de l'autre côté du mur) */
+function facadeVertices(plan: Plan3D): Set<string> {
+    const out = new Set<string>();
+    for (const r of plan.rooms) {
+        for (let e = 0; e < r.polygon.length; e++) {
+            const { a, b, length } = roomEdge(r, e);
+            if (length < 1e-6) continue;
+            const n = outwardNormal(r, a, b);
+            const m = { x: (a.x + b.x) / 2 + n.x * 0.25, y: (a.y + b.y) / 2 + n.y * 0.25 };
+            if (plan.rooms.some(o => o.id !== r.id && pointInPolygon(m, o.polygon))) continue;
+            out.add(`${r.id}:${e}`);
+            out.add(`${r.id}:${(e + 1) % r.polygon.length}`);
+        }
+    }
+    return out;
+}
+
+/**
+ * Recalage : chaque pièce qui a une surface de référence la retrouve, en bougeant
+ * le moins possible les autres murs. Les murs « tenus » (celui que l'on vient de
+ * déplacer) restent en place.
+ */
+export function relock(plan: Plan3D, pins?: Pins, fast = false, focusId?: string): Plan3D {
+    const targets = new Map<string, number>();
+    for (const r of plan.rooms) if (r.targetArea) targets.set(r.id, r.targetArea);
+    if (!targets.size) return plan;
+    // Pièce en cours d'édition prioritaire : c'est elle qui doit tomber juste d'abord
+    const weights = new Map<string, number>(focusId ? [[focusId, 8]] : []);
+    // Placard rattaché : compté avec la pièce qu'il dessert (sa surface au DDT inclut le placard)
+    const fit = fitAreas(plan, targets, placardGroups(plan), { preserve: true, fixed: pins, stiff: facadeVertices(plan), weights, reg: 0.004, maxIter: fast ? 350 : 2000 });
+    return fit.fitted ? fit.plan : plan;
+}
+
+/** Sommets déplacés par une saisie de mur : tenus sur l'axe du mur (x pour un mur vertical) */
+function pinsOf(grab: WallGrab): Pins {
+    const keys = new Set(grab.refs.map(r => `${r.roomId}:${r.index}`));
+    return Math.abs(grab.n.x) > Math.abs(grab.n.y) ? { x: keys, y: new Set() } : { x: new Set(), y: keys };
+}
+
+/**
+ * Mur glissé : il va où on le pose ; si des surfaces de référence existent, les
+ * autres murs se recalent aussitôt pour que chaque pièce garde la sienne.
+ */
+export function dragWall(base: Plan3D, grab: WallGrab, d: number, opts: { lock: boolean; fast?: boolean }): Plan3D {
+    const moved = moveWall(base, grab, d);
+    if (!opts.lock || !hasTargets(moved)) return moved;
+    // La dimension choisie est tenue : le mur tiré et le(s) mur(s) parallèle(s) de la même pièce ;
+    // la pièce garde sa surface par l'autre dimension (et les voisines se recalent)
+    const pins = pinsOf(grab);
+    const room = moved.rooms.find(r => r.id === grab.roomId);
+    const vertical = Math.abs(grab.n.x) > Math.abs(grab.n.y);
+    if (room) {
+        for (let e = 0; e < room.polygon.length; e++) {
+            const { a, b } = roomEdge(room, e);
+            const parallel = vertical ? Math.abs(a.x - b.x) < EPS : Math.abs(a.y - b.y) < EPS;
+            if (!parallel || e === grab.edge) continue;
+            const g = grabWall(moved, room.id, e);
+            if (g) for (const k of g.refs) (vertical ? pins.x : pins.y).add(`${k.roomId}:${k.index}`);
+        }
+    }
+    return relock(moved, pins, opts.fast, grab.roomId);
+}
+
+/** Pose (ou retire) la surface de référence d'une pièce */
+export const setRoomTarget = (plan: Plan3D, roomId: string, target: number | null): Plan3D =>
+    mapRoom(plan, roomId, r => {
+        const next = { ...r };
+        if (target && target > 0.3) next.targetArea = Math.round(target * 100) / 100; else delete next.targetArea;
+        return next;
+    });
+
+/**
+ * Surface saisie pour une pièce : elle devient sa surface de référence.
+ * Si d'autres pièces ont la leur, tout le plan se recale ; sinon on pousse la
+ * cloison mitoyenne (la plus longue) — l'emprise du logement ne change pas.
  */
 export function setRoomArea(plan: Plan3D, roomId: string, area: number): Plan3D {
+    const room = plan.rooms.find(r => r.id === roomId);
+    if (!room || !(area > 0.3)) return plan;
+    const withTarget = setRoomTarget(plan, roomId, area);
+    if (withTarget.rooms.some(r => r.id !== roomId && r.targetArea)) return relock(withTarget);
+    // Placards rattachés comptés dans la surface visée
+    const own = area - (countedArea(withTarget, room) - roomArea(room));
+    return pushArea(withTarget, roomId, own);
+}
+
+function pushArea(plan: Plan3D, roomId: string, area: number): Plan3D {
     const room = plan.rooms.find(r => r.id === roomId);
     if (!room || !(area > 0.3)) return plan;
     const areaIn = (p: Plan3D) => roomArea(p.rooms.find(r => r.id === roomId) as Room);
@@ -239,7 +355,7 @@ export function setRoomArea(plan: Plan3D, roomId: string, area: number): Plan3D 
         if (Math.abs(need) < 0.01) break;
         const g = grabWall(out, roomId, g0.edge);
         if (!g) continue;
-        // Surface quasi linéaire en d (côté × d) : deux itérations de sécante
+        // Surface quasi linéaire en d (côté × d) : itérations de sécante
         let d = need / Math.max(0.3, dist(g.a, g.b));
         for (let k = 0; k < 3; k++) {
             const trial = moveWall(out, g, d);
@@ -253,8 +369,12 @@ export function setRoomArea(plan: Plan3D, roomId: string, area: number): Plan3D 
     return out;
 }
 
-/** Pièce rectangulaire : largeur (x) et profondeur (y) ; on pousse le côté droit / bas, sinon l'opposé */
-export function setRoomSize(plan: Plan3D, roomId: string, axis: "x" | "y", size: number): Plan3D {
+/**
+ * Pièce rectangulaire : largeur (x) ou profondeur (y) ; on pousse le côté droit / bas,
+ * sinon l'opposé. Avec des surfaces de référence, la pièce garde la sienne : c'est
+ * l'autre dimension (et les voisines) qui s'ajuste.
+ */
+export function setRoomSize(plan: Plan3D, roomId: string, axis: "x" | "y", size: number, lock = true): Plan3D {
     const room = plan.rooms.find(r => r.id === roomId);
     if (!room || !(size > MIN_ROOM)) return plan;
     const xs = room.polygon.map(p => p.x), ys = room.polygon.map(p => p.y);
@@ -268,6 +388,7 @@ export function setRoomSize(plan: Plan3D, roomId: string, axis: "x" | "y", size:
         return axis === "x" ? Math.abs(p.x - v) < EPS && Math.abs(q.x - v) < EPS : Math.abs(p.y - v) < EPS && Math.abs(q.y - v) < EPS;
     });
     let rest = delta, out = plan;
+    const pins: Pins = { x: new Set(), y: new Set() };
     for (const v of [hi, lo]) {
         const e = edgeAt(v);
         if (e < 0 || Math.abs(rest) < 0.005) continue;
@@ -276,8 +397,16 @@ export function setRoomSize(plan: Plan3D, roomId: string, axis: "x" | "y", size:
         const step = clamp(rest, g.min, g.max);
         out = moveWall(out, g, step);
         rest -= step;
+        const p = pinsOf(g);
+        p.x.forEach(k => pins.x.add(k)); p.y.forEach(k => pins.y.add(k));
     }
-    return out;
+    // Les deux côtés de la dimension saisie sont tenus
+    for (const v of [hi, lo]) {
+        const e = edgeAt(v);
+        const g = e >= 0 ? grabWall(out, roomId, e) : null;
+        if (g) { const p = pinsOf(g); p.x.forEach(k => pins.x.add(k)); p.y.forEach(k => pins.y.add(k)); }
+    }
+    return lock && hasTargets(out) ? relock(out, pins) : out;
 }
 
 /* ─────────────────────────── OUVERTURES ─────────────────────────── */

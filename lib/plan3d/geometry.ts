@@ -286,7 +286,7 @@ function squarify(specs: (RoomSpec & { id: string })[], x: number, y: number, w:
     if (!specs.length) return;
     if (specs.length === 1) {
         const s = specs[0];
-        out.push({ id: s.id, kind: s.kind, name: s.name || kindLabel(s.kind), polygon: [{ x, y }, { x: x + w, y }, { x: x + w, y: y + h }, { x, y: y + h }].map(p => ({ x: round2(p.x), y: round2(p.y) })) });
+        out.push({ id: s.id, kind: s.kind, name: s.name || kindLabel(s.kind), targetArea: round2(s.area), polygon: [{ x, y }, { x: x + w, y }, { x: x + w, y: y + h }, { x, y: y + h }].map(p => ({ x: round2(p.x), y: round2(p.y) })) });
         return;
     }
     const total = specs.reduce((s, r) => s + r.area, 0);
@@ -328,7 +328,7 @@ export function schematicPlan(specs: RoomSpec[]): Plan3D {
     for (const o of outdoor) {
         const depth = Math.min(2.2, Math.max(1.2, o.area / Math.min(W, 6)));
         const len = o.area / depth;
-        rooms.push({ id: o.id, kind: o.kind, name: o.name || kindLabel(o.kind), polygon: [{ x: ox, y: -depth }, { x: ox + len, y: -depth }, { x: ox + len, y: 0 }, { x: ox, y: 0 }].map(p => ({ x: round2(p.x), y: round2(p.y) })) });
+        rooms.push({ id: o.id, kind: o.kind, name: o.name || kindLabel(o.kind), targetArea: round2(o.area), polygon: [{ x: ox, y: -depth }, { x: ox + len, y: -depth }, { x: ox + len, y: 0 }, { x: ox, y: 0 }].map(p => ({ x: round2(p.x), y: round2(p.y) })) });
         ox += len + 0.2;
     }
     const plan: Plan3D = { version: 1, wallHeight: DEFAULT_WALL_HEIGHT, rooms, openings: [], furniture: [], style: "contemporain", schematic: true, source: null };
