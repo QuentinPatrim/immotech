@@ -13,15 +13,20 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import {
-    AppWindow, Columns2, Copy, DoorOpen, Maximize2, Minus, Plus, SquarePlus, Trash2, TriangleAlert, X,
+    AppWindow, ChevronDown, ChevronUp, Columns2, Copy, DoorOpen, Maximize2, Minus, Plus, Redo2, SquarePlus, Trash2, TriangleAlert, Undo2, X,
 } from "lucide-react";
 import {
     ROOM_KINDS, type Opening, type OpeningKind, type Plan3D, type Pt, type Room, type RoomKind, type Wall,
 } from "@/lib/plan3d/types";
 import {
     bbox, centroid, computeWalls, dist, edgePoint, indoorArea, isOutdoor, kindLabel, nearestEdge, openingLabel,
-    planBBox, pointInPolygon, roomArea, roomEdge, scaleToArea, uid,
+    planBBox, pointInPolygon, roomArea, scaleToArea,
 } from "@/lib/plan3d/geometry";
+import {
+    NEW_ROOM, OPENING_WIDTH, addOpening, addRoom, clamp, deleteRoom, deleteVertex, duplicateRoom, grabWall, insertVertex,
+    mapRoom, moveOpening, moveWall, openingEnds, patchOpening as patchOpeningOp, r3, resizeOpening, setRoomArea, setRoomSize,
+    setVertex, snapGrid, translateRoom, wallHandleT, wallOffset, type WallGrab,
+} from "@/lib/plan3d/edit";
 
 export interface PlanEditor2DProps {
     plan: Plan3D;
@@ -31,17 +36,19 @@ export interface PlanEditor2DProps {
     declaredSurface?: number;
     showSource?: boolean;
     className?: string;
+    /** Historique (tenu par la page, partagé avec la vue 3D) */
+    onUndo?: () => void;
+    onRedo?: () => void;
+    canUndo?: boolean;
+    canRedo?: boolean;
 }
 
 /* ─────────────────────────── CONSTANTES ─────────────────────────── */
 
 const ACCENT = "#d35f52";
-const GRID = 0.05;
 const MIN_K = 4;
 const MAX_K = 1200;
-const NEW_ROOM = "Nouvelle pièce";
 
-const OPENING_WIDTH: Record<OpeningKind, number> = { door: 0.83, window: 1.2, french: 2 };
 
 /** Teinte des pièces par type (r, g, b) : sable, bleu doux, vert tendre, eau, gris clair, bois… */
 const KIND_RGB: Record<RoomKind, [number, number, number]> = {
@@ -90,6 +97,18 @@ type Gesture =
     | {
         type: "room"; id: number; start: Pt; thr: number; moved: boolean;
         origin: Pt; roomId: string; base: Plan3D; result: Plan3D | null; targets: Pt[];
+    }
+    | {
+        type: "wall"; id: number; start: Pt; thr: number; moved: boolean;
+        grab: WallGrab; off0: number; base: Plan3D; result: Plan3D | null; stops: number[];
+    }
+    | {
+        type: "opening"; id: number; start: Pt; thr: number; moved: boolean;
+        openingId: string; roomId: string; grabOffset: Pt; base: Plan3D; result: Plan3D | null;
+    }
+    | {
+        type: "openingEnd"; id: number; start: Pt; thr: number; moved: boolean;
+        openingId: string; end: "a" | "b"; base: Plan3D; result: Plan3D | null;
     };
 
 interface OpeningShape {
@@ -108,9 +127,6 @@ const NO_SNAP: SnapInfo = { lines: [], point: null };
 
 /* ─────────────────────────── VUE ─────────────────────────── */
 
-const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
-const r3 = (v: number) => Math.round(v * 1000) / 1000;
-const snapGrid = (v: number) => r3(Math.round(v / GRID) * GRID);
 const midPt = (a: Pt, b: Pt): Pt => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
 
 const toWorld = (p: Pt, v: View, s: Size): Pt => ({ x: v.cx + (p.x - s.w / 2) / v.k, y: v.cy + (p.y - s.h / 2) / v.k });
@@ -196,103 +212,6 @@ function snapTranslate(poly: Pt[], raw: Pt, targets: Pt[], tol: number): { d: Pt
     if (bx) lines.push({ a: bx.q, b: { x: bx.v.x + dx, y: bx.v.y + dy } });
     if (by) lines.push({ a: by.q, b: { x: by.v.x + dx, y: by.v.y + dy } });
     return { d: { x: dx, y: dy }, snap: { lines, point: null } };
-}
-
-/* ─────────────────────────── ÉDITIONS (immuables) ─────────────────────────── */
-
-const mapRoom = (plan: Plan3D, roomId: string, fn: (r: Room) => Room): Plan3D =>
-    ({ ...plan, rooms: plan.rooms.map(r => (r.id === roomId ? fn(r) : r)) });
-
-const setVertex = (plan: Plan3D, roomId: string, index: number, p: Pt): Plan3D =>
-    mapRoom(plan, roomId, r => ({ ...r, polygon: r.polygon.map((q, i) => (i === index ? { x: r3(p.x), y: r3(p.y) } : q)) }));
-
-/** Déplace une pièce et ses meubles */
-function translateRoom(plan: Plan3D, roomId: string, d: Pt): Plan3D {
-    return {
-        ...mapRoom(plan, roomId, r => ({ ...r, polygon: r.polygon.map(p => ({ x: r3(p.x + d.x), y: r3(p.y + d.y) })) })),
-        furniture: plan.furniture.map(f => (f.roomId === roomId ? { ...f, x: f.x + d.x, y: f.y + d.y } : f)),
-    };
-}
-
-/** Insère un sommet à la fraction s du côté `edge` ; les ouvertures suivent (index et fraction) */
-function insertVertex(plan: Plan3D, roomId: string, edge: number, s: number): Plan3D {
-    const room = plan.rooms.find(r => r.id === roomId);
-    if (!room) return plan;
-    const { a, b } = roomEdge(room, edge);
-    const p = { x: r3(a.x + (b.x - a.x) * s), y: r3(a.y + (b.y - a.y) * s) };
-    const polygon = [...room.polygon.slice(0, edge + 1), p, ...room.polygon.slice(edge + 1)];
-    return {
-        ...mapRoom(plan, roomId, r => ({ ...r, polygon })),
-        openings: plan.openings.map(o => {
-            if (o.roomId !== roomId) return o;
-            if (o.edge > edge) return { ...o, edge: o.edge + 1 };
-            if (o.edge < edge) return o;
-            return o.t < s ? { ...o, t: o.t / s } : { ...o, edge: edge + 1, t: (o.t - s) / (1 - s) };
-        }),
-    };
-}
-
-/** Supprime un sommet (≥ 3 restants) ; les ouvertures des deux côtés fusionnés sont reprojetées */
-function deleteVertex(plan: Plan3D, roomId: string, v: number): Plan3D | null {
-    const room = plan.rooms.find(r => r.id === roomId);
-    if (!room || room.polygon.length <= 3) return null;
-    const n = room.polygon.length;
-    const next: Room = { ...room, polygon: room.polygon.filter((_, i) => i !== v) };
-    const merged = v === 0 ? n - 2 : v - 1;
-    const openings: Opening[] = [];
-    for (const o of plan.openings) {
-        if (o.roomId !== roomId) { openings.push(o); continue; }
-        const onMerged = v === 0 ? o.edge === n - 1 || o.edge === 0 : o.edge === v - 1 || o.edge === v;
-        if (onMerged) {
-            const c = edgePoint(room, o.edge, o.t);
-            const { a, b, length } = roomEdge(next, merged);
-            if (length < 0.2) continue;
-            const t = clamp(((c.x - a.x) * (b.x - a.x) + (c.y - a.y) * (b.y - a.y)) / (length * length), 0, 1);
-            openings.push({ ...o, edge: merged, t });
-        } else {
-            openings.push({ ...o, edge: v === 0 || o.edge > v ? o.edge - 1 : o.edge });
-        }
-    }
-    return { ...mapRoom(plan, roomId, () => next), openings };
-}
-
-/** Supprime une pièce, ses ouvertures et ses meubles */
-const deleteRoom = (plan: Plan3D, roomId: string): Plan3D => ({
-    ...plan,
-    rooms: plan.rooms.filter(r => r.id !== roomId),
-    openings: plan.openings.filter(o => o.roomId !== roomId),
-    furniture: plan.furniture.filter(f => f.roomId !== roomId),
-});
-
-/** Copie décalée de 50 cm (avec ses ouvertures) */
-function duplicateRoom(plan: Plan3D, roomId: string): { plan: Plan3D; id: string } | null {
-    const room = plan.rooms.find(r => r.id === roomId);
-    if (!room) return null;
-    const id = uid("r");
-    const copy: Room = { ...room, id, name: `${room.name} (copie)`, polygon: room.polygon.map(p => ({ x: r3(p.x + 0.5), y: r3(p.y + 0.5) })) };
-    const openings = plan.openings.filter(o => o.roomId === roomId).map(o => ({ ...o, id: uid("o"), roomId: id }));
-    return { plan: { ...plan, rooms: [...plan.rooms, copy], openings: [...plan.openings, ...openings] }, id };
-}
-
-function addRoom(plan: Plan3D, c: Pt): { plan: Plan3D; id: string } {
-    const id = uid("r");
-    const x = snapGrid(c.x), y = snapGrid(c.y);
-    const room: Room = {
-        id, name: NEW_ROOM, kind: "autre",
-        polygon: [{ x: r3(x - 1.5), y: r3(y - 1.5) }, { x: r3(x + 1.5), y: r3(y - 1.5) }, { x: r3(x + 1.5), y: r3(y + 1.5) }, { x: r3(x - 1.5), y: r3(y + 1.5) }],
-    };
-    return { plan: { ...plan, rooms: [...plan.rooms, room] }, id };
-}
-
-/** Pose une ouverture centrée au plus près de t, sans déborder du côté */
-function addOpening(plan: Plan3D, room: Room, edge: number, t: number, kind: OpeningKind): { plan: Plan3D; id: string } | null {
-    const { length } = roomEdge(room, edge);
-    const width = Math.min(OPENING_WIDTH[kind], length - 0.1);
-    if (width < 0.4) return null;
-    const half = width / 2 / length;
-    const id = uid("o");
-    const o: Opening = { id, kind, roomId: room.id, edge, t: clamp(t, half, 1 - half), width: r3(width) };
-    return { plan: { ...plan, openings: [...plan.openings, o] }, id };
 }
 
 /* ─────────────────────────── DESSIN ─────────────────────────── */
@@ -416,8 +335,8 @@ function gridPaths(v: View, s: Size): { minor: string; major: string } {
 
 const glass = "bg-[var(--p-glass)] backdrop-blur-xl border border-[var(--p-line)] shadow-[var(--p-shadow)]";
 
-function ToolButton({ icon: Icon, label, active, disabled, danger, onClick }: {
-    icon: typeof Plus; label: string; active?: boolean; disabled?: boolean; danger?: boolean; onClick: () => void;
+function ToolButton({ icon: Icon, label, active, disabled, danger, iconOnly, onClick }: {
+    icon: typeof Plus; label: string; active?: boolean; disabled?: boolean; danger?: boolean; iconOnly?: boolean; onClick: () => void;
 }) {
     return (
         <button
@@ -426,13 +345,14 @@ function ToolButton({ icon: Icon, label, active, disabled, danger, onClick }: {
             disabled={disabled}
             aria-label={label}
             aria-pressed={active}
-            className={`h-9 shrink-0 px-3 rounded-full flex items-center gap-1.5 text-[13px] font-semibold whitespace-nowrap transition-colors disabled:opacity-35 disabled:pointer-events-none ${
+            title={label}
+            className={`h-9 shrink-0 ${iconOnly ? "w-9 justify-center" : "px-3"} rounded-full flex items-center gap-1.5 text-[13px] font-semibold whitespace-nowrap transition-colors disabled:opacity-35 disabled:pointer-events-none ${
                 active
                     ? "bg-[var(--p-invert-bg)] text-[var(--p-invert-fg)] shadow-sm"
                     : danger ? "text-[var(--p-negative)] hover:bg-[var(--p-hover)]" : "text-[var(--p-fg-2)] hover:bg-[var(--p-hover)]"
             }`}>
             <Icon size={15} strokeWidth={2.2}/>
-            {label}
+            {!iconOnly && label}
         </button>
     );
 }
@@ -446,15 +366,69 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
     );
 }
 
-function RoomInspector({ room, onRename, onKind, onDuplicate, onDelete, onClose }: {
+/** Champ numérique (virgule ou point), validé à la sortie du champ ou sur Entrée */
+export function NumberField({ value, unit, onCommit, label, min = 0.1, max = 500, width = "w-[88px]" }: {
+    value: number; unit: string; onCommit: (v: number) => void; label: string; min?: number; max?: number; width?: string;
+}) {
+    const shownValue = fmt2.format(value);
+    const [text, setText] = useState<string | null>(null);
+    const done = () => {
+        if (text === null) return;
+        const v = Number(text.replace(/\s/g, "").replace(",", "."));
+        setText(null);
+        if (Number.isFinite(v) && v >= min && v <= max && Math.abs(v - value) >= 0.005) onCommit(v);
+    };
+    return (
+        <span className="inline-flex items-center gap-1">
+            <input
+                inputMode="decimal"
+                aria-label={label}
+                value={text ?? shownValue}
+                onFocus={e => { setText(shownValue); requestAnimationFrame(() => e.target.select()); }}
+                onChange={e => setText(e.target.value)}
+                onBlur={done}
+                onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") { setText(null); (e.target as HTMLInputElement).blur(); } }}
+                className={`${width} h-9 px-2 rounded-lg bg-[var(--p-field)] border border-[var(--p-line)] text-right text-[15px] font-semibold tabular-nums text-[var(--p-fg)] outline-none focus:border-[var(--p-accent)]`}/>
+            <span className="text-[13px] text-[var(--p-muted)]">{unit}</span>
+        </span>
+    );
+}
+
+/** Pièce rectangulaire alignée sur les axes (dimensions éditables) */
+const isAxisRect = (room: Room) => room.polygon.length === 4 && room.polygon.every((p, i) => {
+    const q = room.polygon[(i + 1) % 4];
+    return Math.abs(p.x - q.x) < 0.02 || Math.abs(p.y - q.y) < 0.02;
+});
+
+export function RoomInspector({ room, onRename, onKind, onDuplicate, onDelete, onClose, onArea, onSize }: {
     room: Room;
     onRename: (name: string) => void;
     onKind: (kind: RoomKind) => void;
     onDuplicate: () => void;
     onDelete: () => void;
     onClose: () => void;
+    onArea: (area: number) => void;
+    onSize: (axis: "x" | "y", size: number) => void;
 }) {
     const bb = bbox(room.polygon);
+    const rect = isAxisRect(room);
+    // Téléphone : fiche repliée (nom + surface) pour laisser le plan visible
+    const [open, setOpen] = useState(() => typeof window === "undefined" || window.innerWidth >= 640);
+    if (!open) {
+        return (
+            <div className="flex items-center gap-2">
+                <span className="w-3 h-3 rounded-full shrink-0 border border-[var(--p-line-strong)]" style={{ backgroundColor: kindFill(room.kind, 1) }}/>
+                <span className="flex-1 min-w-0 text-[15px] font-semibold text-[var(--p-fg)] truncate">{room.name}</span>
+                <NumberField value={roomArea(room)} unit="m²" label="Surface de la pièce" min={0.5} max={400} onCommit={onArea} width="w-[76px]"/>
+                <button type="button" onClick={() => setOpen(true)} aria-label="Plus d'options" className="w-8 h-8 shrink-0 rounded-full flex items-center justify-center bg-[var(--p-sunken)] text-[var(--p-fg-2)] hover:text-[var(--p-fg)]">
+                    <ChevronUp size={16}/>
+                </button>
+                <button type="button" onClick={onClose} aria-label="Fermer" className="w-8 h-8 shrink-0 rounded-full flex items-center justify-center bg-[var(--p-sunken)] text-[var(--p-muted)] hover:text-[var(--p-fg)]">
+                    <X size={15}/>
+                </button>
+            </div>
+        );
+    }
     return (
         <div className="flex flex-col gap-3">
             <div className="flex items-center gap-2">
@@ -464,6 +438,9 @@ function RoomInspector({ room, onRename, onKind, onDuplicate, onDelete, onClose 
                     onChange={e => onRename(e.target.value)}
                     aria-label="Nom de la pièce"
                     className="flex-1 min-w-0 h-10 px-3 rounded-xl bg-[var(--p-field)] border border-[var(--p-line)] text-[15px] font-semibold text-[var(--p-fg)] outline-none focus:border-[var(--p-accent)]"/>
+                <button type="button" onClick={() => setOpen(false)} aria-label="Réduire" className="sm:hidden w-8 h-8 shrink-0 rounded-full flex items-center justify-center bg-[var(--p-sunken)] text-[var(--p-fg-2)] hover:text-[var(--p-fg)]">
+                    <ChevronDown size={16}/>
+                </button>
                 <button type="button" onClick={onClose} aria-label="Fermer" className="w-8 h-8 shrink-0 rounded-full flex items-center justify-center bg-[var(--p-sunken)] text-[var(--p-muted)] hover:text-[var(--p-fg)]">
                     <X size={15}/>
                 </button>
@@ -491,9 +468,15 @@ function RoomInspector({ room, onRename, onKind, onDuplicate, onDelete, onClose 
                 </div>
             </div>
             <div className="rounded-2xl bg-[var(--p-card)] border border-[var(--p-line)] divide-y divide-[var(--p-line)]">
-                <Row label="Surface"><b className="text-[17px] font-bold tracking-tight">{fmt1.format(roomArea(room))} m²</b></Row>
-                <Row label="Dimensions">{fmt2.format(bb.w)} × {fmt2.format(bb.h)} m</Row>
-                <Row label="Côtés">{room.polygon.length}</Row>
+                <Row label="Surface"><NumberField value={roomArea(room)} unit="m²" label="Surface de la pièce" min={0.5} max={400} onCommit={onArea}/></Row>
+                {rect ? (
+                    <>
+                        <Row label="Largeur ↔"><NumberField value={bb.w} unit="m" label="Largeur de la pièce" min={0.5} max={40} onCommit={v => onSize("x", v)}/></Row>
+                        <Row label="Profondeur ↕"><NumberField value={bb.h} unit="m" label="Profondeur de la pièce" min={0.5} max={40} onCommit={v => onSize("y", v)}/></Row>
+                    </>
+                ) : (
+                    <Row label="Dimensions">{fmt2.format(bb.w)} × {fmt2.format(bb.h)} m</Row>
+                )}
             </div>
             <div className="grid grid-cols-2 gap-2">
                 <button type="button" onClick={onDuplicate} aria-label="Dupliquer la pièce" className="h-10 rounded-xl flex items-center justify-center gap-1.5 text-[14px] font-semibold bg-[var(--p-sunken)] text-[var(--p-fg)] hover:bg-[var(--p-hover)]">
@@ -504,13 +487,13 @@ function RoomInspector({ room, onRename, onKind, onDuplicate, onDelete, onClose 
                 </button>
             </div>
             <p className="px-1 text-[11.5px] leading-snug text-[var(--p-muted)]">
-                Glissez un sommet pour le déplacer, touchez « + » pour en ajouter un, touchez deux fois un sommet pour le retirer.
+                Tirez une pastille rouge pour pousser un mur (la pièce voisine suit), glissez la pièce pour la déplacer, un sommet pour le tordre. « + » ajoute un sommet, deux touchers le retirent. Une surface saisie recale les cloisons.
             </p>
         </div>
     );
 }
 
-function OpeningInspector({ opening, room, onPatch, onDelete, onClose }: {
+export function OpeningInspector({ opening, room, onPatch, onDelete, onClose }: {
     opening: Opening;
     room: Room | undefined;
     onPatch: (patch: Partial<Opening>) => void;
@@ -573,6 +556,9 @@ function OpeningInspector({ opening, room, onPatch, onDelete, onClose }: {
             <button type="button" onClick={onDelete} aria-label="Supprimer l'ouverture" className="h-10 rounded-xl flex items-center justify-center gap-1.5 text-[14px] font-semibold bg-[var(--p-sunken)] text-[var(--p-negative)] hover:bg-[var(--p-hover)]">
                 <Trash2 size={15}/> Supprimer
             </button>
+            <p className="px-1 text-[11.5px] leading-snug text-[var(--p-muted)]">
+                Glissez l&apos;ouverture sur le plan pour la déplacer (d&apos;un mur à l&apos;autre), tirez ses points pour l&apos;élargir.
+            </p>
         </div>
     );
 }
@@ -580,7 +566,7 @@ function OpeningInspector({ opening, room, onPatch, onDelete, onClose }: {
 /* ─────────────────────────── ÉDITEUR ─────────────────────────── */
 
 export default function PlanEditor2D({
-    plan, onChange, selectedRoomId, onSelectRoom, declaredSurface, showSource, className,
+    plan, onChange, selectedRoomId, onSelectRoom, declaredSurface, showSource, className, onUndo, onRedo, canUndo, canRedo,
 }: PlanEditor2DProps) {
     const wrapRef = useRef<HTMLDivElement>(null);
     const svgRef = useRef<SVGSVGElement>(null);
@@ -691,17 +677,9 @@ export default function PlanEditor2D({
     const patchRoom = (patch: Partial<Room>) => {
         if (selRoom) commit(mapRoom(plan, selRoom.id, r => ({ ...r, ...patch })));
     };
+    // L'ouverture reste entière sur son côté (largeur et position)
     const patchOpening = (patch: Partial<Opening>) => {
-        if (!selOpening) return;
-        const next = { ...selOpening, ...patch };
-        const room = plan.rooms.find(r => r.id === next.roomId);
-        if (room) {
-            // L'ouverture reste entière sur son côté (largeur et position)
-            const { length } = roomEdge(room, next.edge);
-            const half = next.width / 2 / Math.max(length, 1e-6);
-            next.t = half >= 0.5 ? 0.5 : clamp(next.t, half, 1 - half);
-        }
-        commit({ ...plan, openings: plan.openings.map(o => (o.id === selOpening.id ? next : o)) });
+        if (selOpening) commit(patchOpeningOp(plan, selOpening.id, patch));
     };
     const zoomBy = (factor: number) => applyView(zoomAt(view, size, { x: size.w / 2, y: size.h / 2 }, factor));
 
@@ -794,8 +772,32 @@ export default function PlanEditor2D({
             };
             return;
         }
+        if (selRoom && hit === "wall") {
+            const grab = grabWall(shown, selRoom.id, Number(target?.dataset.index));
+            if (grab) {
+                // Arrêts magnétiques : alignement sur les autres cloisons parallèles (coordonnée le long de n)
+                const moving = new Set(grab.refs.map(r => `${r.roomId}:${r.index}`));
+                const stops = shown.rooms.flatMap(r => r.polygon.filter((_, i) => !moving.has(`${r.id}:${i}`)).map(p => wallOffset(grab, p)));
+                gesture.current = { type: "wall", id: e.pointerId, start: local, thr, moved: false, grab, off0: wallOffset(grab, world), base: shown, result: null, stops };
+                return;
+            }
+        }
+        if (hit === "oend") {
+            gesture.current = {
+                type: "openingEnd", id: e.pointerId, start: local, thr, moved: false,
+                openingId: target?.dataset.id ?? "", end: target?.dataset.end === "a" ? "a" : "b", base: shown, result: null,
+            };
+            return;
+        }
         if (hit === "opening") {
-            pan({ kind: "opening", id: target?.dataset.id ?? "", roomId: target?.dataset.room ?? "" });
+            const oid = target?.dataset.id ?? "", rid = target?.dataset.room ?? "";
+            const o = shown.openings.find(x => x.id === oid);
+            const room = o && shown.rooms.find(r => r.id === o.roomId);
+            const c = o && room ? edgePoint(room, o.edge, o.t) : world;
+            gesture.current = {
+                type: "opening", id: e.pointerId, start: local, thr, moved: false,
+                openingId: oid, roomId: rid, grabOffset: { x: c.x - world.x, y: c.y - world.y }, base: shown, result: null,
+            };
             return;
         }
         if (hit === "room") {
@@ -840,6 +842,30 @@ export default function PlanEditor2D({
         if (!viewState) applyView(view);
         const tol = clamp(8 / view.k, 0.15, 0.3);
         const world = toWorld(local, view, size);
+        if (g.type === "wall") {
+            const raw = wallOffset(g.grab, world) - g.off0 + wallOffset(g.grab, g.grab.a);
+            // Aimant : autre cloison alignée, sinon pas de 5 cm
+            let off = snapGrid(raw), guide: number | null = null, bd = tol;
+            for (const st of g.stops) if (Math.abs(st - raw) < bd) { bd = Math.abs(st - raw); off = st; guide = st; }
+            const d = clamp(off - wallOffset(g.grab, g.grab.a), g.grab.min, g.grab.max);
+            g.result = moveWall(g.base, g.grab, d);
+            setDraft(g.result);
+            const { a, b, n } = { ...g.grab };
+            setSnap(guide !== null
+                ? { lines: [{ a: { x: a.x + n.x * d - (b.x - a.x) * 2, y: a.y + n.y * d - (b.y - a.y) * 2 }, b: { x: b.x + n.x * d + (b.x - a.x) * 2, y: b.y + n.y * d + (b.y - a.y) * 2 } }], point: null }
+                : NO_SNAP);
+            return;
+        }
+        if (g.type === "opening") {
+            g.result = moveOpening(g.base, g.openingId, { x: world.x + g.grabOffset.x, y: world.y + g.grabOffset.y });
+            setDraft(g.result);
+            return;
+        }
+        if (g.type === "openingEnd") {
+            g.result = resizeOpening(g.base, g.openingId, g.end, world);
+            setDraft(g.result);
+            return;
+        }
         if (g.type === "vertex") {
             const { p, snap: s } = snapPoint(world, g.points, g.axes, tol);
             g.result = setVertex(g.base, g.roomId, g.index, p);
@@ -876,9 +902,22 @@ export default function PlanEditor2D({
             if (!g.moved) handleTap(g.tap, toWorld(localPt(e), view, size));
             return;
         }
-        if (g.type === "room") {
+        if (g.type === "room" || g.type === "wall" || g.type === "openingEnd") {
             if (g.moved && g.result) commit(g.result);
-            else setOpeningId(null);
+            else if (g.type === "room") setOpeningId(null);
+            else setDraft(null);
+            return;
+        }
+        if (g.type === "opening") {
+            if (g.moved && g.result) {
+                commit(g.result);
+                const moved = g.result.openings.find(o => o.id === g.openingId);
+                if (moved && moved.roomId !== selectedRoomId) onSelectRoom(moved.roomId);
+                setOpeningId(g.openingId);
+            } else {
+                setDraft(null);
+                handleTap({ kind: "opening", id: g.openingId, roomId: g.roomId }, toWorld(localPt(e), view, size));
+            }
             return;
         }
         if (g.moved || g.inserted) { commit(g.result); return; }
@@ -949,25 +988,42 @@ export default function PlanEditor2D({
                 nx = -(b.y - a.y) / len; ny = (b.x - a.x) / len;
                 if (pointInPolygon({ x: m.x + nx * 0.05, y: m.y + ny * 0.05 }, poly)) { nx = -nx; ny = -ny; }
             }
-            return { i, len, sm: S(m), nx, ny, px: len * view.k };
+            const q = { x: a.x + (b.x - a.x) * 0.22, y: a.y + (b.y - a.y) * 0.22 };
+            const th = wallHandleT(shown, selRoom, i);
+            const hm = { x: a.x + (b.x - a.x) * th, y: a.y + (b.y - a.y) * th };
+            const ang = (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI;
+            return { i, len, sm: S(m), sh: S(hm), sq: S(q), ang, nx, ny, px: len * view.k };
         });
         selection = (
             <g>
                 {edges.filter(ed => ed.px >= 34).map(ed => (
                     <text
-                        key={`l${ed.i}`} x={ed.sm.x + ed.nx * 16} y={ed.sm.y + ed.ny * 16}
+                        key={`l${ed.i}`} x={ed.sm.x + ed.nx * 22} y={ed.sm.y + ed.ny * 22}
                         textAnchor="middle" dominantBaseline="central" fontSize={11} fontWeight={600}
                         style={{ pointerEvents: "none", fill: ACCENT, stroke: "var(--p-card)", strokeWidth: 3.5, paintOrder: "stroke", strokeLinejoin: "round", fontVariantNumeric: "tabular-nums" }}>
                         {fmt2.format(ed.len)} m
                     </text>
                 ))}
-                {!draft && edges.filter(ed => ed.px >= 64).map(ed => (
+                {!draft && edges.filter(ed => ed.px >= 130).map(ed => (
                     <g key={`m${ed.i}`} data-hit="mid" data-index={ed.i} style={{ cursor: "copy" }} aria-label="Ajouter un sommet">
-                        <circle cx={ed.sm.x} cy={ed.sm.y} r={18} fill="transparent" style={{ pointerEvents: "all" }}/>
-                        <circle cx={ed.sm.x} cy={ed.sm.y} r={7} fill="var(--p-card)" stroke={ACCENT} strokeWidth={1.25} strokeOpacity={0.7}/>
-                        <path d={`M${ed.sm.x - 3.5} ${ed.sm.y}H${ed.sm.x + 3.5}M${ed.sm.x} ${ed.sm.y - 3.5}V${ed.sm.y + 3.5}`} stroke={ACCENT} strokeWidth={1.5} strokeLinecap="round"/>
+                        <circle cx={ed.sq.x} cy={ed.sq.y} r={14} fill="transparent" style={{ pointerEvents: "all" }}/>
+                        <circle cx={ed.sq.x} cy={ed.sq.y} r={6.5} fill="var(--p-card)" stroke={ACCENT} strokeWidth={1.25} strokeOpacity={0.7}/>
+                        <path d={`M${ed.sq.x - 3} ${ed.sq.y}H${ed.sq.x + 3}M${ed.sq.x} ${ed.sq.y - 3}V${ed.sq.y + 3}`} stroke={ACCENT} strokeWidth={1.5} strokeLinecap="round"/>
                     </g>
                 ))}
+                {/* Poignées de mur : glisser pour pousser / tirer la cloison (la pièce voisine suit) */}
+                {edges.filter(ed => ed.px >= 30).map(ed => {
+                    const horizontalish = Math.abs(ed.nx) < Math.abs(ed.ny);
+                    return (
+                        <g key={`w${ed.i}`} data-hit="wall" data-index={ed.i} style={{ cursor: horizontalish ? "ns-resize" : "ew-resize" }} aria-label="Déplacer le mur"
+                            transform={`translate(${ed.sh.x} ${ed.sh.y}) rotate(${ed.ang})`}>
+                            <rect x={-22} y={-16} width={44} height={32} fill="transparent" style={{ pointerEvents: "all" }}/>
+                            <rect x={-13} y={-4.5} width={26} height={9} rx={4.5} fill={ACCENT} stroke="var(--p-card)" strokeWidth={2}
+                                style={{ filter: "drop-shadow(0 1px 3px rgba(0,0,0,0.3))" }}/>
+                            <path d="M-5 -1.2H5M-5 1.8H5" stroke="var(--p-card)" strokeWidth={1} strokeLinecap="round" opacity={0.9}/>
+                        </g>
+                    );
+                })}
                 {poly.map((p, i) => {
                     const s = S(p);
                     return (
@@ -1056,10 +1112,23 @@ export default function PlanEditor2D({
                         <line
                             key={`h${o.id}`} data-hit="opening" data-id={o.id} data-room={o.roomId}
                             x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="transparent" strokeWidth={26} strokeLinecap="round"
-                            style={{ pointerEvents: "stroke", cursor: "pointer" }}/>
+                            style={{ pointerEvents: "stroke", cursor: "grab" }}/>
                     );
                 })}
                 {selection}
+                {selOpening && !mode && (() => {
+                    const ends = openingEnds(shown, selOpening);
+                    if (!ends) return null;
+                    return (["a", "b"] as const).map(k => {
+                        const p = S(ends[k]);
+                        return (
+                            <g key={k} data-hit="oend" data-id={selOpening.id} data-end={k} style={{ cursor: "col-resize" }} aria-label="Élargir l'ouverture">
+                                <circle cx={p.x} cy={p.y} r={16} fill="transparent" style={{ pointerEvents: "all" }}/>
+                                <circle cx={p.x} cy={p.y} r={6.5} fill={ACCENT} stroke="var(--p-card)" strokeWidth={2} style={{ filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.3))" }}/>
+                            </g>
+                        );
+                    });
+                })()}
                 {(snap.lines.length > 0 || snap.point) && (
                     <g style={{ pointerEvents: "none" }}>
                         {snap.lines.map((l, i) => {
@@ -1120,6 +1189,17 @@ export default function PlanEditor2D({
             {/* Inspecteur (feuille en bas sur téléphone, carte latérale sur ordinateur) et zoom */}
             <div className="pointer-events-none absolute inset-x-2 bottom-2 top-28 sm:inset-x-auto sm:right-3 sm:bottom-3 sm:top-20 z-10 flex flex-col justify-end items-end gap-2">
                 <div className={`order-1 sm:order-2 pointer-events-auto rounded-full p-1 flex items-center gap-0.5 ${glass}`}>
+                    {onUndo && (
+                        <button type="button" onClick={onUndo} disabled={!canUndo} aria-label="Annuler" title="Annuler" className="w-9 h-9 rounded-full flex items-center justify-center text-[var(--p-fg-2)] hover:bg-[var(--p-hover)] disabled:opacity-30">
+                            <Undo2 size={16}/>
+                        </button>
+                    )}
+                    {onRedo && (
+                        <button type="button" onClick={onRedo} disabled={!canRedo} aria-label="Rétablir" title="Rétablir" className="w-9 h-9 rounded-full flex items-center justify-center text-[var(--p-fg-2)] hover:bg-[var(--p-hover)] disabled:opacity-30">
+                            <Redo2 size={16}/>
+                        </button>
+                    )}
+                    {(onUndo || onRedo) && <span className="w-px h-5 bg-[var(--p-line)] mx-0.5"/>}
                     <button type="button" onClick={() => zoomBy(1 / 1.4)} aria-label="Zoom arrière" className="w-9 h-9 rounded-full flex items-center justify-center text-[var(--p-fg-2)] hover:bg-[var(--p-hover)]">
                         <Minus size={16}/>
                     </button>
@@ -1131,7 +1211,7 @@ export default function PlanEditor2D({
                     </button>
                 </div>
                 {(selOpening || selRoom) && !mode && (
-                    <div className={`order-2 sm:order-1 pointer-events-auto w-full sm:w-80 min-h-0 max-h-[46vh] sm:max-h-full overflow-y-auto rounded-[24px] p-4 ${glass}`}>
+                    <div className={`order-2 sm:order-1 pointer-events-auto w-full sm:w-80 min-h-0 max-h-[46vh] sm:max-h-full overflow-y-auto rounded-[24px] p-3 sm:p-4 ${glass}`}>
                         <div className="sm:hidden mx-auto -mt-1.5 mb-2.5 w-9 h-1 rounded-full bg-[var(--p-line-strong)]"/>
                         {selOpening ? (
                             <OpeningInspector
@@ -1150,7 +1230,9 @@ export default function PlanEditor2D({
                                     if (res) { commit(res.plan); selectRoom(res.id); }
                                 }}
                                 onDelete={deleteSelection}
-                                onClose={() => selectRoom(null)}/>
+                                onClose={() => selectRoom(null)}
+                                onArea={a => commit(setRoomArea(plan, selRoom.id, a))}
+                                onSize={(axis, v) => commit(setRoomSize(plan, selRoom.id, axis, v))}/>
                         )}
                     </div>
                 )}

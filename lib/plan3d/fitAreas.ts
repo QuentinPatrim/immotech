@@ -89,7 +89,10 @@ export interface FitResult { plan: Plan3D; before: number; after: number; fitted
  * cible (placard compté dans la surface de l'entrée). Renvoie l'écart relatif
  * moyen avant / après (0.05 = 5 %).
  */
-export function fitAreas(plan: Plan3D, targets: Map<string, number>, groups: Map<string, string> = new Map()): FitResult {
+export function fitAreas(
+    plan: Plan3D, targets: Map<string, number>, groups: Map<string, string> = new Map(),
+    opts: { weights?: Map<string, number>; preserve?: boolean } = {},
+): FitResult {
     const rooms = plan.rooms;
     const verts: { r: number; v: number; p: Pt }[] = [];
     rooms.forEach((room, r) => room.polygon.forEach((p, v) => verts.push({ r, v, p })));
@@ -119,15 +122,18 @@ export function fitAreas(plan: Plan3D, targets: Map<string, number>, groups: Map
         for (const r of idx) {
             const t = targets.get(rooms[r].id) as number;
             const e = (areaOf(X, Y, r) - t) / t;
-            c += e * e;
+            c += e * e * (opts.weights?.get(rooms[r].id) ?? 1);
         }
         let reg = 0;
         for (let i = 0; i < nx; i++) reg += ((X[i] - x0[i]) / span) ** 2;
         for (let j = 0; j < ny; j++) reg += ((Y[j] - y0[j]) / span) ** 2;
         return c + 0.02 * reg;
     };
+    // Écart relatif moyen (pondéré si des poids sont donnés)
+    const wOf = (r: number) => opts.weights?.get(rooms[r].id) ?? 1;
+    const wSum = idx.reduce((s, r) => s + wOf(r), 0) || 1;
     const meanErr = (X: number[], Y: number[]) => idx.length
-        ? idx.reduce((s, r) => { const t = targets.get(rooms[r].id) as number; return s + Math.abs(areaOf(X, Y, r) - t) / t; }, 0) / idx.length
+        ? idx.reduce((s, r) => { const t = targets.get(rooms[r].id) as number; return s + (wOf(r) * Math.abs(areaOf(X, Y, r) - t)) / t; }, 0) / wSum
         : 0;
     const before = meanErr(x0, y0);
     if (idx.length < 2) return { plan, before, after: before, fitted: 0 };
@@ -175,13 +181,14 @@ export function fitAreas(plan: Plan3D, targets: Map<string, number>, groups: Map
     const after = meanErr(X, Y);
     if (after >= before) return { plan, before, after: before, fitted: 0 };
 
-    const minX = Math.min(...X), minY = Math.min(...Y);
+    // Édition à la main (preserve) : plan laissé en place, image et meubles conservés
+    const minX = opts.preserve ? 0 : Math.min(...X), minY = opts.preserve ? 0 : Math.min(...Y);
     const out: Plan3D = {
         ...plan,
         rooms: rooms.map((room, r) => ({ ...room, polygon: ref[r].map(([i, j]) => ({ x: round2(X[i] - minX), y: round2(Y[j] - minY) })) })),
         // L'image du plan d'origine ne se superpose plus exactement après recalage : retirée
-        source: null,
-        furniture: [],
+        source: opts.preserve ? plan.source : null,
+        furniture: opts.preserve ? plan.furniture : [],
     };
     return { plan: out, before, after, fitted: idx.length };
 }

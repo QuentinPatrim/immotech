@@ -17,13 +17,14 @@ import dynamic from "next/dynamic";
 import { AnimatePresence, motion } from "framer-motion";
 import {
     AlertTriangle, ArrowLeft, Box, Check, ChevronLeft, CircleAlert, FileUp, Info, LayoutGrid, Loader2, Plus, Presentation,
-    RotateCcw, Sofa, Sparkles, Trash2, Wand2, X,
+    Redo2, RotateCcw, Sofa, Sparkles, Trash2, Undo2, Wand2, X,
 } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { getAuthHeaders } from "@/lib/apiHelpers";
 import { usePatrimTheme } from "@/lib/patrimTheme";
 import ThemeToggle from "@/components/estimation/ThemeToggle";
-import PlanEditor2D from "@/components/plan3d/PlanEditor2D";
+import PlanEditor2D, { OpeningInspector, RoomInspector } from "@/components/plan3d/PlanEditor2D";
+import { NEW_ROOM, deleteRoom, duplicateRoom, patchOpening, setRoomArea, setRoomSize } from "@/lib/plan3d/edit";
 import type { ViewMode } from "@/components/plan3d/Scene3D";
 import { autoFurnish } from "@/lib/plan3d/furnish";
 import { fileToPlanImage, isPdfFile } from "@/lib/plan3d/pdfToImage";
@@ -179,11 +180,11 @@ function Segmented<T extends string>({ value, options, onChange, label, glass }:
     );
 }
 
-function GlassButton({ onClick, label, icon, active, className }: { onClick: () => void; label: string; icon: ReactNode; active?: boolean; className?: string }) {
+function GlassButton({ onClick, label, icon, active, disabled, iconOnly, className }: { onClick: () => void; label: string; icon: ReactNode; active?: boolean; disabled?: boolean; iconOnly?: boolean; className?: string }) {
     return (
-        <button type="button" onClick={onClick} title={label} aria-label={label} aria-pressed={active}
-            className={`h-8 px-2 sm:px-2.5 rounded-lg inline-flex items-center gap-1.5 text-xs font-semibold transition-colors ${active ? "text-[var(--p-accent)] bg-[var(--p-accent-soft)]" : "text-[var(--p-fg-2)] hover:bg-[var(--p-hover)]"} ${className ?? ""}`}>
-            {icon}<span className="hidden sm:inline lg:hidden xl:inline">{label}</span>
+        <button type="button" onClick={onClick} title={label} aria-label={label} aria-pressed={active} disabled={disabled}
+            className={`h-8 px-2 sm:px-2.5 rounded-lg inline-flex items-center gap-1.5 text-xs font-semibold transition-colors disabled:opacity-35 disabled:pointer-events-none ${active ? "text-[var(--p-accent)] bg-[var(--p-accent-soft)]" : "text-[var(--p-fg-2)] hover:bg-[var(--p-hover)]"} ${className ?? ""}`}>
+            {icon}{!iconOnly && <span className="hidden sm:inline lg:hidden xl:inline">{label}</span>}
         </button>
     );
 }
@@ -325,6 +326,7 @@ export default function Plan3DPage() {
     const [plan, setPlan] = useState<Plan3D | null>(null);
     const [save, setSave] = useState<SaveState>("idle");
     const [selected, setSelected] = useState<string | null>(null);
+    const [opening3d, setOpening3d] = useState<string | null>(null);
     const [view, setView] = useState<ViewMode>("dollhouse");
     const [furniture, setFurniture] = useState(true);
     const [pane, setPane] = useState<Pane>("3d");
@@ -431,6 +433,8 @@ export default function Plan3DPage() {
     };
 
     const createPlan = (next: Plan3D) => {
+        past.current = [];
+        future.current = [];
         commit(next, 0);
         setSelected(null);
         setSuggest(false);
@@ -439,10 +443,35 @@ export default function Plan3DPage() {
         setFurniture(true);
     };
 
+    /* Historique des modifications à la main (2D et 3D) : annuler / rétablir */
+    const past = useRef<Plan3D[]>([]);
+    const future = useRef<Plan3D[]>([]);
+    const [histTick, setHistTick] = useState(0);
     const onEditorChange = (next: Plan3D) => {
         if (plan && geometryKey(next) !== geometryKey(plan)) setSuggest(true);
+        if (plan) {
+            past.current = [...past.current.slice(-59), plan];
+            future.current = [];
+            setHistTick(t => t + 1);
+        }
         commit(next);
     };
+    const undo = () => {
+        const prev = past.current.pop();
+        if (!prev || !plan) return;
+        future.current.push(plan);
+        setHistTick(t => t + 1);
+        commit(prev);
+    };
+    const redo = () => {
+        const next = future.current.pop();
+        if (!next || !plan) return;
+        past.current.push(plan);
+        setHistTick(t => t + 1);
+        commit(next);
+    };
+    const canUndo = histTick >= 0 && past.current.length > 0;
+    const canRedo = histTick >= 0 && future.current.length > 0;
 
     const refurnish = () => {
         if (!plan) return;
@@ -658,8 +687,14 @@ export default function Plan3DPage() {
     const street = data.propertyAddress?.split(",")[0]?.trim() || "";
     const declared = Number(data.surface) || 0;
     const selectedRoomId = plan && selected && plan.rooms.some(r => r.id === selected) ? selected : null;
+    const selRoom3d = plan && selectedRoomId ? plan.rooms.find(r => r.id === selectedRoomId) ?? null : null;
+    const selOpening3d = plan && opening3d ? plan.openings.find(o => o.id === opening3d) ?? null : null;
+    // Panneau d'édition dans la vue 3D : toujours pour une ouverture, pour une pièce sur téléphone
+    // (sur ordinateur, l'inspecteur du plan 2D voisin est déjà affiché)
+    const editPlan = (next: Plan3D) => onEditorChange(next);
     const show2D = isDesktop || pane === "2d";
     const show3D = isDesktop || pane === "3d";
+    const panel3d = plan && show3D && view !== "walk" && (selOpening3d || (selRoom3d && !isDesktop));
 
     const suggestChip = suggest && plan && (
         <motion.div key="suggest" initial={{ opacity: 0, y: 8, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8, scale: 0.96 }}
@@ -707,13 +742,17 @@ export default function Plan3DPage() {
                         {show2D && (
                             <section className="relative min-h-0 rounded-[24px] overflow-hidden border border-[var(--p-line)] shadow-[var(--p-shadow)]" style={{ backgroundColor: "var(--p-card)" }} aria-label="Plan 2D">
                                 <PlanEditor2D plan={plan} onChange={onEditorChange} selectedRoomId={selectedRoomId} onSelectRoom={setSelected}
+                                    onUndo={undo} onRedo={redo} canUndo={canUndo} canRedo={canRedo}
                                     declaredSurface={declared || undefined} showSource={!!plan.source} className="absolute inset-0"/>
                             </section>
                         )}
                         {/* La scène 3D reste montée (masquée sur téléphone en mode Plan 2D) : pas de démontage du canvas à chaque bascule */}
                         {(
                             <section className={`relative min-h-0 rounded-[24px] overflow-hidden border border-[var(--p-line)] shadow-[var(--p-shadow)] ${show3D ? "" : "hidden"}`} style={{ backgroundColor: "var(--p-card)" }} aria-label="Vue 3D" aria-hidden={!show3D}>
-                                <Scene3D plan={plan} view={view} showFurniture={furniture} showLabels selectedRoomId={selectedRoomId} onSelectRoom={setSelected}
+                                <Scene3D plan={plan} view={view} showFurniture={furniture} showLabels selectedRoomId={selectedRoomId}
+                                    onSelectRoom={id => { setSelected(id); setOpening3d(null); }}
+                                    onEdit={onEditorChange} selectedOpeningId={selOpening3d?.id ?? null}
+                                    onSelectOpening={id => { setOpening3d(id); const o = plan.openings.find(x => x.id === id); if (o) setSelected(o.roomId); }}
                                     theme={theme} className="absolute inset-0"/>
 
                                 {/* Commandes flottantes */}
@@ -723,11 +762,43 @@ export default function Plan3DPage() {
                                         <GlassButton label="Meubles" icon={<Sofa size={15}/>} active={furniture} onClick={() => setFurniture(v => !v)}/>
                                         <GlassButton label="Réaménager" icon={<Wand2 size={15}/>} onClick={refurnish}/>
                                         <GlassButton label="Recommencer" icon={<RotateCcw size={15}/>} onClick={() => setConfirmReset(true)}/>
+                                        <span className="w-px h-5 bg-[var(--p-line)] mx-0.5"/>
+                                        <GlassButton label="Annuler" iconOnly icon={<Undo2 size={15}/>} disabled={!canUndo} onClick={undo}/>
+                                        <GlassButton label="Rétablir" iconOnly icon={<Redo2 size={15}/>} disabled={!canRedo} onClick={redo}/>
                                     </div>
                                 </div>
 
                                 <div className="absolute bottom-3 inset-x-3 flex flex-col items-center gap-2 pointer-events-none">
-                                    <AnimatePresence>{suggestChip}</AnimatePresence>
+                                    <AnimatePresence>{!panel3d && suggestChip}</AnimatePresence>
+                                    {selRoom3d && !selOpening3d && view !== "walk" && (
+                                        <p className="pointer-events-none text-[11.5px] font-medium px-3 py-1.5 rounded-full border border-[var(--p-line)] backdrop-blur-xl text-[var(--p-fg-2)] shadow-sm text-center"
+                                            style={{ backgroundColor: "var(--p-glass)" }}>
+                                            Tirez les pastilles rouges pour pousser un mur · glissez une porte ou la pièce
+                                        </p>
+                                    )}
+                                    {panel3d ? (
+                                        <div className="pointer-events-auto w-full sm:w-80 sm:self-end max-h-[44vh] overflow-y-auto rounded-[24px] p-4 border border-[var(--p-line)] backdrop-blur-xl shadow-[var(--p-shadow)]"
+                                            style={{ backgroundColor: "var(--p-glass)" }}>
+                                            {selOpening3d ? (
+                                                <OpeningInspector
+                                                    opening={selOpening3d}
+                                                    room={plan.rooms.find(r => r.id === selOpening3d.roomId)}
+                                                    onPatch={p => editPlan(patchOpening(plan, selOpening3d.id, p))}
+                                                    onDelete={() => { editPlan({ ...plan, openings: plan.openings.filter(o => o.id !== selOpening3d.id) }); setOpening3d(null); }}
+                                                    onClose={() => setOpening3d(null)}/>
+                                            ) : selRoom3d && (
+                                                <RoomInspector
+                                                    room={selRoom3d}
+                                                    onRename={name => editPlan({ ...plan, rooms: plan.rooms.map(r => (r.id === selRoom3d.id ? { ...r, name } : r)) })}
+                                                    onKind={kind => editPlan({ ...plan, rooms: plan.rooms.map(r => (r.id === selRoom3d.id ? { ...r, kind, name: r.name === NEW_ROOM || r.name === kindLabel(r.kind) ? kindLabel(kind) : r.name } : r)) })}
+                                                    onDuplicate={() => { const res = duplicateRoom(plan, selRoom3d.id); if (res) { editPlan(res.plan); setSelected(res.id); } }}
+                                                    onDelete={() => { editPlan(deleteRoom(plan, selRoom3d.id)); setSelected(null); }}
+                                                    onClose={() => setSelected(null)}
+                                                    onArea={a => editPlan(setRoomArea(plan, selRoom3d.id, a))}
+                                                    onSize={(axis, v) => editPlan(setRoomSize(plan, selRoom3d.id, axis, v))}/>
+                                            )}
+                                        </div>
+                                    ) : (
                                     <div className="pointer-events-auto max-w-full flex gap-1 p-1 rounded-2xl border border-[var(--p-line)] backdrop-blur-xl shadow-lg overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
                                         style={{ backgroundColor: "var(--p-glass)" }} role="radiogroup" aria-label="Style d'aménagement">
                                         {STYLE_LIST.map(s => {
@@ -742,6 +813,7 @@ export default function Plan3DPage() {
                                             );
                                         })}
                                     </div>
+                                    )}
                                 </div>
                             </section>
                         )}

@@ -12,15 +12,16 @@
    Y vers le haut ; le plan est centré sur l'origine.
    ============================================================ */
 
-import { useEffect, useLayoutEffect, useMemo, useRef, type ComponentRef, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentRef, type RefObject } from "react";
 import * as THREE from "three";
 import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
-import { ContactShadows, Environment, Html, Lightformer, OrbitControls } from "@react-three/drei";
+import { ContactShadows, Environment, Lightformer, OrbitControls } from "@react-three/drei";
 import type { Plan3D, Pt, Room, Wall } from "@/lib/plan3d/types";
 import { centroid, computeWalls, edgePoint, isOutdoor, planBBox, pointInPolygon, roomArea } from "@/lib/plan3d/geometry";
 import { STYLES, type StylePalette } from "@/lib/plan3d/styles";
 import { FLOOR_ROUGHNESS, disposeTextures, makeFloorTexture } from "@/components/plan3d/materials";
 import { FurnitureMesh, disposeFurnitureResources } from "@/components/plan3d/furnitureModels";
+import EditHandles3D from "@/components/plan3d/EditHandles3D";
 
 export type ViewMode = "dollhouse" | "top" | "walk";
 
@@ -34,6 +35,10 @@ export interface Scene3DProps {
     className?: string;
     theme?: "light" | "dark";
     autoRotate?: boolean;
+    /** Édition directe (poignées de murs, d'ouvertures et de pièce) en vues Maquette et Dessus */
+    onEdit?: (plan: Plan3D) => void;
+    selectedOpeningId?: string | null;
+    onSelectOpening?: (id: string | null) => void;
 }
 
 const FOV = 40;
@@ -257,42 +262,70 @@ function FurnitureLayer({ plan, palette, ox, oy }: { plan: Plan3D; palette: Styl
 
 const areaFmt = new Intl.NumberFormat("fr-FR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
-function Labels({ rooms, ox, oy, selectedRoomId, onSelect, dark, hidden }: {
-    rooms: Room[]; ox: number; oy: number; selectedRoomId: string | null; onSelect?: (id: string | null) => void; dark: boolean; hidden: boolean;
+interface LabelItem { room: Room; area: number; c: Pt }
+
+const labelItemsOf = (rooms: Room[]): LabelItem[] => rooms
+    .filter(r => r.polygon.length >= 3)
+    .map(r => ({ room: r, area: roomArea(r), c: centroid(r.polygon) }))
+    .filter(i => i.area >= 2);
+
+/**
+ * Étiquettes en HTML ordinaire, au-dessus du canevas : chaque image, le centre de
+ * chaque pièce est projeté à l'écran et l'étiquette déplacée (pas de <Html> drei,
+ * dont le montage perdait parfois une étiquette).
+ */
+function LabelProjector({ items, ox, oy, elements }: { items: LabelItem[]; ox: number; oy: number; elements: RefObject<Map<string, HTMLElement>> }) {
+    const v = useMemo(() => new THREE.Vector3(), []);
+    useFrame(({ camera, size }) => {
+        for (const i of items) {
+            const el = elements.current?.get(i.room.id);
+            if (!el) continue;
+            v.set(i.c.x - ox, 0.25, i.c.y - oy).project(camera);
+            if (v.z > 1 || v.z < -1) { el.style.visibility = "hidden"; continue; }
+            el.style.visibility = "visible";
+            el.style.transform = `translate3d(${((v.x + 1) / 2) * size.width}px, ${((1 - v.y) / 2) * size.height}px, 0) translate(-50%, -50%)`;
+        }
+    });
+    return null;
+}
+
+function LabelLayer({ items, selectedRoomId, onSelect, dark, elements }: {
+    items: LabelItem[]; selectedRoomId: string | null; onSelect?: (id: string | null) => void; dark: boolean; elements: RefObject<Map<string, HTMLElement>>;
 }) {
-    const items = useMemo(() => rooms
-        .filter(r => r.polygon.length >= 3)
-        .map(r => ({ room: r, area: roomArea(r), c: centroid(r.polygon) }))
-        .filter(i => i.area >= 2), [rooms]);
     return (
-        <>
-            {items.map(({ room, area, c }) => {
+        <div aria-hidden={false} style={{ position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none", zIndex: 1 }}>
+            {items.map(({ room, area }) => {
                 const selected = room.id === selectedRoomId;
                 return (
-                    <Html key={room.id} position={[c.x - ox, 0.25, c.y - oy]} center zIndexRange={[30, 0]}>
-                        <button
-                            type="button"
-                            onClick={e => { e.stopPropagation(); onSelect?.(room.id); }}
-                            style={{
-                                display: hidden ? "none" : "flex", flexDirection: "column", alignItems: "center", gap: 1,
-                                padding: "5px 11px", borderRadius: 999, border: "none", cursor: "pointer",
-                                background: selected ? "#8a0e01" : dark ? "rgba(36, 36, 40, 0.74)" : "rgba(255, 255, 255, 0.84)",
-                                color: selected ? "#ffffff" : dark ? "#f5f5f7" : "#1d1d1f",
-                                backdropFilter: "blur(14px) saturate(180%)", WebkitBackdropFilter: "blur(14px) saturate(180%)",
-                                boxShadow: selected ? "0 6px 18px rgba(138, 14, 1, 0.35)" : "0 4px 14px rgba(0, 0, 0, 0.14), 0 0 0 0.5px rgba(0, 0, 0, 0.06)",
-                                fontFamily: "var(--font-ios, -apple-system, BlinkMacSystemFont, system-ui, sans-serif)",
-                                lineHeight: 1.15, whiteSpace: "nowrap", userSelect: "none", letterSpacing: "-0.01em",
-                                transition: "background 0.2s ease, transform 0.2s ease",
-                                transform: selected ? "scale(1.06)" : "none",
-                            }}
-                        >
-                            <span style={{ fontSize: 11, fontWeight: 700 }}>{room.name}</span>
-                            <span style={{ fontSize: 10, fontWeight: 600, opacity: 0.72 }}>{areaFmt.format(area)} m²</span>
-                        </button>
-                    </Html>
+                    <button
+                        key={room.id}
+                        type="button"
+                        ref={el => {
+                            const m = elements.current;
+                            if (!m) return;
+                            if (el) m.set(room.id, el); else m.delete(room.id);
+                        }}
+                        onClick={e => { e.stopPropagation(); onSelect?.(room.id); }}
+                        style={{
+                            position: "absolute", left: 0, top: 0, visibility: "hidden", pointerEvents: "auto",
+                            display: "flex", flexDirection: "column", alignItems: "center", gap: 1,
+                            padding: "5px 11px", borderRadius: 999, border: "none", cursor: "pointer",
+                            background: selected ? "#8a0e01" : dark ? "rgba(36, 36, 40, 0.74)" : "rgba(255, 255, 255, 0.84)",
+                            color: selected ? "#ffffff" : dark ? "#f5f5f7" : "#1d1d1f",
+                            backdropFilter: "blur(14px) saturate(180%)", WebkitBackdropFilter: "blur(14px) saturate(180%)",
+                            boxShadow: selected ? "0 6px 18px rgba(138, 14, 1, 0.35)" : "0 4px 14px rgba(0, 0, 0, 0.14), 0 0 0 0.5px rgba(0, 0, 0, 0.06)",
+                            fontFamily: "var(--font-ios, -apple-system, BlinkMacSystemFont, system-ui, sans-serif)",
+                            lineHeight: 1.15, whiteSpace: "nowrap", userSelect: "none", letterSpacing: "-0.01em",
+                            transition: "background 0.2s ease",
+                            willChange: "transform",
+                        }}
+                    >
+                        <span style={{ fontSize: 11, fontWeight: 700 }}>{room.name}</span>
+                        <span style={{ fontSize: 10, fontWeight: 600, opacity: 0.72 }}>{areaFmt.format(area)} m²</span>
+                    </button>
                 );
             })}
-        </>
+        </div>
     );
 }
 
@@ -500,14 +533,22 @@ function CameraRig({ view, plan, bb, ox, oy, autoRotate, walkRequestRef }: {
 
 /* ─────────────────────────── SCÈNE ─────────────────────────── */
 
-function SceneContent({ plan, view, showFurniture, showLabels, selectedRoomId, onSelectRoom, dark, autoRotate }: {
-    plan: Plan3D; view: ViewMode; showFurniture: boolean; showLabels: boolean; selectedRoomId: string | null;
+function SceneContent({ plan, dragging, onDraft, labels, labelEls, view, showFurniture, selectedRoomId, onSelectRoom, dark, autoRotate, onEdit, selectedOpeningId, onSelectOpening }: {
+    plan: Plan3D; dragging: boolean; onDraft: (p: Plan3D | null) => void; labels: LabelItem[]; labelEls: RefObject<Map<string, HTMLElement>>;
+    view: ViewMode; showFurniture: boolean; selectedRoomId: string | null;
     onSelectRoom?: (id: string | null) => void; dark: boolean; autoRotate: boolean;
+    onEdit?: (plan: Plan3D) => void; selectedOpeningId: string | null; onSelectOpening?: (id: string | null) => void;
 }) {
     const palette = STYLES[plan.style] ?? STYLES.contemporain;
     const rooms = plan.rooms;
     const bb = useMemo(() => planBBox({ rooms }), [rooms]);
-    const ox = bb.cx, oy = bb.cy;
+    // Origine de la scène stable pendant l'édition : pousser un mur de façade ne doit pas
+    // faire glisser toute la maquette sous le doigt (recentrage au-delà de 1,5 m seulement)
+    const [origin, setOrigin] = useState({ x: bb.cx, y: bb.cy });
+    if (!dragging && Math.hypot(bb.cx - origin.x, bb.cy - origin.y) > 1.5) setOrigin({ x: bb.cx, y: bb.cy });
+    const ox = origin.x, oy = origin.y;
+    const editRoom = onEdit && view !== "walk" ? plan.rooms.find(r => r.id === selectedRoomId && r.polygon.length >= 3) ?? null : null;
+    const handleSize = Math.min(0.6, Math.max(0.28, Math.max(bb.w, bb.h) / 14));
     const hasRooms = plan.rooms.length > 0;
     const bg = dark ? "#0f0f11" : "#eceae6";
     const radius = 0.5 * Math.hypot(Math.max(bb.w, 3), Math.max(bb.h, 3), plan.wallHeight || 2.5);
@@ -554,9 +595,12 @@ function SceneContent({ plan, view, showFurniture, showLabels, selectedRoomId, o
             <Floors plan={plan} palette={palette} ox={ox} oy={oy} selectedRoomId={selectedRoomId} onFloorClick={onFloorClick} />
             <Walls plan={plan} palette={palette} ox={ox} oy={oy} />
             {showFurniture && <FurnitureLayer plan={plan} palette={palette} ox={ox} oy={oy} />}
-            {/* Étiquettes toujours montées, masquées par le style : démonter des <Html> (drei) avec React 19 provoque des erreurs removeChild */}
-            {(
-                <Labels rooms={plan.rooms} ox={ox} oy={oy} selectedRoomId={selectedRoomId} onSelect={onSelectRoom} dark={dark} hidden={!(showLabels && view !== "walk")} />
+            <LabelProjector items={labels} ox={ox} oy={oy} elements={labelEls} />
+            {editRoom && onEdit && (
+                <EditHandles3D
+                    plan={plan} room={editRoom} ox={ox} oy={oy} size={handleSize}
+                    selectedOpeningId={selectedOpeningId} onSelectOpening={id => onSelectOpening?.(id)}
+                    onDraft={onDraft} onCommit={onEdit}/>
             )}
             <CameraRig view={view} plan={plan} bb={bb} ox={ox} oy={oy} autoRotate={autoRotate && view === "dollhouse"} walkRequestRef={walkRequestRef} />
         </>
@@ -575,9 +619,17 @@ export default function Scene3D({
     className,
     theme = "light",
     autoRotate = false,
+    onEdit,
+    selectedOpeningId = null,
+    onSelectOpening,
 }: Scene3DProps) {
     const dark = theme === "dark";
     const down = useRef<{ x: number; y: number } | null>(null);
+    // Aperçu pendant un glissé (le plan enregistré n'est remplacé qu'au relâché)
+    const [draft, setDraft] = useState<Plan3D | null>(null);
+    const shown = draft ?? plan;
+    const labelEls = useRef(new Map<string, HTMLElement>());
+    const labels = useMemo(() => (showLabels && view !== "walk" ? labelItemsOf(shown.rooms) : []), [shown.rooms, showLabels, view]);
 
     // Textures et géométries partagées libérées quand la dernière scène disparaît
     useEffect(() => {
@@ -594,7 +646,7 @@ export default function Scene3D({
     return (
         <div
             className={className}
-            style={{ width: "100%", height: "100%", isolation: "isolate", background: dark ? "#0f0f11" : "#eceae6" }}
+            style={{ width: "100%", height: "100%", position: "relative", isolation: "isolate", background: dark ? "#0f0f11" : "#eceae6" }}
             onPointerDown={e => { down.current = { x: e.clientX, y: e.clientY }; }}
         >
             <Canvas
@@ -610,20 +662,27 @@ export default function Scene3D({
                 onPointerMissed={e => {
                     const d = down.current;
                     if (view === "walk" || !onSelectRoom || !d) return;
-                    if (Math.hypot(e.clientX - d.x, e.clientY - d.y) < 6) onSelectRoom(null);
+                    if (Math.hypot(e.clientX - d.x, e.clientY - d.y) < 6) { onSelectRoom(null); onSelectOpening?.(null); }
                 }}
             >
                 <SceneContent
-                    plan={plan}
+                    plan={shown}
+                    dragging={!!draft}
+                    onDraft={setDraft}
+                    labels={labels}
+                    labelEls={labelEls}
                     view={view}
                     showFurniture={showFurniture}
-                    showLabels={showLabels}
                     selectedRoomId={selectedRoomId}
                     onSelectRoom={onSelectRoom}
                     dark={dark}
                     autoRotate={autoRotate}
+                    onEdit={onEdit}
+                    selectedOpeningId={selectedOpeningId}
+                    onSelectOpening={onSelectOpening}
                 />
             </Canvas>
+            <LabelLayer items={labels} selectedRoomId={selectedRoomId} onSelect={onSelectRoom} dark={dark} elements={labelEls} />
         </div>
     );
 }
