@@ -284,9 +284,9 @@ function place(ctx: Ctx, cands: Cand[], weight: number): number {
  * Pose l'élément structurant de la pièce (lit, cuisine, coin salon…) en
  * anticipant la suite : les meilleurs candidats (diversifiés par `key`) sont
  * essayés avec le reste du programme, et la combinaison la plus complète est
- * retenue. Renvoie -1 si aucun candidat ne tient.
+ * retenue. Renvoie false si aucun candidat ne tient (rien n'est posé).
  */
-function anchor(ctx: Ctx, cands: Cand[], rest: (ctx: Ctx) => number, perKey = 2, limit = 16): number {
+function anchor(ctx: Ctx, cands: Cand[], rest: (ctx: Ctx) => number, perKey = 2, limit = 16): boolean {
     const sorted = cands.slice().sort((a, b) => b.score - a.score);
     const perKeyCount = new Map<string, number>();
     const shortlist: { c: Cand; items: Item[] }[] = [];
@@ -299,7 +299,7 @@ function anchor(ctx: Ctx, cands: Cand[], rest: (ctx: Ctx) => number, perKey = 2,
         perKeyCount.set(c.key, n + 1);
         shortlist.push({ c, items });
     }
-    if (!shortlist.length) return -1;
+    if (!shortlist.length) return false;
     const base = ctx.items.length;
     let best = shortlist[0], bestScore = -Infinity;
     for (const s of shortlist) {
@@ -309,7 +309,8 @@ function anchor(ctx: Ctx, cands: Cand[], rest: (ctx: Ctx) => number, perKey = 2,
         if (total > bestScore + 1e-9) { bestScore = total; best = s; }
     }
     ctx.items.push(...best.items);
-    return best.c.score + rest(ctx);
+    rest(ctx);
+    return true;
 }
 
 /* ─────────────────────── CÔTÉS ET CANDIDATS ─────────────────────── */
@@ -476,26 +477,31 @@ function largestRect(poly: Pt[]): Box | null {
     return { x0: bb.x0 + best.i0 * res, x1: bb.x0 + best.i1 * res, y0: bb.y0 + best.j0 * res, y1: bb.y0 + best.j1 * res };
 }
 
-/** Retrait de chaque côté du rectangle : demi-épaisseur du mur parallèle le plus proche */
+/**
+ * Retrait de chaque côté du rectangle : face intérieure du mur parallèle le
+ * plus proche (les murs fusionnés peuvent être décalés de quelques cm par
+ * rapport au contour de la pièce).
+ */
 function insetRect(fr: Frame, raw: Box, walls: Wall[]): Box {
-    const mids: Record<Side, { p: Pt; dir: Pt }> = {
-        N: { p: { x: (raw.x0 + raw.x1) / 2, y: raw.y0 }, dir: { x: 1, y: 0 } },
-        S: { p: { x: (raw.x0 + raw.x1) / 2, y: raw.y1 }, dir: { x: 1, y: 0 } },
-        W: { p: { x: raw.x0, y: (raw.y0 + raw.y1) / 2 }, dir: { x: 0, y: 1 } },
-        E: { p: { x: raw.x1, y: (raw.y0 + raw.y1) / 2 }, dir: { x: 0, y: 1 } },
+    const sides: Record<Side, { p: Pt; inward: Pt }> = {
+        N: { p: { x: (raw.x0 + raw.x1) / 2, y: raw.y0 }, inward: { x: 0, y: 1 } },
+        S: { p: { x: (raw.x0 + raw.x1) / 2, y: raw.y1 }, inward: { x: 0, y: -1 } },
+        W: { p: { x: raw.x0, y: (raw.y0 + raw.y1) / 2 }, inward: { x: 1, y: 0 } },
+        E: { p: { x: raw.x1, y: (raw.y0 + raw.y1) / 2 }, inward: { x: -1, y: 0 } },
     };
     const inset = (side: Side) => {
-        const { p, dir } = mids[side];
+        const { p, inward } = sides[side];
         const pp = toPlan(fr, p);
-        const dx = dir.x * fr.c - dir.y * fr.s, dy = dir.x * fr.s + dir.y * fr.c;
         let v = 0.02;
         for (const w of walls) {
-            const len = dist(w.a, w.b);
+            const a = toLocal(fr, w.a), b = toLocal(fr, w.b);
+            const len = dist(a, b);
             if (len < EPS) continue;
-            const cross = Math.abs(((w.b.x - w.a.x) * dy - (w.b.y - w.a.y) * dx) / len);
-            if (cross > 0.1) continue;
-            const d = segDist(pp, w.a, w.b);
-            if (d < 0.3) v = Math.max(v, w.thickness / 2 + 0.02 - d);
+            // Mur parallèle au côté (produit vectoriel avec la normale ≈ ±1)
+            if (Math.abs(((b.x - a.x) * inward.x + (b.y - a.y) * inward.y) / len) > 0.1) continue;
+            if (segDist(pp, w.a, w.b) >= 0.3) continue;
+            const signed = (a.x - p.x) * inward.x + (a.y - p.y) * inward.y;
+            v = Math.max(v, signed + w.thickness / 2 + 0.02);
         }
         return v;
     };
@@ -518,10 +524,11 @@ function openingZones(room: Room, fr: Frame, rect: Box, walls: Wall[]): Zone[] {
             if (!near) continue;
             const normal = [{ x: -uy, y: ux }, { x: uy, y: -ux }].find(q => pointInPolygon({ x: m.x + q.x * 0.3, y: m.y + q.y * 0.3 }, room.polygon));
             if (!normal) continue;
-            const depth = o.kind === "window" ? WINDOW_DEPTH : DOOR_DEPTH;
+            // Débattement : un vantail de porte balaie au plus sa largeur
+            const depth = o.kind === "window" ? WINDOW_DEPTH : o.kind === "door" ? Math.min(DOOR_DEPTH, o.to - o.from + 0.05) : DOOR_DEPTH;
             const pts = [p1, p2, { x: p1.x + normal.x * depth, y: p1.y + normal.y * depth }, { x: p2.x + normal.x * depth, y: p2.y + normal.y * depth }];
             const b = aabb(pts.map(p => toLocal(fr, p)));
-            const box = { x0: b.x0 - 0.05, y0: b.y0 - 0.05, x1: b.x1 + 0.05, y1: b.y1 + 0.05 };
+            const box = { x0: b.x0 - 0.01, y0: b.y0 - 0.01, x1: b.x1 + 0.01, y1: b.y1 + 0.01 };
             const lm = toLocal(fr, m), l1 = toLocal(fr, p1), l2 = toLocal(fr, p2);
             const nl = { x: normal.x * fr.c + normal.y * fr.s, y: -normal.x * fr.s + normal.y * fr.c };
             let side: Side | null = null;
@@ -587,20 +594,23 @@ function furnishLiving(ctx: Ctx) {
         for (const sofaW of [2.2, 1.9]) {
             const left = depth - cat.tv_unit.d - cat.sofa.d;
             if (left < 1.6) continue;
-            const backToWall = left <= 3.6;
-            const view = backToWall ? left : 2.6;
-            for (const a of slots(lo, hi, sofaW)) {
-                const third = Math.min(2, Math.floor(((a - lo) / Math.max(EPS, hi - lo)) * 3));
-                cands.push({
-                    key: `${side}${third}`,
-                    score: (sofaW > 2 ? 1 : 0) + (backToWall ? 1 : 0) - penalty,
-                    build: () => {
-                        const tv = placeAgainstWall(ctx, side, a, "tv_unit", "living");
-                        const sofa = relative(tv, 0, tv.d / 2 + view + cat.sofa.d / 2, "sofa", PI, "living", { w: sofaW });
-                        const table = relative(sofa, 0, sofa.d / 2 + 0.4 + cat.coffee_table.d / 2, "coffee_table", 0);
-                        return [tv, sofa, table];
-                    },
-                });
+            // Recul : canapé adossé au mur d'en face, ou flottant avec un passage derrière
+            const views = [...(left <= 3.6 ? [left] : []), ...[2.6, 2.2, 1.8].filter(v => left - v >= 0.7)];
+            for (const view of views) {
+                const backToWall = view === left;
+                for (const a of slots(lo, hi, sofaW)) {
+                    const third = Math.min(2, Math.floor(((a - lo) / Math.max(EPS, hi - lo)) * 3));
+                    cands.push({
+                        key: `${side}${third}`,
+                        score: (sofaW > 2 ? 1 : 0) + (backToWall ? 1 : 0) - Math.abs(view - 2.6) * 0.5 - penalty,
+                        build: () => {
+                            const tv = placeAgainstWall(ctx, side, a, "tv_unit", "living");
+                            const sofa = relative(tv, 0, tv.d / 2 + view + cat.sofa.d / 2, "sofa", PI, "living", { w: sofaW });
+                            const table = relative(sofa, 0, sofa.d / 2 + 0.4 + cat.coffee_table.d / 2, "coffee_table", 0);
+                            return [tv, sofa, table];
+                        },
+                    });
+                }
             }
         }
     }
@@ -619,7 +629,7 @@ function furnishLiving(ctx: Ctx) {
         }
     }
     const rest = (c: Ctx) => livingRest(c, withDining);
-    if (anchor(ctx, cands, rest, 2, 16) < 0) rest(ctx);
+    if (!anchor(ctx, cands, rest, 2, 16)) rest(ctx);
 }
 
 function livingRest(ctx: Ctx, withDining: boolean): number {
@@ -670,7 +680,7 @@ function furnishKitchen(ctx: Ctx) {
             }
         }
     }
-    if (anchor(ctx, cands, kitchenRest, 1, 20) < 0) kitchenRest(ctx);
+    if (!anchor(ctx, cands, kitchenRest, 1, 20)) kitchenRest(ctx);
 }
 
 function kitchenRest(ctx: Ctx): number {
@@ -707,14 +717,22 @@ function kitchenRest(ctx: Ctx): number {
     return s;
 }
 
+/** Lits proposés selon la surface : 160, puis 140, puis 90 */
+const BED_OPTIONS: { type: FurnitureType; dims: Dims; score: number; minArea: number }[] = [
+    { type: "bed_double", dims: {}, score: 7, minArea: 9 },
+    { type: "bed_double", dims: { w: 1.4, d: 2.05 }, score: 6, minArea: 9 },
+    { type: "bed_single", dims: {}, score: 0, minArea: 0 },
+];
+
 function furnishBedroom(ctx: Ctx) {
-    const type: FurnitureType = ctx.area >= 9 ? "bed_double" : "bed_single";
-    const w = cat[type].w;
-    const cands = wallCands(ctx, type, (it, side, a) => {
-        const [lo, hi] = sideRange(ctx.rect, side);
-        return (hasWindow(ctx, side) ? 0 : 4) - 0.3 * Math.abs(a - (lo + hi) / 2) - (windowAlong(ctx, side, a - w / 2, a + w / 2) ? 1 : 0);
-    }, { group: "bed" });
-    if (anchor(ctx, cands, bedroomRest, 3, 16) < 0) bedroomRest(ctx);
+    const cands = BED_OPTIONS.filter(o => ctx.area >= o.minArea).flatMap(o => {
+        const w = o.dims.w ?? cat[o.type].w;
+        return wallCands(ctx, o.type, (it, side, a) => {
+            const [lo, hi] = sideRange(ctx.rect, side);
+            return o.score + (hasWindow(ctx, side) ? 0 : 4) - 0.3 * Math.abs(a - (lo + hi) / 2) - (windowAlong(ctx, side, a - w / 2, a + w / 2) ? 1 : 0);
+        }, { group: "bed", dims: o.dims }).map(c => ({ ...c, key: `${c.key}${o.type}${w}` }));
+    });
+    if (!anchor(ctx, cands, bedroomRest, 2, 20)) bedroomRest(ctx);
 }
 
 function bedroomRest(ctx: Ctx): number {
@@ -753,16 +771,18 @@ function furnishBathroom(ctx: Ctx) {
     const longest = Math.max(rectW(ctx), rectH(ctx));
     const rest = (c: Ctx) => bathRest(c);
     const tubOk = longest >= 1.7 - 0.12 && ctx.area >= 4.5;
-    const fixture = (type: FurnitureType) => wallCands(ctx, type, (it, side, a) => {
-        const alcove = Math.abs(sideRange(ctx.rect, side)[1] - sideRange(ctx.rect, side)[0] - it.w) < 0.15 ? 2 : 0;
-        return cornerBonus(ctx, side, a, it.w, 3) + alcove;
-    }, { group: "bath" });
-    if (tubOk && anchor(ctx, fixture("bathtub"), rest, 2, 12) >= 0) return;
-    if (anchor(ctx, fixture("shower"), rest, 2, 12) < 0) rest(ctx);
+    const fixture = (type: FurnitureType, sizes: Dims[]) => sizes.flatMap((dims, i) => wallCands(ctx, type, (it, side, a) => {
+        const [lo, hi] = sideRange(ctx.rect, side);
+        const alcove = Math.abs(hi - lo - it.w) < 0.15 ? 2 : 0;
+        return cornerBonus(ctx, side, a, it.w, 3) + alcove - 2 * i;
+    }, { group: "bath", dims }));
+    if (tubOk && anchor(ctx, fixture("bathtub", [{}]), rest, 2, 12)) return;
+    if (!anchor(ctx, fixture("shower", [{}, { w: 0.8, d: 0.8 }]), rest, 2, 12)) rest(ctx);
 }
 
 function bathRest(ctx: Ctx): number {
-    let s = place(ctx, wallCands(ctx, "vanity", (it, side) => (hasWindow(ctx, side) ? 0 : 1)), 5);
+    const vanity = (dims: Dims, bonus: number) => wallCands(ctx, "vanity", (it, side) => (hasWindow(ctx, side) ? 0 : 1) + bonus, { dims });
+    let s = place(ctx, [...vanity({}, 2), ...vanity({ w: 0.6, d: 0.45 }, 0)], 5);
     if (!hasSeparateWc(ctx)) s += place(ctx, wallCands(ctx, "toilet", it => 0.5 * nearestDoor(ctx, { x: it.cx, y: it.cy })), 6);
     if (ctx.area >= 6) s += place(ctx, wallCands(ctx, "washer", (it, side, a) => cornerBonus(ctx, side, a, it.w)), 3);
     return s;

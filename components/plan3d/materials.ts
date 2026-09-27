@@ -58,7 +58,7 @@ const tmpA = new THREE.Color();
 const tmpB = new THREE.Color();
 
 /** Mélange de deux couleurs CSS, avec variation de luminosité `light` (-1..1) */
-function mix(a: string, b: string, t: number, light = 0): string {
+export function mixColor(a: string, b: string, t: number, light = 0): string {
     tmpA.set(a);
     tmpB.set(b);
     tmpA.lerp(tmpB, Math.max(0, Math.min(1, t)));
@@ -100,7 +100,7 @@ function grain(ctx: CanvasRenderingContext2D, rand: () => number, x: number, y: 
 function drawParquet(ctx: CanvasRenderingContext2D, base: string, alt: string, rand: () => number) {
     const rows = 12;
     const rowH = SIZE / rows;
-    const grainColor = mix(alt, "#3a2414", 0.55);
+    const grainColor = mixColor(alt, "#3a2414", 0.55);
     for (let r = 0; r < rows; r++) {
         const y = r * rowH;
         // Longueur de lame : moitié ou tiers de la répétition pour boucler sans couture
@@ -109,7 +109,7 @@ function drawParquet(ctx: CanvasRenderingContext2D, base: string, alt: string, r
         const offset = rand() * len;
         for (let k = -1; k < parts; k++) {
             const x = offset + k * len;
-            const shade = mix(base, alt, rand(), (rand() - 0.5) * 0.05);
+            const shade = mixColor(base, alt, rand(), (rand() - 0.5) * 0.05);
             const seed = Math.floor(rand() * 1e9);
             for (const dx of [0, -SIZE, SIZE]) {
                 const px = x + dx;
@@ -136,14 +136,14 @@ function drawChevron(ctx: CanvasRenderingContext2D, base: string, alt: string, r
     const cols = 2;
     const colW = SIZE / cols;
     const step = SIZE / 6;
-    const grainColor = mix(alt, "#2e1a0c", 0.6);
+    const grainColor = mixColor(alt, "#2e1a0c", 0.6);
     for (let c = 0; c < cols; c++) {
         const x0 = c * colW;
         const dir = c % 2 === 0 ? 1 : -1;
         // Pente de 45° : décalage vertical = largeur de colonne
         const rise = colW * dir;
         // Teintes et graines par lame, périodiques sur 6 pas pour boucler verticalement
-        const planks = Array.from({ length: 6 }, () => ({ shade: mix(base, alt, rand(), (rand() - 0.5) * 0.06), seed: Math.floor(rand() * 1e9) }));
+        const planks = Array.from({ length: 6 }, () => ({ shade: mixColor(base, alt, rand(), (rand() - 0.5) * 0.06), seed: Math.floor(rand() * 1e9) }));
         for (let i = -5; i < 11; i++) {
             const y = i * step;
             const { shade, seed } = planks[((i % 6) + 6) % 6];
@@ -179,13 +179,13 @@ function drawTiles(ctx: CanvasRenderingContext2D, base: string, alt: string, ran
     const contrast = Math.abs(luminance(base) - luminance(alt)) > 0.35;
     const n = contrast ? 6 : 2;
     const t = SIZE / n;
-    const grout = mix(base, "#ffffff", 0.45, contrast ? 0 : -0.03);
+    const grout = mixColor(base, "#ffffff", 0.45, contrast ? 0 : -0.03);
     ctx.fillStyle = grout;
     ctx.fillRect(0, 0, SIZE, SIZE);
     const g = contrast ? 2 : 3;
     for (let i = 0; i < n; i++) {
         for (let j = 0; j < n; j++) {
-            const color = contrast ? ((i + j) % 2 === 0 ? base : alt) : mix(base, alt, rand() * 0.6);
+            const color = contrast ? ((i + j) % 2 === 0 ? base : alt) : mixColor(base, alt, rand() * 0.6);
             ctx.fillStyle = color;
             ctx.fillRect(i * t + g / 2, j * t + g / 2, t - g, t - g);
             // Léger voile pour casser l'uniformité
@@ -212,7 +212,7 @@ function speckle(ctx: CanvasRenderingContext2D, rand: () => number, count: numbe
 function drawConcrete(ctx: CanvasRenderingContext2D, base: string, alt: string, rand: () => number) {
     ctx.fillStyle = base;
     ctx.fillRect(0, 0, SIZE, SIZE);
-    const light = mix(base, "#ffffff", 0.25);
+    const light = mixColor(base, "#ffffff", 0.25);
     for (let i = 0; i < 140; i++) {
         const x = rand() * SIZE, y = rand() * SIZE, r = 40 + rand() * 180;
         const c = rand() < 0.5 ? alt : light;
@@ -240,9 +240,9 @@ function drawDecking(ctx: CanvasRenderingContext2D, base: string, alt: string, r
     const rows = 15;
     const rowH = SIZE / rows;
     const gap = 4;
-    ctx.fillStyle = mix(alt, "#000000", 0.6);
+    ctx.fillStyle = mixColor(alt, "#000000", 0.6);
     ctx.fillRect(0, 0, SIZE, SIZE);
-    const grainColor = mix(alt, "#2a1a0e", 0.5);
+    const grainColor = mixColor(alt, "#2a1a0e", 0.5);
     for (let r = 0; r < rows; r++) {
         const y = r * rowH + gap / 2;
         const h = rowH - gap;
@@ -251,7 +251,7 @@ function drawDecking(ctx: CanvasRenderingContext2D, base: string, alt: string, r
         const offset = rand() * len;
         for (let k = -1; k < parts; k++) {
             const x = offset + k * len;
-            const shade = mix(base, alt, rand(), (rand() - 0.5) * 0.06);
+            const shade = mixColor(base, alt, rand(), (rand() - 0.5) * 0.06);
             const seed = Math.floor(rand() * 1e9);
             for (const dx of [0, -SIZE, SIZE]) {
                 const px = x + dx;
