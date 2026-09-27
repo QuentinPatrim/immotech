@@ -18,6 +18,8 @@ export interface SubjectProperty {
     features: string[];
     dpe?: string;
     floor?: string;
+    hasElevator?: boolean;
+    buildYear?: number;
     lowPrice?: number;
     highPrice?: number;
 }
@@ -45,6 +47,14 @@ export interface ExtractedListing {
     relevance: number;
     /** Même quartier que le bien estimé, ou quartier limitrophe (avis du modèle) */
     sameArea: boolean | null;
+    /** Étage (0 = rez-de-chaussée), ascenseur, extérieur, stationnement, état, neuf, viager */
+    floorNumber: number | null;
+    elevator: boolean | null;
+    outdoor: boolean | null;
+    parking: boolean | null;
+    condition: "a_renover" | "a_rafraichir" | "bon" | "refait" | "neuf" | null;
+    newBuild: boolean;
+    lifeAnnuity: boolean;
     description: string | null;
 }
 
@@ -63,7 +73,7 @@ const SCHEMA = {
             items: {
                 type: "object",
                 additionalProperties: false,
-                required: ["card", "isForSale", "title", "price", "previousPrice", "surface", "rooms", "bedrooms", "propertyType", "city", "district", "floor", "dpe", "publishedAt", "features", "highlight", "pros", "cons", "relevance", "sameArea", "description"],
+                required: ["card", "isForSale", "title", "price", "previousPrice", "surface", "rooms", "bedrooms", "propertyType", "city", "district", "floor", "dpe", "publishedAt", "features", "highlight", "pros", "cons", "relevance", "sameArea", "floorNumber", "elevator", "outdoor", "parking", "condition", "newBuild", "lifeAnnuity", "description"],
                 properties: {
                     card: { ...nullable("integer"), description: "Numéro de la carte (null = annonce principale de la page)" },
                     isForSale: { type: "boolean", description: "true seulement pour une annonce de VENTE d'un bien (pas location, pas publicité, pas agence)" },
@@ -84,6 +94,13 @@ const SCHEMA = {
                     pros: { type: "array", items: { type: "string" }, description: "Avantages par rapport au bien estimé, 3 maximum, 60 caractères maximum chacun" },
                     cons: { type: "array", items: { type: "string" }, description: "Inconvénients par rapport au bien estimé, 3 maximum, 60 caractères maximum chacun" },
                     relevance: { type: "integer", description: "Comparabilité avec le bien estimé de 0 à 100 (type, surface, pièces, localisation, prestations)" },
+                    floorNumber: { ...nullable("integer"), description: "Étage du logement (0 = rez-de-chaussée) ; null si non indiqué ou maison" },
+                    elevator: { ...nullable("boolean"), description: "Ascenseur mentionné (true), absence explicite (false), sinon null" },
+                    outdoor: { ...nullable("boolean"), description: "Balcon, terrasse, loggia ou jardin mentionné (true), absence explicite (false), sinon null" },
+                    parking: { ...nullable("boolean"), description: "Parking, box ou garage inclus (true), absence explicite (false), sinon null" },
+                    condition: { type: ["string", "null"], enum: ["a_renover", "a_rafraichir", "bon", "refait", "neuf", null], description: "État du logement d'après l'annonce ; null si rien n'est dit" },
+                    newBuild: { type: "boolean", description: "true pour un programme neuf / VEFA / livraison future / frais de notaire réduits" },
+                    lifeAnnuity: { type: "boolean", description: "true pour un viager, une nue-propriété ou une vente occupée à prix décoté" },
                     sameArea: { ...nullable("boolean"), description: "true si l'annonce est dans le même quartier que le bien estimé ou un quartier limitrophe (moins d'environ 1,5 km) ; false si c'est un autre secteur de la ville ou une autre commune ; null si la localisation de l'annonce est trop vague pour trancher" },
                     description: { ...nullable("string"), description: "Résumé factuel de l'annonce, 220 caractères maximum" },
                 },

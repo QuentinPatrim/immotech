@@ -37,6 +37,13 @@ export interface MarketListing {
     relevance?: number;           // 0–100 : comparabilité avec le bien estimé
     sameArea?: boolean;           // même quartier ou limitrophe (analyse IA)
     distanceKm?: number;          // distance au bien estimé (quartier géolocalisé)
+    floorNumber?: number;
+    elevator?: boolean;
+    outdoor?: boolean;
+    parking?: boolean;
+    condition?: string;           // a_renover | a_rafraichir | bon | refait | neuf
+    /** Similarité avec le bien estimé : note /100, points communs et différences */
+    similarity?: { score: number; reasons: string[]; warnings: string[] };
     description?: string;
     selected: boolean;            // retenue dans l'avis de valeur
 }
@@ -162,6 +169,8 @@ export function rowToListing(row: { id: string; url: string; portal: string | nu
         relevance: d.relevance,
         sameArea: d.sameArea,
         distanceKm: typeof d.distanceKm === "number" ? d.distanceKm : undefined,
+        floorNumber: d.floorNumber, elevator: d.elevator, outdoor: d.outdoor, parking: d.parking, condition: d.condition,
+        similarity: d.similarity && typeof d.similarity.score === "number" ? d.similarity : undefined,
         description: d.description,
         selected: row.selected,
     };

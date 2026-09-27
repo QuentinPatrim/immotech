@@ -43,17 +43,21 @@ export interface SkippedListing {
     surface: number | null;
     district: string | null;
     distanceKm: number | null;
-    reason: "type" | "surface" | "pièces" | "quartier" | "prix";
+    reason: "type" | "neuf" | "viager" | "localisation" | "quartier" | "surface" | "pièces" | "prix" | "score";
+    /** Précision lisible : « à 3,4 km », « +31 % au m² », « similarité 48/100 »… */
+    detail?: string;
 }
+
+export type Strictness = "strict" | "normal" | "large";
 
 /** Bornes de la recherche guidée : le tri « biens similaires » les applique à la place des écarts par défaut */
 export interface SimilarBounds { surfaceMin?: number; surfaceMax?: number; roomsMin?: number; roomsMax?: number; radiusKm?: number }
 
-export async function sendCapture(estimationId: string, payload: CapturePayload, onlySimilar = true, bounds?: SimilarBounds): Promise<CaptureResult> {
+export async function sendCapture(estimationId: string, payload: CapturePayload, onlySimilar = true, bounds?: SimilarBounds, strictness: Strictness = "normal"): Promise<CaptureResult> {
     const res = await fetch("/api/annonces/capture", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(await authHeader()) },
-        body: JSON.stringify({ estimationId, payload, onlySimilar, bounds }),
+        body: JSON.stringify({ estimationId, payload, onlySimilar, bounds, strictness }),
     });
     const json = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(json.error || "Import impossible.");

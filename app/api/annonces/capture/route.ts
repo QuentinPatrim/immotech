@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { extractListings, type ExtractedListing, type SubjectProperty } from '@/lib/listingExtraction';
 import { geocodePoint, listingDistances } from '@/lib/listingArea';
+import { scoreSimilarity, STRICTNESS_MIN, type ExclusionReason, type SimilarityBounds, type SimilarityResult, type Strictness } from '@/lib/similarity';
 import { portalFromUrl, rowToListing, type CapturePayload, type MarketListing, type PriceEvent } from '@/lib/marketListings';
 
 /* ============================================================
@@ -54,59 +55,41 @@ function extractedFields(ex: ExtractedListing): Partial<MarketListing> {
     set('description', ex.description ?? undefined);
     set('relevance', ex.relevance);
     if (ex.sameArea !== null) f.sameArea = ex.sameArea;
+    if (ex.floorNumber !== null) f.floorNumber = ex.floorNumber;
+    if (ex.elevator !== null) f.elevator = ex.elevator;
+    if (ex.outdoor !== null) f.outdoor = ex.outdoor;
+    if (ex.parking !== null) f.parking = ex.parking;
+    set('condition', ex.condition ?? undefined);
     if (ex.features.length) f.features = ex.features;
     if (ex.pros.length) f.pros = ex.pros;
     if (ex.cons.length) f.cons = ex.cons;
     return f;
 }
 
-/* ---------- Tri des annonces similaires au bien estimé ---------- */
+/* ---------- Tri des annonces similaires au bien estimé (lib/similarity) ---------- */
 
-const SIMILAR = { surfacePct: 0.2, roomsGap: 1, sqmPct: 0.25, areaKm: 2 };
-
-type SkipReason = 'type' | 'surface' | 'pièces' | 'quartier' | 'prix';
-
-/** Prix au m² de référence : prix central envisagé, sinon médiane des annonces déjà proches (surface, quartier) */
+/** Prix au m² de référence : prix central envisagé, sinon médiane des annonces lues */
 function referenceSqm(subject: SubjectProperty, candidates: ExtractedListing[]): number | null {
     if (subject.surface && subject.lowPrice && subject.highPrice) return (subject.lowPrice + subject.highPrice) / 2 / subject.surface;
     const sqms = candidates
-        .filter(ex => ex.price && ex.surface)
+        .filter(ex => ex.price && ex.surface && !ex.newBuild && !ex.lifeAnnuity)
         .map(ex => ex.price! / ex.surface!)
         .sort((a, b) => a - b);
     if (sqms.length < 3) return null;
     return sqms[Math.floor(sqms.length / 2)];
 }
 
-/** Bornes choisies par l'agent dans la recherche guidée (remplacent les écarts par défaut) */
-interface Bounds { surfaceMin?: number; surfaceMax?: number; roomsMin?: number; roomsMax?: number; radiusKm?: number }
-
-function sanitizeBounds(raw: unknown): Bounds | null {
+/** Bornes choisies par l'agent dans la recherche guidée, et niveau d'exigence */
+function sanitizeBounds(raw: unknown): SimilarityBounds | null {
     if (!raw || typeof raw !== 'object') return null;
     const r = raw as Record<string, unknown>;
     const n = (v: unknown, max: number) => (typeof v === 'number' && Number.isFinite(v) && v > 0 && v <= max ? v : undefined);
-    const b: Bounds = {
+    const b: SimilarityBounds = {
         surfaceMin: n(r.surfaceMin, 10000), surfaceMax: n(r.surfaceMax, 10000),
         roomsMin: n(r.roomsMin, 50), roomsMax: n(r.roomsMax, 50),
         radiusKm: n(r.radiusKm, 100),
     };
     return Object.values(b).some(v => v !== undefined) ? b : null;
-}
-
-function whyNotSimilar(ex: ExtractedListing, subject: SubjectProperty, refSqm: number | null, km: number | null, bounds: Bounds | null): SkipReason | null {
-    if (subject.propertyType && ex.propertyType && ex.propertyType !== 'Autre' && ex.propertyType !== subject.propertyType) return 'type';
-    if (bounds && (bounds.surfaceMin || bounds.surfaceMax)) {
-        if (!ex.surface || (bounds.surfaceMin && ex.surface < bounds.surfaceMin) || (bounds.surfaceMax && ex.surface > bounds.surfaceMax)) return 'surface';
-    } else if (subject.surface) {
-        if (!ex.surface || Math.abs(ex.surface - subject.surface) / subject.surface > SIMILAR.surfacePct) return 'surface';
-    }
-    if (bounds && (bounds.roomsMin || bounds.roomsMax)) {
-        if (ex.rooms && ((bounds.roomsMin && ex.rooms < bounds.roomsMin) || (bounds.roomsMax && ex.rooms > bounds.roomsMax))) return 'pièces';
-    } else if (subject.rooms && ex.rooms && Math.abs(ex.rooms - subject.rooms) > SIMILAR.roomsGap) return 'pièces';
-    // Distance mesurée si le quartier a pu être localisé ; sinon avis de l'IA, seulement pour une autre commune
-    const maxKm = bounds?.radiusKm ?? SIMILAR.areaKm;
-    if (km !== null ? km > maxKm : ex.sameArea === false && !!ex.city && norm(ex.city) !== norm(subject.city)) return 'quartier';
-    if (refSqm && ex.price && ex.surface && Math.abs(ex.price / ex.surface - refSqm) / refSqm > SIMILAR.sqmPct) return 'prix';
-    return null;
 }
 
 const lastPrice = (history: PriceEvent[], fallback: number) =>
@@ -128,7 +111,7 @@ export async function POST(request: Request) {
     const { data: { user } } = await supabase.auth.getUser(authHeader.replace(/^Bearer\s+/i, ''));
     if (!user) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 });
 
-    let body: { estimationId?: string; payload?: CapturePayload; onlySimilar?: boolean; bounds?: unknown };
+    let body: { estimationId?: string; payload?: CapturePayload; onlySimilar?: boolean; bounds?: unknown; strictness?: string };
     try {
         const raw = await request.text();
         if (raw.length > 600_000) return NextResponse.json({ error: 'Page trop volumineuse.' }, { status: 413 });
@@ -139,6 +122,7 @@ export async function POST(request: Request) {
     const { estimationId, payload } = body;
     const onlySimilar = body.onlySimilar !== false;
     const bounds = sanitizeBounds(body.bounds);
+    const strictness: Strictness = body.strictness && body.strictness in STRICTNESS_MIN ? body.strictness as Strictness : 'normal';
     if (!estimationId || !payload || payload.v !== 1 || typeof payload.url !== 'string') {
         return NextResponse.json({ error: 'Capture incomplète.' }, { status: 400 });
     }
@@ -156,6 +140,8 @@ export async function POST(request: Request) {
         features: Array.isArray(d.amenities) ? (d.amenities as string[]) : [],
         dpe: d.dpe ? String(d.dpe) : undefined,
         floor: d.floor ? String(d.floor) : undefined,
+        hasElevator: typeof d.hasElevator === 'boolean' ? d.hasElevator : undefined,
+        buildYear: Number(d.buildYear) || undefined,
         lowPrice: Number(d.lowPrice) || undefined,
         highPrice: Number(d.highPrice) || undefined,
     };
@@ -179,16 +165,23 @@ export async function POST(request: Request) {
     const distances = await listingDistances(subjectPoint, subject.city, extracted);
     const km = new Map(extracted.map((ex, i) => [ex, distances[i]]));
 
-    const skipped: { title: string; price: number | null; surface: number | null; district: string | null; distanceKm: number | null; reason: SkipReason }[] = [];
-    if (onlySimilar) {
-        const refSqm = referenceSqm(subject, extracted);
-        extracted = extracted.filter(ex => {
-            if (rows.some(r => r.url === ex.url)) return true;
-            const reason = whyNotSimilar(ex, subject, refSqm, km.get(ex) ?? null, bounds);
-            if (reason) skipped.push({ title: ex.title, price: ex.price, surface: ex.surface, district: ex.district || ex.city, distanceKm: km.get(ex) ?? null, reason });
-            return !reason;
-        });
-    }
+    // Note de similarité de chaque annonce ; hors mode « tout ajouter », seules les similaires sont gardées.
+    // Une annonce déjà dans le dossier reste suivie (mise à jour de son prix).
+    const refSqm = referenceSqm(subject, extracted);
+    const simSubject = {
+        propertyType: subject.propertyType, surface: subject.surface, rooms: subject.rooms,
+        floor: subject.floor, hasElevator: subject.hasElevator, buildYear: subject.buildYear, dpe: subject.dpe,
+        amenities: subject.features,
+    };
+    const similarity = new Map<ExtractedListing, SimilarityResult>();
+    const skipped: { title: string; price: number | null; surface: number | null; district: string | null; distanceKm: number | null; reason: ExclusionReason; detail: string }[] = [];
+    extracted = extracted.filter(ex => {
+        const v = scoreSimilarity(simSubject, ex, { distanceKm: km.get(ex) ?? null, refSqm, bounds, strictness });
+        if (v.ok) { similarity.set(ex, v.result); return true; }
+        if (!onlySimilar || rows.some(r => r.url === ex.url)) return true;
+        skipped.push({ title: ex.title, price: ex.price, surface: ex.surface, district: ex.district || ex.city, distanceKm: km.get(ex) ?? null, reason: v.reason, detail: v.detail });
+        return false;
+    });
 
     // Même annonce déjà vue dans un autre dossier : on reprend son historique
     const urls = extracted.map(e => e.url).filter(u => !rows.some(r => r.url === u));
@@ -205,6 +198,8 @@ export async function POST(request: Request) {
         const fields = extractedFields(ex);
         const dist = km.get(ex);
         if (dist !== null && dist !== undefined) fields.distanceKm = dist;
+        const sim = similarity.get(ex);
+        if (sim) fields.similarity = sim;
 
         // 1) Annonce déjà capturée pour ce dossier
         const same = rows.find(r => r.url === ex.url);

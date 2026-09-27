@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { Search, Loader2, CheckCircle2, AlertTriangle, SlidersHorizontal, ExternalLink, Download, Circle } from "lucide-react";
 import { formatNumber } from "@/lib/formatters";
-import { sendCapture } from "@/lib/captureClient";
+import { sendCapture, type Strictness } from "@/lib/captureClient";
 import { detectExtension, MIN_SEARCH_VERSION, runPortalSearches, supportsSearch, type SearchProgress, type SearchedPage } from "@/lib/extensionBridge";
 import { buildPortalSearches, defaultCriteria, normalizeCriteria, PORTALS, resolveCommune, type PortalKey, type SearchCriteria } from "@/lib/portalSearch";
 
@@ -38,8 +38,15 @@ interface RunState {
     error: string;
     overrides: Partial<SearchCriteria>;
     commune: { city: string; code?: string; lat?: number; lon?: number } | null;
+    strictness: Strictness;
 }
-const EMPTY_RUN: RunState = { running: false, rows: [], summary: "", error: "", overrides: {}, commune: null };
+const EMPTY_RUN: RunState = { running: false, rows: [], summary: "", error: "", overrides: {}, commune: null, strictness: "normal" };
+
+const STRICTNESS: { key: Strictness; label: string; hint: string }[] = [
+    { key: "strict", label: "Stricte", hint: "note ≥ 72 : seulement les vrais comparables" },
+    { key: "normal", label: "Équilibrée", hint: "note ≥ 65" },
+    { key: "large", label: "Large", hint: "note ≥ 45 : plus d'annonces, moins proches" },
+];
 const runStates = new Map<string, RunState>();
 const runListeners = new Set<() => void>();
 const getRun = (key: string) => runStates.get(key) ?? EMPTY_RUN;
@@ -53,7 +60,7 @@ export default function PortalSearchPanel({ estimationId, subject, onImported }:
     const [ext, setExt] = useState<string | null | undefined>(undefined);
     const key = estimationId ?? "nouveau";
     const st = useSyncExternalStore(subscribeRuns, () => getRun(key), () => EMPTY_RUN);
-    const { running, rows, summary, error, overrides, commune } = st;
+    const { running, rows, summary, error, overrides, commune, strictness } = st;
     const set = (patch: Partial<RunState>) => updateRun(key, s => ({ ...s, ...patch }));
     // Critères : déduits du bien, avec les retouches éventuelles de l'agent par-dessus
     const subjectKey = `${subject.propertyType}|${subject.propertyAddress}|${subject.surface}|${subject.rooms}|${subject.lowPrice}|${subject.highPrice}|${subject.propertyLat}|${subject.propertyLon}`;
@@ -143,7 +150,7 @@ export default function PortalSearchPanel({ estimationId, subject, onImported }:
                 }
                 patchRow(i, { status: "analyzing", detail: `${pg.page.cards.length} annonces lues — analyse…` });
                 try {
-                    const r = await sendCapture(estimationId, pg.page, true, bounds);
+                    const r = await sendCapture(estimationId, pg.page, true, bounds, getRun(key).strictness);
                     const sk = r.skipped?.length ?? 0;
                     analyzed++;
                     added += r.added; updated += r.updated; merged += r.merged; skipped += sk; read += r.found;
@@ -198,6 +205,7 @@ export default function PortalSearchPanel({ estimationId, subject, onImported }:
                         {(criteria.priceMin || criteria.priceMax) && <span className={chip}>{num(criteria.priceMin)} – {num(criteria.priceMax)} €</span>}
                         <span className={chip}>{criteria.city ? `${criteria.city}${criteria.postcode ? ` (${criteria.postcode})` : ""}` : "Commune ?"} · rayon {Number.isFinite(criteria.radiusKm) && criteria.radiusKm > 0 ? criteria.radiusKm : 2} km</span>
                         {criteria.pages > 1 && <span className={chip}>{criteria.pages} pages / portail</span>}
+                        <span className={chip}>Similarité {STRICTNESS.find(x => x.key === strictness)?.label.toLowerCase()}</span>
                         <button type="button" onClick={() => setEditing(v => !v)} className="text-[11px] px-2.5 py-1 rounded-full text-[var(--p-accent)] font-semibold hover:bg-[var(--p-hover)] inline-flex items-center gap-1">
                             <SlidersHorizontal size={11}/> {editing ? "Fermer" : "Modifier"}
                         </button>
@@ -226,6 +234,18 @@ export default function PortalSearchPanel({ estimationId, subject, onImported }:
                             {[1, 2].map(n => <option key={n} value={n}>{n}</option>)}
                         </select>
                     </label>
+                    <div className="col-span-2 sm:col-span-4">
+                        <span className="text-[10px] uppercase tracking-[0.12em] text-[var(--p-muted)] font-semibold">Exigence de similarité</span>
+                        <div className="mt-1 grid grid-cols-3 gap-1 p-1 rounded-xl border border-[var(--p-line)]" role="radiogroup" style={{ backgroundColor: "var(--p-sunken)" }}>
+                            {STRICTNESS.map(x => (
+                                <button key={x.key} type="button" role="radio" aria-checked={strictness === x.key} onClick={() => set({ strictness: x.key })}
+                                    className={`rounded-lg px-2 py-2 text-left transition-colors ${strictness === x.key ? "bg-[var(--p-invert-bg)] text-[var(--p-invert-fg)] shadow-sm" : "text-[var(--p-muted)] hover:text-[var(--p-fg)]"}`}>
+                                    <span className="block text-xs font-semibold">{x.label}</span>
+                                    <span className="block text-[10px] opacity-75 leading-tight mt-0.5">{x.hint}</span>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
                     <div className="col-span-2 sm:col-span-4 flex flex-wrap items-center gap-2">
                         <span className="text-[10px] uppercase tracking-[0.12em] text-[var(--p-muted)] font-semibold mr-1">Portails</span>
                         {PORTALS.map(p => (

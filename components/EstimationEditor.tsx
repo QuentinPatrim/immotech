@@ -1363,7 +1363,7 @@ export default function EstimationEditor({
                                             listingSort === "sqm" ? pricePerSqm(a) - pricePerSqm(b)
                                             : listingSort === "recent" ? (b.publishedAt || b.firstSeenAt).localeCompare(a.publishedAt || a.firstSeenAt)
                                             : listingSort === "drop" ? (priceDrop(b)?.pct ?? 0) - (priceDrop(a)?.pct ?? 0)
-                                            : (b.relevance ?? 0) - (a.relevance ?? 0));
+                                            : (b.similarity?.score ?? b.relevance ?? 0) - (a.similarity?.score ?? a.relevance ?? 0));
                                         const usedCount = listings.filter(isListingUsed).length;
                                         return (
                                             <div className="rounded-2xl border p-5 space-y-4" style={{ backgroundColor: 'var(--p-accent-soft)', borderColor: 'var(--p-line)' }}>
@@ -1416,7 +1416,7 @@ export default function EstimationEditor({
                                                         </div>
                                                         <div className="flex items-center justify-between gap-2 flex-wrap">
                                                             <div className="flex gap-1 p-1 rounded-xl border border-[var(--p-line)]" style={{ backgroundColor: 'var(--p-card)' }}>
-                                                                {([["relevance", "Pertinence"], ["sqm", "€/m²"], ["recent", "Plus récentes"], ["drop", "Baisses"]] as const).map(([k, label]) => (
+                                                                {([["relevance", "Similarité"], ["sqm", "€/m²"], ["recent", "Plus récentes"], ["drop", "Baisses"]] as const).map(([k, label]) => (
                                                                     <button key={k} type="button" onClick={() => setListingSort(k)}
                                                                         className={`h-7 px-3 rounded-lg text-[11px] font-semibold transition-colors ${listingSort === k ? 'bg-[var(--p-invert-bg)] text-[var(--p-invert-fg)]' : 'text-[var(--p-muted)] hover:text-[var(--p-fg)]'}`}>
                                                                         {label}

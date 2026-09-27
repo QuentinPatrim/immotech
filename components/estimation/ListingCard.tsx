@@ -24,6 +24,26 @@ interface ListingCardProps {
     busy?: boolean;
 }
 
+/** Note de similarité en anneau (sur la photo) */
+function SimilarityRing({ score }: { score: number }) {
+    const color = score >= 75 ? "#34d399" : score >= 60 ? "#f4c46b" : "#f4f1ec";
+    const c = 2 * Math.PI * 15;
+    return (
+        <div className="absolute bottom-2.5 right-2.5 flex items-center gap-1.5 pl-1 pr-2.5 py-1 rounded-full bg-[rgba(10,10,12,0.72)] backdrop-blur-md text-[#fff]"
+            title="Similarité avec le bien estimé : quartier, surface, pièces, prix au m², étage, extérieur, stationnement, état et DPE">
+            <svg width="30" height="30" viewBox="0 0 36 36" className="-rotate-90">
+                <circle cx="18" cy="18" r="15" fill="none" stroke="rgba(255,255,255,0.18)" strokeWidth="3.5"/>
+                <circle cx="18" cy="18" r="15" fill="none" stroke={color} strokeWidth="3.5" strokeLinecap="round"
+                    strokeDasharray={`${(c * score) / 100} ${c}`}/>
+            </svg>
+            <span className="leading-tight">
+                <span className="block text-[13px] font-bold tabular-nums">{score}</span>
+                <span className="block text-[8px] uppercase tracking-[0.14em] opacity-70">similarité</span>
+            </span>
+        </div>
+    );
+}
+
 export default function ListingCard({ listing: l, refSqm, onToggle, onDelete, busy }: ListingCardProps) {
     const sqm = pricePerSqm(l);
     const drop = priceDrop(l);
@@ -49,7 +69,9 @@ export default function ListingCard({ listing: l, refSqm, onToggle, onDelete, bu
                         <TrendingDown size={11}/> −{String(drop.pct).replace(".", ",")} %
                     </span>
                 )}
-                {l.relevance !== undefined && (
+                {l.similarity ? (
+                    <SimilarityRing score={l.similarity.score}/>
+                ) : l.relevance !== undefined && (
                     <span className="absolute bottom-2.5 right-2.5 text-[10px] font-semibold px-2 py-1 rounded-full bg-[rgba(0,0,0,0.62)] text-[#fff]" title="Comparabilité avec le bien estimé (analyse IA)">
                         Pertinence {l.relevance}
                     </span>
@@ -95,6 +117,19 @@ export default function ListingCard({ listing: l, refSqm, onToggle, onDelete, bu
                     <p className="text-[12px] leading-snug text-[var(--p-fg)] flex gap-1.5">
                         <Sparkles size={13} className="shrink-0 mt-0.5 text-[var(--p-accent)]"/>{l.highlight}
                     </p>
+                )}
+
+                {l.similarity && (l.similarity.reasons.length > 0 || l.similarity.warnings.length > 0) && (
+                    <div className="flex flex-wrap gap-1">
+                        {l.similarity.reasons.map(r => (
+                            <span key={`r${r}`} className="text-[10px] font-medium px-2 py-0.5 rounded-full inline-flex items-center gap-1 text-[var(--p-positive)] bg-[color-mix(in_srgb,var(--p-positive)_12%,transparent)]">
+                                <Check size={10}/>{r}
+                            </span>
+                        ))}
+                        {l.similarity.warnings.map(w => (
+                            <span key={`w${w}`} className="text-[10px] font-medium px-2 py-0.5 rounded-full text-[var(--p-warning)] bg-[color-mix(in_srgb,var(--p-warning)_12%,transparent)]">{w}</span>
+                        ))}
+                    </div>
                 )}
 
                 {l.features.length > 0 && (

@@ -24,10 +24,14 @@ const SIMILAR_KEY = "patrim:onlySimilar";
 
 const REASONS: Record<SkippedListing["reason"], string> = {
     type: "autre type de bien",
+    neuf: "programme neuf",
+    viager: "viager",
+    localisation: "quartier non précisé",
+    quartier: "trop loin",
     surface: "surface trop différente",
     "pièces": "nombre de pièces",
-    quartier: "trop loin",
     prix: "prix au m² incohérent",
+    score: "trop peu similaire",
 };
 
 interface Dossier { id: string; address: string | null; client_name: string | null; created_at: string }
@@ -178,7 +182,7 @@ export default function CapturePage() {
                             <span>
                                 <span className="block text-sm font-semibold text-[var(--p-fg)]">Seulement les biens similaires</span>
                                 <span className="block text-xs text-[var(--p-muted)] mt-0.5">
-                                    Surface ± 20 %, pièces ± 1, à moins de 2 km (même quartier ou quartier voisin), prix au m² cohérent (± 25 %). Les autres annonces sont écartées.
+                                    Note de similarité sur 100 : quartier (moins de 2 km), surface ± 20 %, pièces ± 1, prix au m², étage, extérieur, stationnement, état et DPE. Neuf, viager et annonces sans quartier écartés. Les autres annonces sont écartées.
                                 </span>
                             </span>
                         </button>
@@ -246,7 +250,7 @@ export default function CapturePage() {
                                         {skipped.map((k, i) => (
                                             <li key={i} className="flex gap-2 flex-wrap">
                                                 <span className="text-[var(--p-fg-2)]">{k.price ? `${formatNumber(k.price)} €` : "Prix ?"} · {k.surface ? `${formatNumber(k.surface)} m²` : "surface ?"}{k.district ? ` · ${k.district}` : ""}{k.distanceKm !== null ? ` · à ${String(k.distanceKm).replace(".", ",")} km` : ""}</span>
-                                                <span>— {REASONS[k.reason]}</span>
+                                                <span>— {REASONS[k.reason] ?? k.reason}{k.detail ? ` (${k.detail})` : ""}</span>
                                             </li>
                                         ))}
                                     </ul>
