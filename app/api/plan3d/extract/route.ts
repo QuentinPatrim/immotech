@@ -1,14 +1,17 @@
 import { NextResponse } from "next/server";
 import { authenticateRequest } from "@/lib/authGuard";
 import { planFromModel, readPlanImage } from "@/lib/plan3d/extract";
-import type { ExtractResponse } from "@/lib/plan3d/types";
+import { ROOM_KINDS, type ExtractResponse, type RoomKind } from "@/lib/plan3d/types";
 
 /* ============================================================
    API : /api/plan3d/extract
    Lecture d'un plan 2D (image) par l'IA → Plan3D en mètres,
    calé sur l'image d'origine.
    POST { image (URL https ou data:image/...;base64), width, height,
-          surface?, rooms?, propertyType? }
+          surface?, rooms?, propertyType?,
+          carrez? { rooms: [{ name, kind, area }], outdoor: [...], total } }
+   Le tableau Carrez (lu dans le DDT) sert à nommer les pièces et
+   à mettre le croquis à l'échelle.
    Réponse : ExtractResponse { success, plan, notes } ou { error }.
    ============================================================ */
 
@@ -31,6 +34,27 @@ function positive(v: unknown, max: number) {
     const n = typeof v === "string" ? Number(v.trim().replace(",", ".")) : v;
     return typeof n === "number" && Number.isFinite(n) && n > 0 && n <= max ? n : undefined;
 }
+const KIND_IDS = new Set<string>(ROOM_KINDS.map(k => k.id));
+type CarrezIn = { name: string; kind: RoomKind; area: number };
+
+/** Tableau Carrez envoyé par la page : entrées validées et bornées */
+function carrezOf(v: unknown): { rooms: CarrezIn[]; outdoor: CarrezIn[]; total: number } | null {
+    if (!v || typeof v !== "object") return null;
+    const o = v as Record<string, unknown>;
+    const list = (x: unknown): CarrezIn[] => (Array.isArray(x) ? x : []).slice(0, 40).flatMap(r => {
+        if (!r || typeof r !== "object") return [];
+        const e = r as Record<string, unknown>;
+        const name = typeof e.name === "string" ? e.name.replace(/[\r\n]+/g, " ").trim().slice(0, 60) : "";
+        const kind = typeof e.kind === "string" && KIND_IDS.has(e.kind) ? (e.kind as RoomKind) : "autre";
+        const area = typeof e.area === "number" && Number.isFinite(e.area) && e.area > 0.2 && e.area < 500 ? e.area : 0;
+        return name && area ? [{ name, kind, area }] : [];
+    });
+    const rooms = list(o.rooms), outdoor = list(o.outdoor);
+    const total = typeof o.total === "number" && Number.isFinite(o.total) && o.total > 5 && o.total < 3000 ? o.total : rooms.reduce((s, r) => s + r.area, 0);
+    return rooms.length >= 2 ? { rooms, outdoor, total } : null;
+}
+const frArea = (v: number) => v.toLocaleString("fr-FR", { maximumFractionDigits: 2 });
+
 const side = (v: unknown) => (typeof v === "number" && Number.isInteger(v) && v > 0 && v <= MAX_SIDE_PX ? v : null);
 
 export async function POST(request: Request) {
@@ -63,8 +87,21 @@ export async function POST(request: Request) {
     const propertyType = typeof body.propertyType === "string" ? body.propertyType.trim().slice(0, 40) || undefined : undefined;
 
     try {
-        const model = await readPlanImage(image, { surface, rooms: rooms ? Math.round(rooms) : undefined, propertyType });
-        const { plan, notes } = planFromModel(model, { widthPx: width, heightPx: height, declaredSurface: surface, imageUrl: isUrl ? image : undefined });
+        const carrez = carrezOf(body.carrez);
+        const carrezText = carrez ? [
+            ...carrez.rooms.map(r => `- ${r.name} : ${frArea(r.area)} m²`),
+            ...carrez.outdoor.map(r => `- ${r.name} : ${frArea(r.area)} m² (hors Carrez)`),
+            `Total : ${frArea(carrez.total)} m²`,
+        ].join("\n") : undefined;
+        const model = await readPlanImage(image, { surface, rooms: rooms ? Math.round(rooms) : undefined, propertyType, carrez: carrezText });
+        const { plan, notes } = planFromModel(model, {
+            widthPx: width, heightPx: height,
+            // Avec un mesurage Carrez, c'est lui la référence de surface
+            declaredSurface: carrez ? carrez.total : surface,
+            carrezTotal: carrez?.total,
+            imageUrl: isUrl ? image : undefined,
+        });
+        if (carrez) notes.unshift(`Mesurage Carrez utilisé : ${carrez.rooms.length} pièces, ${frArea(carrez.total)} m².`);
         if (!plan.rooms.length) {
             return fail("Aucune pièce détectée sur ce plan. Essayez une image plus nette ou créez le plan à partir des surfaces.", 422, notes);
         }

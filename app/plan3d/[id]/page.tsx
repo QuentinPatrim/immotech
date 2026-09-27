@@ -26,7 +26,9 @@ import ThemeToggle from "@/components/estimation/ThemeToggle";
 import PlanEditor2D from "@/components/plan3d/PlanEditor2D";
 import type { ViewMode } from "@/components/plan3d/Scene3D";
 import { autoFurnish } from "@/lib/plan3d/furnish";
-import { fileToPlanImage } from "@/lib/plan3d/pdfToImage";
+import { fileToPlanImage, isPdfFile } from "@/lib/plan3d/pdfToImage";
+import { analyzeDdt, openPdf, pageThumbnail, type CarrezTable, type DdtAnalysis } from "@/lib/plan3d/ddt";
+import DdtReview from "@/components/plan3d/DdtReview";
 import { defaultRoomSpecs, indoorArea, kindLabel, schematicPlan, type RoomSpec } from "@/lib/plan3d/geometry";
 import { STYLE_LIST } from "@/lib/plan3d/styles";
 import { DEFAULT_WALL_HEIGHT, OUTDOOR_KINDS, ROOM_KINDS, type ExtractResponse, type Plan3D, type RoomKind, type StyleId } from "@/lib/plan3d/types";
@@ -332,6 +334,11 @@ export default function Plan3DPage() {
     const [rows, setRows] = useState<SpecRow[]>([]);
     const [imp, setImp] = useState<ImportState>(IDLE_IMPORT);
     const [drag, setDrag] = useState(false);
+    const [ddt, setDdt] = useState<{ file: File; analysis: DdtAnalysis; page: number } | null>(null);
+    const [thumbs, setThumbs] = useState<Record<number, string>>({});
+    const [surfaceApplied, setSurfaceApplied] = useState(false);
+    const [applying, setApplying] = useState(false);
+    const pdfRef = useRef<Awaited<ReturnType<typeof openPdf>> | null>(null);
 
     const fileRef = useRef<HTMLInputElement>(null);
     const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -468,8 +475,85 @@ export default function Plan3DPage() {
         setImp(s => ({ ...s, preview: url }));
     };
 
+    /** Libère le PDF ouvert pour les miniatures (et arrête leur génération) */
+    const closePdf = () => {
+        const pdf = pdfRef.current;
+        pdfRef.current = null;
+        if (pdf) void pdf.destroy();
+    };
+
+    /** Miniatures des pages, générées une à une (la page repérée d'abord) */
+    const loadThumbs = async (pdf: NonNullable<typeof pdfRef.current>, analysis: DdtAnalysis) => {
+        const order = [analysis.planPage, ...analysis.pages.slice(0, 40).map(p => p.index).filter(i => i !== analysis.planPage)];
+        for (const i of order) {
+            if (pdfRef.current !== pdf) return;
+            try {
+                const url = await pageThumbnail(pdf, i);
+                if (pdfRef.current !== pdf) return;
+                setThumbs(t => ({ ...t, [i]: url }));
+            } catch (e) { console.warn("Miniature de page impossible :", e); }
+        }
+    };
+
+    /**
+     * Fichier importé : un PDF de plusieurs pages (DDT) ou contenant un tableau
+     * de surfaces ouvre l'écran de vérification ; sinon lecture directe.
+     */
     const startImport = async (file: File) => {
         if (!userId || imp.phase === "busy") return;
+        if (!isPdfFile(file)) { void runExtract(file); return; }
+        clearStepTimers();
+        setImp({ ...IDLE_IMPORT, phase: "busy" });
+        closePdf();
+        try {
+            const pdf = await openPdf(file);
+            const analysis = await analyzeDdt(pdf);
+            if (analysis.numPages > 1 || analysis.carrez) {
+                pdfRef.current = pdf;
+                setThumbs({});
+                setSurfaceApplied(false);
+                setImp(IDLE_IMPORT);
+                setDdt({ file, analysis, page: analysis.planPage });
+                void loadThumbs(pdf, analysis);
+                return;
+            }
+            void pdf.destroy();
+        } catch { /* PDF non analysable : lecture directe de la première page */ }
+        setImp(IDLE_IMPORT);
+        void runExtract(file);
+    };
+
+    const buildFromDdt = () => {
+        if (!ddt) return;
+        const { file, page, analysis } = ddt;
+        closePdf();
+        setDdt(null);
+        void runExtract(file, page, analysis.carrez);
+    };
+
+    const surfacesFromDdt = () => {
+        const t = ddt?.analysis.carrez;
+        if (!t) return;
+        closePdf();
+        setDdt(null);
+        setRows(toRows([...t.rooms, ...t.outdoor].map(r => ({ kind: r.kind, name: r.name, area: r.area }))));
+        setMode("surfaces");
+    };
+
+    const applyCarrezSurface = async () => {
+        const total = ddt?.analysis.carrez?.total;
+        if (!total || applying) return;
+        setApplying(true);
+        try {
+            await patch({ surface: Math.round(total * 100) / 100 });
+            setData(d => (d ? { ...d, surface: Math.round(total * 100) / 100 } : d));
+            setSurfaceApplied(true);
+        } catch { /* l'agent peut réessayer */ }
+        setApplying(false);
+    };
+
+    const runExtract = async (file: File, page = 0, carrez: CarrezTable | null = null) => {
+        if (!userId) return;
         clearStepTimers();
         setImp({ ...IDLE_IMPORT, phase: "busy" });
         setPreview(null);
@@ -477,8 +561,9 @@ export default function Plan3DPage() {
         try {
             let image: Awaited<ReturnType<typeof fileToPlanImage>>;
             try {
-                image = await fileToPlanImage(file);
-            } catch {
+                image = await fileToPlanImage(file, { page });
+            } catch (e) {
+                console.warn("Lecture du fichier impossible :", e);
                 throw new Error("Impossible de lire ce fichier. Importez un PDF ou une image (JPEG, PNG).");
             }
             setPreview(image.blob);
@@ -494,6 +579,7 @@ export default function Plan3DPage() {
                 body: JSON.stringify({
                     image: publicUrl, width: image.width, height: image.height,
                     surface: positiveOrUndef(data?.surface), rooms: positiveOrUndef(data?.rooms), propertyType: data?.propertyType || undefined,
+                    carrez: carrez ? { rooms: carrez.rooms, outdoor: carrez.outdoor, total: carrez.total } : undefined,
                 }),
             });
             const json: ExtractResponse = await res.json().catch(() => ({ success: false }));
@@ -641,7 +727,12 @@ export default function Plan3DPage() {
                 /* ── Accueil : choix de la méthode ── */
                 <main className="max-w-5xl mx-auto px-4 sm:px-6 pt-8 sm:pt-14" style={{ paddingBottom: "max(3rem, env(safe-area-inset-bottom))" }}>
                     <AnimatePresence mode="wait">
-                        {mode === "surfaces" ? (
+                        {ddt ? (
+                            <DdtReview key="ddt" fileName={ddt.file.name} analysis={ddt.analysis} page={ddt.page} thumbs={thumbs} declared={declared}
+                                surfaceApplied={surfaceApplied} applying={applying}
+                                onPage={i => setDdt(d => (d ? { ...d, page: i } : d))} onBuild={buildFromDdt} onSurfacesOnly={surfacesFromDdt}
+                                onApplySurface={() => void applyCarrezSurface()} onBack={() => { closePdf(); setDdt(null); }}/>
+                        ) : mode === "surfaces" ? (
                             <SpecsEditor key="surfaces" rows={rows} onChange={setRows} declared={declared} onBack={() => setMode("choose")} onGenerate={generate}/>
                         ) : (
                             <motion.div key="choose" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} transition={{ duration: 0.35 }}>

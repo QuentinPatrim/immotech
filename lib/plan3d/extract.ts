@@ -133,6 +133,9 @@ Ouvertures (extrémités le long du mur, dans l'épaisseur du mur) :
 
 Ignore : meubles et équipements dessinés, hachures, lignes de cote (sauf pour knownDimension), textes et légendes, flèche du nord, cartouche, logo, mobilier extérieur.
 
+Croquis de diagnostiqueur (DDT, mesurage Carrez) : le dessin peut être sommaire, non coté et imparfaitement à l'échelle ; relève-le quand même au mieux, pièce par pièce.
+Si un TABLEAU DES SURFACES (mesurage Carrez / surface habitable) est fourni avec l'image, il fait foi : donne à chaque pièce dessinée le nom EXACT de la ligne correspondante et mets sa surface dans surfaceOnPlan (même si elle n'est pas écrite sur le dessin). Associe les lignes aux pièces par leur nom écrit sur le croquis, sinon par leur type et leur taille relative (la plus grande chambre ↔ la plus grande surface « Chambre »…). N'invente pas de pièce absente du dessin.
+
 Si l'image n'est pas un plan de logement, renvoie rooms = [], openings = [] et une note qui l'explique.
 confidence : high si le plan est net et coté, medium s'il est lisible sans cote ni surface, low s'il est flou, partiel ou ambigu.`;
 
@@ -164,13 +167,16 @@ function isTemperatureUnsupported(err: unknown): boolean {
     return status === 400 && /temperature/i.test(message);
 }
 
-function hintText(hints: { surface?: number; rooms?: number; propertyType?: string }) {
+export interface PlanHints { surface?: number; rooms?: number; propertyType?: string; carrez?: string }
+
+function hintText(hints: PlanHints) {
     const parts = [
         hints.propertyType ? `Type de bien : ${hints.propertyType}` : "",
         hints.surface ? `Surface habitable déclarée : ${hints.surface} m²` : "",
         hints.rooms ? `Nombre de pièces principales déclaré : ${hints.rooms}` : "",
     ].filter(Boolean);
-    return `Relève ce plan.${parts.length ? `\nInformations de l'agent (indicatives, le plan fait foi) :\n- ${parts.join("\n- ")}` : ""}`;
+    const table = hints.carrez ? `\nTABLEAU DES SURFACES du diagnostic (fait foi pour les noms et les surfaces) :\n${hints.carrez}` : "";
+    return `Relève ce plan.${parts.length ? `\nInformations de l'agent (indicatives, le plan fait foi) :\n- ${parts.join("\n- ")}` : ""}${table}`;
 }
 
 const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
@@ -206,7 +212,7 @@ function sanitizeModelPlan(raw: unknown): ModelPlan {
  * Lit l'image d'un plan (URL https ou data:image/...;base64) avec un modèle
  * vision et renvoie sa géométrie en coordonnées normalisées 0..1000.
  */
-export async function readPlanImage(image: string, hints: { surface?: number; rooms?: number; propertyType?: string }): Promise<ModelPlan> {
+export async function readPlanImage(image: string, hints: PlanHints): Promise<ModelPlan> {
     // Budget global sous le maxDuration (60 s) de la route, replis compris
     const deadline = Date.now() + READ_BUDGET_MS;
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, maxRetries: 0 });
@@ -511,7 +517,7 @@ function mapOpenings(list: ModelOpening[], rooms: Room[], toMeters: (x: number, 
 /** Nombre au format français, 1 décimale au plus (64,2 · 68) */
 const fr = (v: number) => String(Math.round(v * 10) / 10).replace(".", ",");
 
-type ScaleSource = "surfaces" | "dimension" | "total" | "declared" | "guess";
+type ScaleSource = "surfaces" | "dimension" | "total" | "carrez" | "declared" | "guess";
 
 /**
  * Plan en mètres à partir de la lecture du modèle :
@@ -521,7 +527,7 @@ type ScaleSource = "surfaces" | "dimension" | "total" | "declared" | "guess";
  */
 export function planFromModel(
     model: ModelPlan,
-    opts: { widthPx: number; heightPx: number; declaredSurface?: number; imageUrl?: string },
+    opts: { widthPx: number; heightPx: number; declaredSurface?: number; imageUrl?: string; carrezTotal?: number },
 ): { plan: Plan3D; notes: string[] } {
     const W = opts.widthPx, H = opts.heightPx;
     const declared = opts.declaredSurface && opts.declaredSurface > 0 ? opts.declaredSurface : undefined;
@@ -551,6 +557,7 @@ export function planFromModel(
         candidates.push({ from: "dimension", ppm: dist(a, b) / dim.meters });
     }
     if (model.totalSurfaceOnPlan && model.totalSurfaceOnPlan > 0) candidates.push({ from: "total", ppm: Math.sqrt(indoorPx / model.totalSurfaceOnPlan) });
+    if (opts.carrezTotal && opts.carrezTotal > 0) candidates.push({ from: "carrez", ppm: Math.sqrt(indoorPx / opts.carrezTotal) });
     if (declared) candidates.push({ from: "declared", ppm: Math.sqrt(indoorPx / declared) });
     const pxBox = bbox(kept.flatMap(r => r.poly));
     candidates.push({ from: "guess", ppm: Math.max(pxBox.w, pxBox.h, 1) / 12 });
@@ -596,6 +603,7 @@ export function planFromModel(
     if (!readOpenings.length) notes.push("Portes et fenêtres placées automatiquement (non lues sur le plan).");
     // Mise à l'échelle autour du pixel (0, 0) : le calage sur l'image est conservé
     if (scale.from === "declared" && declared) plan = scaleToArea(plan, declared);
+    if (scale.from === "carrez" && opts.carrezTotal) plan = scaleToArea(plan, opts.carrezTotal);
     plan = normalizeOrigin(plan);
 
     /* Notes lisibles par l'agent */
@@ -604,6 +612,7 @@ export function planFromModel(
         surfaces: `Échelle déduite des surfaces écrites sur le plan (${written.length} pièces).`,
         dimension: `Échelle déduite de la cote de ${fr(dim?.meters ?? 0)} m lue sur le plan.`,
         total: "Échelle déduite de la surface totale écrite sur le plan.",
+        carrez: "Échelle calée sur le total du mesurage Carrez (pièces du croquis non associées au tableau).",
         declared: "Échelle calée sur la surface déclarée (aucune cote ni surface lisible sur le plan).",
         guess: "Aucune échelle lisible : dimensions estimées (plan supposé large de 12 m), à vérifier.",
     };

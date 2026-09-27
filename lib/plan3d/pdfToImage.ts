@@ -5,6 +5,8 @@
    envoyé au stockage puis à l'analyse IA.
    ============================================================ */
 
+import { loadPdfjs } from "@/lib/plan3d/pdfjs";
+
 const MAX_SIDE = 2400;
 const QUALITY = 0.9;
 
@@ -27,12 +29,11 @@ function whiteCanvas(width: number, height: number) {
     return { canvas, ctx };
 }
 
-async function pdfToImage(file: File): Promise<PlanImage> {
-    const pdfjsLib = await import("pdfjs-dist");
-    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+async function pdfToImage(file: File, pageIndex: number): Promise<PlanImage> {
+    const pdfjsLib = await loadPdfjs();
     const pdf = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
     try {
-        const page = await pdf.getPage(1);
+        const page = await pdf.getPage(Math.min(Math.max(1, pageIndex + 1), pdf.numPages));
         const base = page.getViewport({ scale: 1 });
         const scale = MAX_SIDE / Math.max(base.width, base.height, 1);
         const viewport = page.getViewport({ scale });
@@ -66,10 +67,11 @@ async function rasterToImage(file: File): Promise<PlanImage> {
     return { blob: await toJpeg(canvas), width, height };
 }
 
-/** PDF (page 1) ou image → JPEG sur fond blanc, avec ses dimensions en pixels */
-export async function fileToPlanImage(file: File): Promise<PlanImage> {
-    const isPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name);
-    if (isPdf) return pdfToImage(file);
+export const isPdfFile = (file: File) => file.type === "application/pdf" || /\.pdf$/i.test(file.name);
+
+/** PDF (page choisie, la première par défaut) ou image → JPEG sur fond blanc, avec ses dimensions en pixels */
+export async function fileToPlanImage(file: File, opts: { page?: number } = {}): Promise<PlanImage> {
+    if (isPdfFile(file)) return pdfToImage(file, opts.page ?? 0);
     const isImage = file.type ? file.type.startsWith("image/") : /\.(jpe?g|png|webp|gif|bmp|heic|heif|avif)$/i.test(file.name);
     if (!isImage) throw new Error("Format non pris en charge : importez un PDF ou une image.");
     return rasterToImage(file);
