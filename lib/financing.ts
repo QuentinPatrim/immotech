@@ -232,7 +232,7 @@ const pct = (v: number, d = 1) => `${(v * 100).toFixed(d).replace(".", ",")} %`;
 const eur = (n: number) => `${Math.round(n).toLocaleString("fr-FR")} €`;
 
 /** Verdict « bon coup ou non » : prix vs valeur, solvabilité, rentabilité */
-export function verdict(i: FinancingInputs, r: FinancingResult, ctx: { estimatedValue?: number; dpe?: string }): Verdict {
+export function verdict(i: FinancingInputs, r: FinancingResult, ctx: { estimatedValue?: number; dpe?: string; afterTax?: { cashflow: number; regime: string } | null }): Verdict {
     const pros: string[] = [], cons: string[] = [];
     let score = 0, max = 0;
 
@@ -262,10 +262,13 @@ export function verdict(i: FinancingInputs, r: FinancingResult, ctx: { estimated
         else if (r.netYield >= 0.04) { score += 14; pros.push(`Rendement net correct (${pct(r.netYield)})`); }
         else if (r.netYield >= 0.03) { score += 6; cons.push(`Rendement net modeste (${pct(r.netYield)})`); }
         else cons.push(`Rendement net faible (${pct(r.netYield)})`);
-        if (r.cashflow >= 0) { score += 15; pros.push(`Autofinancé : ${eur(r.cashflow)} / mois de cash-flow`); }
-        else if (r.cashflow >= -150) { score += 9; cons.push(`Effort d'épargne limité : ${eur(-r.cashflow)} / mois`); }
-        else if (r.cashflow >= -350) { score += 4; cons.push(`Effort d'épargne de ${eur(-r.cashflow)} / mois`); }
-        else cons.push(`Effort d'épargne élevé : ${eur(-r.cashflow)} / mois`);
+        // Cash-flow jugé après impôt (meilleur régime fiscal) quand il est connu : c'est ce que le client paie vraiment
+        const cf = ctx.afterTax ? ctx.afterTax.cashflow : r.cashflow;
+        const tag = ctx.afterTax ? ` après impôt (${ctx.afterTax.regime})` : "";
+        if (cf >= 0) { score += 15; pros.push(`Autofinancé : +${eur(cf)} / mois${tag}`); }
+        else if (cf >= -150) { score += 9; cons.push(`Effort d'épargne limité : ${eur(-cf)} / mois${tag}`); }
+        else if (cf >= -350) { score += 4; cons.push(`Effort d'épargne de ${eur(-cf)} / mois${tag}`); }
+        else cons.push(`Effort d'épargne élevé : ${eur(-cf)} / mois${tag}`);
         if (r.irr10 !== null) {
             max += 15;
             if (r.irr10 >= 8) { score += 15; pros.push(`TRI sur 10 ans de ${r.irr10.toFixed(1).replace(".", ",")} %`); }

@@ -13,7 +13,7 @@ import { motion } from "framer-motion";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Landmark, Home, KeyRound, AlertTriangle, BadgeCheck, CheckCircle2, XCircle, Info } from "lucide-react";
 import FiscalSection from "@/components/rdv/FiscalSection";
-import type { Tmi } from "@/lib/fiscalite";
+import { compareRegimes, type Tmi } from "@/lib/fiscalite";
 import {
     DEFAULT_INPUTS, DEBT_LIMIT, DURATIONS, FALLBACK_RATES, computeFinancing, verdict,
     type Duration, type FinancingInputs, type Rates,
@@ -52,7 +52,10 @@ export default function FinancingSection({ price, estimatedValue, dpe, value, on
     };
     // Calculs légers (quelques milliers d'opérations) : recalculés à chaque rendu
     const r = computeFinancing(inputs, rates);
-    const v = verdict(inputs, r, { estimatedValue, dpe });
+    // Cash-flow après impôt du régime fiscal le plus avantageux (tranche du client, 30 % par défaut)
+    const fiscal = inputs.project === "locatif" && inputs.rent > 0 ? compareRegimes(inputs, r.rate, s.tmi ?? 30) : null;
+    const afterTax = fiscal?.best ? { cashflow: fiscal.best.cashflowAfterTax, regime: fiscal.best.short } : null;
+    const v = verdict(inputs, r, { estimatedValue, dpe, afterTax });
 
     const set = (patch: FinancingState) => {
         const next = { ...s, ...patch };
@@ -194,7 +197,9 @@ export default function FinancingSection({ price, estimatedValue, dpe, value, on
                         {rental ? (
                             <>
                                 <Tile label="Rendement" value={r.netYield !== null ? pct(r.netYield) : "—"} sub={r.grossYield !== null ? `net de charges · brut ${pct(r.grossYield)}` : "saisir le loyer"}/>
-                                <Tile label="Cash-flow" value={r.cashflow !== null ? `${r.cashflow >= 0 ? "+" : "−"}${eur(Math.abs(r.cashflow))}` : "—"} tone={r.cashflow === null ? undefined : r.cashflow >= 0 ? "pos" : "neg"} sub="par mois, avant impôt"/>
+                                <Tile label="Cash-flow net" value={afterTax ? `${afterTax.cashflow >= 0 ? "+" : "−"}${eur(Math.abs(afterTax.cashflow))}` : r.cashflow !== null ? `${r.cashflow >= 0 ? "+" : "−"}${eur(Math.abs(r.cashflow))}` : "—"}
+                                    tone={(afterTax?.cashflow ?? r.cashflow) === null ? undefined : (afterTax?.cashflow ?? r.cashflow ?? 0) >= 0 ? "pos" : "neg"}
+                                    sub={afterTax && r.cashflow !== null ? `par mois après impôt, moyenne 10 ans (${afterTax.regime}) · avant impôt ${r.cashflow >= 0 ? "+" : "−"}${eur(Math.abs(r.cashflow))}` : "par mois, avant impôt"}/>
                             </>
                         ) : (
                             <>
