@@ -106,13 +106,14 @@ export function furnitureCorners(f: Pick<Furniture, "x" | "y" | "rotation" | "w"
 export const rotateFurniture = (f: Furniture, deltaRad: number): Furniture => ({ ...f, rotation: normAngle(f.rotation + deltaRad) });
 export const moveFurniture = (f: Furniture, dx: number, dy: number): Furniture => ({ ...f, x: f.x + dx, y: f.y + dy });
 
-const wallCache = new WeakMap<Room[], Wall[]>();
+/** Murs mis en cache par liste de pièces ; la signature couvre les contours modifiés sur place */
+const wallCache = new WeakMap<Room[], { sig: string; walls: Wall[] }>();
 function wallsOf(plan: Pick<Plan3D, "rooms" | "openings">): Wall[] {
-    let walls = wallCache.get(plan.rooms);
-    if (!walls) {
-        walls = computeWalls({ rooms: plan.rooms, openings: [] });
-        wallCache.set(plan.rooms, walls);
-    }
+    const sig = plan.rooms.map(r => `${r.kind}:${r.polygon.map(p => `${p.x},${p.y}`).join(";")}`).join("|");
+    const hit = wallCache.get(plan.rooms);
+    if (hit && hit.sig === sig) return hit.walls;
+    const walls = computeWalls({ rooms: plan.rooms, openings: [] });
+    wallCache.set(plan.rooms, { sig, walls });
     return walls;
 }
 
@@ -165,7 +166,12 @@ interface Item {
     box: Box;
     halo: Box;
     front: Box | null;
+    /** Côté du rectangle utile contre lequel le meuble est adossé */
+    back?: Side;
 }
+
+/** Mur dans le repère local de la pièce */
+interface LocalWall { a: Pt; b: Pt; half: number }
 
 /** Zone à dégager devant une ouverture ; `side` quand elle est sur un côté du rectangle utile */
 interface Zone { box: Box; kind: OpeningKind; side: Side | null; from: number; to: number }
@@ -176,6 +182,7 @@ interface Ctx {
     frame: Frame;
     poly: Pt[];
     rect: Box;
+    walls: LocalWall[];
     zones: Zone[];
     items: Item[];
     area: number;
@@ -250,6 +257,35 @@ function cornersInRoom(ctx: Ctx, it: Item): boolean {
     return !ctx.poly.some(v => v.x > b.x0 + 0.001 && v.x < b.x1 - 0.001 && v.y > b.y0 + 0.001 && v.y < b.y1 - 0.001);
 }
 
+/** Distance au-delà du rectangle utile où l'on cherche le mur qui porte un meuble adossé */
+const WALL_REACH = 0.6;
+
+/**
+ * Le côté `side` est bien un mur entre a0 et a1 (et pas l'ouverture vers
+ * l'autre aile d'une pièce en L) : juste derrière, on sort de la pièce.
+ */
+function backed(ctx: Ctx, side: Side, a0: number, a1: number): boolean {
+    const r = ctx.rect;
+    const n = Math.max(2, Math.ceil((a1 - a0) / 0.25) + 1);
+    for (let i = 0; i < n; i++) {
+        const a = a0 + 0.05 + ((a1 - a0 - 0.1) * i) / (n - 1);
+        const p = side === "N" ? { x: a, y: r.y0 - WALL_REACH }
+            : side === "S" ? { x: a, y: r.y1 + WALL_REACH }
+            : side === "W" ? { x: r.x0 - WALL_REACH, y: a }
+            : { x: r.x1 + WALL_REACH, y: a };
+        if (pointInPolygon(p, ctx.poly)) return false;
+    }
+    return true;
+}
+
+/** Aucun point du contour du meuble dans l'épaisseur d'un mur (murs obliques, angles rentrants) */
+function clearOfWalls(ctx: Ctx, it: Item): boolean {
+    const hw = it.w / 2, hd = it.d / 2;
+    const pts = [[-hw, -hd], [0, -hd], [hw, -hd], [hw, 0], [hw, hd], [0, hd], [-hw, hd], [-hw, 0]]
+        .map(([lx, ly]) => itemPoint(it.cx, it.cy, it.phi, lx, ly));
+    return ctx.walls.every(w => pts.every(p => segDist(p, w.a, w.b) >= w.half));
+}
+
 function fits(ctx: Ctx, it: Item, pending: Item[] = []): boolean {
     if (!inside(it.box, ctx.rect)) return false;
     if (it.front && !inside(it.front, ctx.rect)) return false;
@@ -262,7 +298,11 @@ function fits(ctx: Ctx, it: Item, pending: Item[] = []): boolean {
     }
     for (const q of ctx.items) if (conflict(it, q)) return false;
     for (const q of pending) if (q !== it && conflict(it, q)) return false;
-    return true;
+    if (it.back) {
+        const a = alongOf(it, it.back);
+        if (!backed(ctx, it.back, a - it.w / 2, a + it.w / 2)) return false;
+    }
+    return clearOfWalls(ctx, it);
 }
 
 const fitsAll = (ctx: Ctx, items: Item[]) => items.length > 0 && items.every(it => fits(ctx, it, items));
@@ -323,10 +363,12 @@ const alongOf = (it: Item, side: Side) => (side === "N" || side === "S" ? it.cx 
 function placeAgainstWall(ctx: Ctx, side: Side, along: number, type: FurnitureType, group = "", dims: Dims = {}): Item {
     const off = (dims.d ?? FURNITURE_CATALOG[type].d) / 2;
     const r = ctx.rect;
-    if (side === "N") return makeItem(type, along, r.y0 + off, SIDE_PHI.N, group, dims);
-    if (side === "S") return makeItem(type, along, r.y1 - off, SIDE_PHI.S, group, dims);
-    if (side === "W") return makeItem(type, r.x0 + off, along, SIDE_PHI.W, group, dims);
-    return makeItem(type, r.x1 - off, along, SIDE_PHI.E, group, dims);
+    const it = side === "N" ? makeItem(type, along, r.y0 + off, SIDE_PHI.N, group, dims)
+        : side === "S" ? makeItem(type, along, r.y1 - off, SIDE_PHI.S, group, dims)
+        : side === "W" ? makeItem(type, r.x0 + off, along, SIDE_PHI.W, group, dims)
+        : makeItem(type, r.x1 - off, along, SIDE_PHI.E, group, dims);
+    it.back = side;
+    return it;
 }
 
 /** Positions (centres) d'un meuble de largeur w glissé le long d'un segment [lo, hi] */
@@ -413,6 +455,8 @@ function tableCands(
     const reach = FURNITURE_CATALOG.chair.d - 0.1;
     const out: Cand[] = [];
     const r = ctx.rect;
+    // Grille plus lâche dans les très grandes pièces (le nombre de candidats croît avec l'aire)
+    step = Math.max(step, Math.max(r.x1 - r.x0, r.y1 - r.y0) / 60);
     for (const layout of layouts) {
         const hx = tw / 2 + (layout === "ends2" || layout === "6" ? reach : 0);
         const hy = td / 2 + (layout === "ends2" ? 0 : reach);
@@ -482,7 +526,7 @@ function largestRect(poly: Pt[]): Box | null {
  * plus proche (les murs fusionnés peuvent être décalés de quelques cm par
  * rapport au contour de la pièce).
  */
-function insetRect(fr: Frame, raw: Box, walls: Wall[]): Box {
+function insetRect(raw: Box, walls: LocalWall[]): Box {
     const sides: Record<Side, { p: Pt; inward: Pt }> = {
         N: { p: { x: (raw.x0 + raw.x1) / 2, y: raw.y0 }, inward: { x: 0, y: 1 } },
         S: { p: { x: (raw.x0 + raw.x1) / 2, y: raw.y1 }, inward: { x: 0, y: -1 } },
@@ -491,17 +535,20 @@ function insetRect(fr: Frame, raw: Box, walls: Wall[]): Box {
     };
     const inset = (side: Side) => {
         const { p, inward } = sides[side];
-        const pp = toPlan(fr, p);
+        const horizontal = side === "N" || side === "S";
+        const [lo, hi] = sideRange(raw, side);
         let v = 0.02;
-        for (const w of walls) {
-            const a = toLocal(fr, w.a), b = toLocal(fr, w.b);
+        for (const { a, b, half } of walls) {
             const len = dist(a, b);
             if (len < EPS) continue;
             // Mur parallèle au côté (produit vectoriel avec la normale ≈ ±1)
             if (Math.abs(((b.x - a.x) * inward.x + (b.y - a.y) * inward.y) / len) > 0.1) continue;
-            if (segDist(pp, w.a, w.b) >= 0.3) continue;
-            const signed = (a.x - p.x) * inward.x + (a.y - p.y) * inward.y;
-            v = Math.max(v, signed + w.thickness / 2 + 0.02);
+            // Mur en regard d'une partie du côté (pas seulement de son milieu), à moins de 30 cm
+            const s0 = horizontal ? Math.min(a.x, b.x) : Math.min(a.y, b.y), s1 = horizontal ? Math.max(a.x, b.x) : Math.max(a.y, b.y);
+            if (Math.min(s1, hi) - Math.max(s0, lo) < 0.05) continue;
+            const signed = ((a.x + b.x) / 2 - p.x) * inward.x + ((a.y + b.y) / 2 - p.y) * inward.y;
+            if (Math.abs(signed) >= 0.3) continue;
+            v = Math.max(v, signed + half + 0.02);
         }
         return v;
     };
@@ -550,9 +597,13 @@ function roomContext(plan: Plan3D, room: Room, walls: Wall[]): Ctx | null {
     const poly = room.polygon.map(p => toLocal(frame, p));
     const raw = largestRect(poly);
     if (!raw) return null;
-    const rect = insetRect(frame, raw, walls);
+    const bb = aabb(poly);
+    const near = (w: LocalWall) => Math.max(w.a.x, w.b.x) > bb.x0 - 0.5 && Math.min(w.a.x, w.b.x) < bb.x1 + 0.5
+        && Math.max(w.a.y, w.b.y) > bb.y0 - 0.5 && Math.min(w.a.y, w.b.y) < bb.y1 + 0.5;
+    const local = walls.map(w => ({ a: toLocal(frame, w.a), b: toLocal(frame, w.b), half: w.thickness / 2 })).filter(near);
+    const rect = insetRect(raw, local);
     if (rect.x1 - rect.x0 < 0.3 || rect.y1 - rect.y0 < 0.3) return null;
-    return { plan, room, frame, poly, rect, zones: openingZones(room, frame, rect, walls), items: [], area: polygonArea(room.polygon) };
+    return { plan, room, frame, poly, rect, walls: local, zones: openingZones(room, frame, rect, walls), items: [], area: polygonArea(room.polygon) };
 }
 
 /* ─────────────────────── PROGRAMMES PAR PIÈCE ─────────────────────── */
@@ -561,7 +612,10 @@ const cat = FURNITURE_CATALOG;
 const rectW = (ctx: Ctx) => ctx.rect.x1 - ctx.rect.x0;
 const rectH = (ctx: Ctx) => ctx.rect.y1 - ctx.rect.y0;
 const findItem = (ctx: Ctx, type: FurnitureType) => ctx.items.find(i => i.type === type);
-const hasSeparateDining = (ctx: Ctx) => ctx.plan.rooms.some(r => r.id !== ctx.room.id && /manger|repas/i.test(r.name));
+/** Salle à manger dédiée (« Salle à manger », « Coin repas »… mais pas « Séjour / salle à manger » ni une cuisine) */
+const isDiningRoom = (r: Room) =>
+    (r.kind === "sejour" || r.kind === "autre") && /manger|repas/i.test(r.name) && !/s[ée]jour|salon|living|cuisine/i.test(r.name);
+const hasSeparateDining = (ctx: Ctx) => ctx.plan.rooms.some(r => r.id !== ctx.room.id && isDiningRoom(r));
 const hasSeparateWc = (ctx: Ctx) => ctx.plan.rooms.some(r => r.kind === "wc");
 const cornerBonus = (ctx: Ctx, side: Side, along: number, w: number, bonus = 1) => (touchesCorner(ctx, side, along, w) ? bonus : 0);
 
@@ -769,15 +823,28 @@ function placeDesk(ctx: Ctx, weight: number): number {
 
 function furnishBathroom(ctx: Ctx) {
     const longest = Math.max(rectW(ctx), rectH(ctx));
-    const rest = (c: Ctx) => bathRest(c);
     const tubOk = longest >= 1.7 - 0.12 && ctx.area >= 4.5;
+    const needWc = !hasSeparateWc(ctx);
+    const essentials = () => (findItem(ctx, "vanity") ? 1 : 0) + (needWc && findItem(ctx, "toilet") ? 1 : 0);
     const fixture = (type: FurnitureType, sizes: Dims[]) => sizes.flatMap((dims, i) => wallCands(ctx, type, (it, side, a) => {
         const [lo, hi] = sideRange(ctx.rect, side);
         const alcove = Math.abs(hi - lo - it.w) < 0.15 ? 2 : 0;
         return cornerBonus(ctx, side, a, it.w, 3) + alcove - 2 * i;
     }, { group: "bath", dims }));
-    if (tubOk && anchor(ctx, fixture("bathtub", [{}]), rest, 2, 12)) return;
-    if (!anchor(ctx, fixture("shower", [{}, { w: 0.8, d: 0.8 }]), rest, 2, 12)) rest(ctx);
+    const withShower = () => {
+        if (!anchor(ctx, fixture("shower", [{}, { w: 0.8, d: 0.8 }]), bathRest, 2, 12)) bathRest(ctx);
+    };
+    const base = ctx.items.length;
+    if (!tubOk || !anchor(ctx, fixture("bathtub", [{}]), bathRest, 2, 12)) {
+        withShower();
+        return;
+    }
+    // La baignoire ne doit pas coûter le lavabo ou le seul WC du logement : la douche est alors préférée
+    const tubEssentials = essentials();
+    if (tubEssentials === 1 + (needWc ? 1 : 0)) return;
+    const tubItems = ctx.items.splice(base);
+    withShower();
+    if (essentials() <= tubEssentials) ctx.items.splice(base, ctx.items.length - base, ...tubItems);
 }
 
 function bathRest(ctx: Ctx): number {
@@ -841,12 +908,14 @@ function furnishHall(ctx: Ctx) {
     if (Math.min(rectW(ctx), rectH(ctx)) >= 1.6) plantCorner(ctx);
 }
 
+function furnishDining(ctx: Ctx) {
+    const c = { x: (ctx.rect.x0 + ctx.rect.x1) / 2, y: (ctx.rect.y0 + ctx.rect.y1) / 2 };
+    placeDining(ctx, p => -0.3 * dist(p, c), ctx.area >= 12);
+    place(ctx, wallCands(ctx, "sideboard", () => 0), 1);
+    plantCorner(ctx);
+}
+
 function furnishOther(ctx: Ctx) {
-    if (/manger|repas/i.test(ctx.room.name)) {
-        const c = { x: (ctx.rect.x0 + ctx.rect.x1) / 2, y: (ctx.rect.y0 + ctx.rect.y1) / 2 };
-        placeDining(ctx, p => -0.3 * dist(p, c), ctx.area >= 12);
-        place(ctx, wallCands(ctx, "sideboard", () => 0), 1);
-    }
     plantCorner(ctx);
 }
 
@@ -897,7 +966,7 @@ export function autoFurnish(plan: Plan3D): Furniture[] {
         if (room.polygon.length < 3 || polygonArea(room.polygon) < 0.5) continue;
         const ctx = roomContext(plan, room, walls);
         if (!ctx) continue;
-        PROGRAMS[room.kind](ctx);
+        (isDiningRoom(room) ? furnishDining : PROGRAMS[room.kind] ?? furnishOther)(ctx);
         for (const it of ctx.items) out.push(toFurniture(ctx, it));
     }
     return out;

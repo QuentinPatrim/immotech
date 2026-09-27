@@ -525,8 +525,8 @@ function Bookshelf({ w, d, h, m, seed }: ModelProps) {
 /** Linéaire de cuisine : caissons bas, plan de travail, crédence, évier, plaque, four et meubles hauts */
 function KitchenRun({ w, d, h, m }: ModelProps) {
     const top = 0.9, wt = 0.04, plinth = 0.1;
-    const upper = h > 1.5;
-    const upperTop = upper ? h : 2.2;
+    // h = hauteur du plan de travail (0,9 m) ; au-delà de 1,5 m, h donne le haut des meubles hauts
+    const upperTop = h > 1.5 ? h : 2.2;
     const upH = 0.72, upD = Math.min(0.35, d * 0.6);
     const bodyH = top - wt - plinth;
     const fz = d / 2 - 0.03;
@@ -560,17 +560,13 @@ function KitchenRun({ w, d, h, m }: ModelProps) {
                     <Cyl rt={0.009} h={0.5} p={[hx, plinth + 0.04 + 0.54, fz + 0.03]} r={[0, 0, Math.PI / 2]} m={m.steel} seg={10} />
                 </>
             )}
-            {upper && (
-                <>
-                    <Box size={[w, upperTop - upH - top, 0.015]} p={[0, (top + upperTop - upH) / 2, -d / 2 + 0.0075]} m={m.counter} />
-                    <Box size={[w, upH, upD]} p={[0, upperTop - upH / 2, -d / 2 + upD / 2]} m={m.front} />
-                    {Array.from({ length: n - 1 }, (_, i) => (
-                        <Gap key={i} x={-w / 2 + (w * (i + 1)) / n} y={upperTop - upH / 2} z={-d / 2 + upD + 0.002} h={upH} />
-                    ))}
-                    {/* Réglette LED sous les meubles hauts */}
-                    <Box size={[w - 0.04, 0.01, 0.02]} p={[0, upperTop - upH - 0.006, -d / 2 + upD - 0.04]} m={m.light} cast={false} />
-                </>
-            )}
+            {/* Crédence, meubles hauts et réglette LED en sous-face */}
+            <Box size={[w, upperTop - upH - top, 0.015]} p={[0, (top + upperTop - upH) / 2, -d / 2 + 0.0075]} m={m.counter} />
+            <Box size={[w, upH, upD]} p={[0, upperTop - upH / 2, -d / 2 + upD / 2]} m={m.front} />
+            {Array.from({ length: n - 1 }, (_, i) => (
+                <Gap key={`u${i}`} x={-w / 2 + (w * (i + 1)) / n} y={upperTop - upH / 2} z={-d / 2 + upD + 0.002} h={upH} />
+            ))}
+            <Box size={[w - 0.04, 0.01, 0.02]} p={[0, upperTop - upH - 0.006, -d / 2 + upD - 0.04]} m={m.light} cast={false} />
         </>
     );
 }
