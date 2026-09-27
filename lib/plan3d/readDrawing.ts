@@ -81,8 +81,15 @@ export function refineWithTable(plan: Plan3D, table: CarrezTable | null): { plan
         const row = rows.find(x => norm(x.name) === norm(r.name));
         if (row) targets.set(r.id, row.area);
     }
+    // Placard non listé au tableau : compté dans la pièce qu'il dessert (« Placard Entrée » → Entrée)
+    const groups = new Map<string, string>();
+    for (const r of plan.rooms) {
+        if (targets.has(r.id) || !/^placard/.test(norm(r.name))) continue;
+        const owner = plan.rooms.find(o => o !== r && targets.has(o.id) && norm(r.name) === `placard${norm(o.name)}`);
+        if (owner) groups.set(r.id, owner.id);
+    }
     if (targets.size < 2) return { plan, note: null };
-    const fit = fitAreas(plan, targets);
+    const fit = fitAreas(plan, targets, groups);
     if (!fit.fitted || fit.after >= fit.before) return { plan, note: null };
     return {
         plan: fit.plan,
@@ -108,6 +115,7 @@ export function planFromDrawing(image: PlanImage, seeds: Seed[], table: CarrezTa
     if (plan.rooms.length < 2 || plan.rooms.every(r => polygonArea(r.polygon) < 0.5)) return null;
     const refined = refineWithTable(plan, table);
     const out = [`Plan relevé directement sur le dessin (${v.found.length} pièce${v.found.length > 1 ? "s" : ""}).`];
+    for (const p of v.placards) out.push(`${p.name} repéré à ses portes coulissantes : sa surface est comptée dans ${p.owner}, comme dans le rapport.`);
     if (refined.note) out.push(refined.note);
     else out.push(...notes.filter(n => !n.startsWith("Échelle")));
     if (v.missing.length) out.push(`Non retrouvé sur le dessin : ${v.missing.join(", ")} — à ajouter dans l'éditeur 2D.`);

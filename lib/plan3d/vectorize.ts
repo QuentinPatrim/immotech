@@ -23,6 +23,8 @@ export interface VectorizeResult {
     /** Noms de pièces retrouvés dans une zone fermée / non retrouvés */
     found: string[];
     missing: string[];
+    /** Placards repérés à leur symbole (portes coulissantes) : nom du placard → pièce qui le dessert */
+    placards: { name: string; owner: string }[];
 }
 
 const INK_LUM = 150;
@@ -381,6 +383,57 @@ export function vectorizePlan(img: RasterImage, seeds: Seed[], textBoxes?: TextB
     const minThick = Math.max(2, Math.round(partition * 0.65));
     const micro = Math.max(3, Math.round(wallThick * 2.5));
 
+    /* Façades de placard : une cloison ponctuée de petits carrés (portes coulissantes), sans
+       nom écrit. On la referme d'un bout à l'autre ; la zone derrière deviendra le placard de
+       la pièce qu'elle dessert (sa surface est comptée dans celle de la pièce). */
+    const blueMask = new Uint8Array(W * H);
+    for (const c of blueComps) for (const i of c.px) blueMask[i] = 1;
+    const holes = regions(walls, W, H);
+    const sMin = Math.max(4, Math.round(partition * 0.8)), sMax = ppm ? ppm * 0.45 : Math.min(aptW, aptH) * 0.06;
+    const squares: { x0: number; y0: number; x1: number; y1: number; cx: number; cy: number; r: number }[] = [];
+    holes.info.forEach((h, r) => {
+        const w = h.x1 - h.x0 + 1, hh = h.y1 - h.y0 + 1;
+        if (h.border || w < sMin || hh < sMin || w > sMax || hh > sMax) return;
+        if (Math.abs(w - hh) > Math.max(w, hh) * 0.35 || h.area < w * hh * 0.75) return;
+        if (h.x0 < box.x0 || h.x1 > box.x1 || h.y0 < box.y0 || h.y1 > box.y1) return;
+        // Extrémités de fenêtre (carrés accolés au trait bleu) : pas un placard
+        const m = Math.max(w, hh);
+        for (let y = Math.max(0, h.y0 - m); y <= Math.min(H - 1, h.y1 + m); y += 2)
+            for (let x = Math.max(0, h.x0 - m); x <= Math.min(W - 1, h.x1 + m); x += 2) if (blueMask[y * W + x]) return;
+        squares.push({ x0: h.x0, y0: h.y0, x1: h.x1, y1: h.y1, cx: (h.x0 + h.x1) / 2, cy: (h.y0 + h.y1) / 2, r });
+    });
+    const placardLines: { horizontal: boolean; line: number; a: number; b: number; depth: number }[] = [];
+    for (const horizontal of [true, false]) {
+        const used = new Set<number>();
+        const key = (q: (typeof squares)[number]) => (horizontal ? q.cy : q.cx);
+        const pos = (q: (typeof squares)[number]) => (horizontal ? q.cx : q.cy);
+        const sorted = squares.map((q, i) => ({ q, i })).sort((p, q) => pos(p.q) - pos(q.q));
+        for (const { q, i } of sorted) {
+            if (used.has(i)) continue;
+            const group = sorted.filter(o => !used.has(o.i) && Math.abs(key(o.q) - key(q)) <= Math.max(3, partition));
+            // Au moins deux carrés alignés, pas trop espacés (moins de 2 m entre voisins)
+            const chain = [group[0]];
+            for (const o of group.slice(1)) {
+                const last = chain[chain.length - 1].q;
+                if (pos(o.q) - pos(last) <= (ppm ? ppm * 2 : Math.min(aptW, aptH) * 0.3)) chain.push(o);
+                else break;
+            }
+            if (chain.length < 2) continue;
+            for (const o of chain) used.add(o.i);
+            const line = chain.reduce((a, o) => a + key(o.q), 0) / chain.length;
+            const a = Math.min(...chain.map(o => (horizontal ? o.q.x0 : o.q.y0))), b = Math.max(...chain.map(o => (horizontal ? o.q.x1 : o.q.y1)));
+            const size = Math.max(...chain.map(o => Math.max(o.q.x1 - o.q.x0, o.q.y1 - o.q.y0)));
+            const half = Math.max(2, Math.round(partition / 2));
+            for (let k = a; k <= b; k++) for (let d = -half; d <= half; d++) {
+                const x = horizontal ? k : Math.round(line) + d, y = horizontal ? Math.round(line) + d : k;
+                if (x >= 0 && y >= 0 && x < W && y < H) walls[y * W + x] = 1;
+            }
+            // Intérieur des carrés rempli : ce ne sont pas des zones
+            for (const o of chain) for (let y = o.q.y0; y <= o.q.y1; y++) for (let x = o.q.x0; x <= o.q.x1; x++) if (holes.id[y * W + x] === o.q.r) walls[y * W + x] = 1;
+            placardLines.push({ horizontal, line, a, b, depth: Math.round(size / 2 + wallThick + 4) });
+        }
+    }
+
     type Best = { closed: Uint8Array; gaps: Gap[]; reg: ReturnType<typeof regions>; hits: number[]; score: number };
     const regionOf = (closed: Uint8Array, reg: ReturnType<typeof regions>, s: Seed) => {
         // Nom hors de l'emprise du logement (tableau, légende…) : ignoré
@@ -424,6 +477,29 @@ export function vectorizePlan(img: RasterImage, seeds: Seed[], textBoxes?: TextB
     const parent = reg.info.map((_, i) => i);
     const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i])));
     const labeled = new Set(hits.filter(h => h >= 0));
+    // Placards : zone sans nom derrière une façade de placard, face à une pièce nommée
+    const placardZones: { zone: number; owner: number; line: (typeof placardLines)[number] }[] = [];
+    for (const pl of placardLines) {
+        const votes = new Map<string, number>();
+        for (const f of [0.25, 0.5, 0.75]) {
+            const k = pl.a + (pl.b - pl.a) * f;
+            const at = (d: number) => {
+                const x = Math.round(pl.horizontal ? k : pl.line + d), y = Math.round(pl.horizontal ? pl.line + d : k);
+                return x < 0 || y < 0 || x >= W || y >= H ? -1 : reg.id[y * W + x];
+            };
+            const sa = at(-pl.depth), sb = at(pl.depth);
+            if (sa < 0 || sb < 0 || sa === sb) continue;
+            const pair = labeled.has(sa) && !labeled.has(sb) ? `${sb}:${sa}` : labeled.has(sb) && !labeled.has(sa) ? `${sa}:${sb}` : "";
+            if (pair) votes.set(pair, (votes.get(pair) ?? 0) + 1);
+        }
+        const top = [...votes.entries()].sort((p, q) => q[1] - p[1])[0];
+        if (!top) continue;
+        const [zone, owner] = top[0].split(":").map(Number);
+        const inf = reg.info[zone];
+        if (inf.border || inf.area > aptArea * 0.15 || placardZones.some(p => p.zone === zone)) continue;
+        placardZones.push({ zone, owner, line: pl });
+    }
+    const reserved = new Set(placardZones.map(p => p.zone));
     const areaOf = new Map<number, number>();
     for (const r of labeled) areaOf.set(r, reg.info[r].area);
     const ratios = seeds.map((s, i) => (hits[i] >= 0 && s.area ? reg.info[hits[i]].area / s.area : 0)).filter(v => v > 0).sort((a, b) => a - b);
@@ -451,7 +527,7 @@ export function vectorizePlan(img: RasterImage, seeds: Seed[], textBoxes?: TextB
             adj.set(list[a], m);
         }
     }
-    const unlabeled = [...adj.keys()].filter(r => !labeled.has(r) && reg.info[r].area >= aptArea * 0.002 && reg.info[r].area < aptArea * 0.4)
+    const unlabeled = [...adj.keys()].filter(r => !labeled.has(r) && !reserved.has(r) && reg.info[r].area >= aptArea * 0.002 && reg.info[r].area < aptArea * 0.4)
         .sort((a, b) => reg.info[b].area - reg.info[a].area);
     for (let pass = 0; pass < 3; pass++) {
         for (const u of unlabeled) {
@@ -473,7 +549,7 @@ export function vectorizePlan(img: RasterImage, seeds: Seed[], textBoxes?: TextB
 
     // Zone encore isolée à l'intérieur du logement (placard fermé, gaine…) : rattachée à la pièce
     // voisine, à travers la cloison, qui manque le plus de surface — un trou dans le plan serait pire
-    const leftovers = [...new Set(reg.id)].filter(r => r >= 0 && !labeled.has(find(r)) && !reg.info[r].border
+    const leftovers = [...new Set(reg.id)].filter(r => r >= 0 && !labeled.has(find(r)) && !reserved.has(r) && !reg.info[r].border
         && reg.info[r].area >= aptArea * 0.004 && reg.info[r].area < aptArea * 0.15
         && reg.info[r].x0 > box.x0 && reg.info[r].x1 < box.x1 && reg.info[r].y0 > box.y0 && reg.info[r].y1 < box.y1
         // pas l'intérieur d'un mur dessiné en double trait : zone assez large et compacte
@@ -558,6 +634,57 @@ export function vectorizePlan(img: RasterImage, seeds: Seed[], textBoxes?: TextB
             found.push(s.name);
         }
     }
+    // Placards : contour de la zone, nom « Placard <pièce> », façade = ouverture
+    const placards: { name: string; owner: string }[] = [];
+    const placardFronts: ModelOpening[] = [];
+    for (const pz of placardZones) {
+        const inf = reg.info[pz.zone];
+        const mid = { x: pz.line.horizontal ? (pz.line.a + pz.line.b) / 2 : pz.line.line, y: pz.line.horizontal ? pz.line.line : (pz.line.a + pz.line.b) / 2 };
+        const owners = seeds.map((sd, i) => ({ sd, i })).filter(o => hits[o.i] === pz.owner);
+        if (!owners.length) continue;
+        const ownerSeed = owners.sort((p, q) => Math.hypot(p.sd.x - mid.x, p.sd.y - mid.y) - Math.hypot(q.sd.x - mid.x, q.sd.y - mid.y))[0].sd;
+        const inZone = (x: number, y: number) => x >= 0 && y >= 0 && x < W && y < H && reg.id[y * W + x] === pz.zone;
+        const fill = inf.area / ((inf.x1 - inf.x0 + 1) * (inf.y1 - inf.y0 + 1));
+        let poly: ModelPoint[] = [{ x: inf.x0, y: inf.y0 }, { x: inf.x1 + 1, y: inf.y0 }, { x: inf.x1 + 1, y: inf.y1 + 1 }, { x: inf.x0, y: inf.y1 + 1 }];
+        if (fill <= 0.9) {
+            const traced = simplifyClosed(traceContour(inZone, inf.x0, inf.y0, inf.x1, inf.y1), tol);
+            if (traced.length >= 3) poly = traced;
+        }
+        // Côtés du placard prolongés jusqu'aux pièces voisines (un battant de porte dessiné
+        // contre lui épaissit localement la cloison et laisserait un vide)
+        if (poly.length === 4) {
+            let [x0, y0, x1, y1] = [inf.x0, inf.y0, inf.x1 + 1, inf.y1 + 1];
+            const reachPx = ppm ? ppm * 0.5 : wallThick * 5;
+            const others = rooms.map(rm => rm.polygon.map(q => ({ x: (q.x * W) / 1000, y: (q.y * H) / 1000 })));
+            const edgesOf = (pts: ModelPoint[]) => pts.map((a, i) => [a, pts[(i + 1) % pts.length]] as const);
+            let right = Infinity, left = -Infinity, down = Infinity, up = -Infinity;
+            for (const pts of others) for (const [a, b] of edgesOf(pts)) {
+                if (Math.abs(a.x - b.x) < 1 && Math.min(a.y, b.y) < y1 && Math.max(a.y, b.y) > y0) {
+                    if (a.x >= x1 && a.x - x1 <= reachPx) right = Math.min(right, a.x);
+                    if (a.x <= x0 && x0 - a.x <= reachPx) left = Math.max(left, a.x);
+                }
+                if (Math.abs(a.y - b.y) < 1 && Math.min(a.x, b.x) < x1 && Math.max(a.x, b.x) > x0) {
+                    if (a.y >= y1 && a.y - y1 <= reachPx) down = Math.min(down, a.y);
+                    if (a.y <= y0 && y0 - a.y <= reachPx) up = Math.max(up, a.y);
+                }
+            }
+            const gap = wallThick + 1;
+            if (right < Infinity && right - x1 > gap * 1.5) x1 = right - gap;
+            if (left > -Infinity && x0 - left > gap * 1.5) x0 = left + gap;
+            if (down < Infinity && down - y1 > gap * 1.5) y1 = down - gap;
+            if (up > -Infinity && y0 - up > gap * 1.5) y0 = up + gap;
+            poly = [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }];
+        }
+        const name = `Placard ${ownerSeed.name}`;
+        rooms.push({ name, kind: "cellier", surfaceOnPlan: null, polygon: poly.map(norm) });
+        placards.push({ name, owner: ownerSeed.name });
+        // Façade : portes coulissantes sur l'essentiel de la largeur
+        const inset = (pz.line.b - pz.line.a) * 0.1;
+        const l = { ...pz.line, a: pz.line.a + inset, b: pz.line.b - inset };
+        placardFronts.push({ kind: "door", ...(l.horizontal
+            ? { x1: (l.a * 1000) / W, y1: (l.line * 1000) / H, x2: ((l.b + 1) * 1000) / W, y2: (l.line * 1000) / H }
+            : { x1: (l.line * 1000) / W, y1: (l.a * 1000) / H, x2: (l.line * 1000) / W, y2: ((l.b + 1) * 1000) / H }) });
+    }
     if (rooms.length < 2) return null;
 
     // Ouvertures : traits bleus (fenêtres) et interruptions refermées entre deux zones différentes (portes, passages)
@@ -585,7 +712,10 @@ export function vectorizePlan(img: RasterImage, seeds: Seed[], textBoxes?: TextB
     // châssis dessinés sur une cloison donnent plusieurs petits « vides » alignés)
     const doors = new Map<string, { g: (typeof groups)[number]; mid: number }>();
     for (const g of groups) {
-        if (g.b - g.a + 1 < minRun * 1.5 || g.l1 - g.l0 + 1 < minThick) continue;
+        // (fermeture parfois fine : les deux tronçons ne se font face que sur une ou deux lignes)
+        if (g.b - g.a + 1 < minRun * 1.2) continue;
+        // Carrés d'une façade de placard : la façade entière est l'ouverture du placard
+        if (placardLines.some(pl => pl.horizontal === g.horizontal && Math.abs(pl.line - (g.l0 + g.l1) / 2) <= pl.depth && g.a <= pl.b && g.b >= pl.a)) continue;
         const mid = (g.l0 + g.l1) / 2, c = (g.a + g.b) / 2, off = (g.l1 - g.l0) / 2 + wallThick + 2;
         const [za, zb] = g.horizontal ? [zoneAt(c, mid - off), zoneAt(c, mid + off)] : [zoneAt(mid - off, c), zoneAt(mid + off, c)];
         // Porte seulement entre deux zones distinctes, dont au moins une pièce nommée
@@ -594,11 +724,13 @@ export function vectorizePlan(img: RasterImage, seeds: Seed[], textBoxes?: TextB
         const prev = doors.get(key);
         if (!prev || g.b - g.a > prev.g.b - prev.g.a) doors.set(key, { g, mid });
     }
+    openings.push(...placardFronts);
     for (const { g, mid } of doors.values()) openings.push({ kind: "door", ...(g.horizontal ? segN(g.a, mid, g.b + 1, mid) : segN(mid, g.a, mid, g.b + 1)) });
 
     return {
         plan: { rooms, openings, totalSurfaceOnPlan: null, knownDimension: null, confidence: "high", notes: [] },
         found,
         missing,
+        placards,
     };
 }

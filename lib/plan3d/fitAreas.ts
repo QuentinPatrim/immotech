@@ -85,10 +85,11 @@ export interface FitResult { plan: Plan3D; before: number; after: number; fitted
 
 /**
  * Ajuste le plan pour que les pièces ciblées atteignent leur surface.
- * targets : identifiant de pièce → surface (m²). Renvoie l'écart relatif
+ * targets : identifiant de pièce → surface (m²). groups : pièce rattachée → pièce
+ * cible (placard compté dans la surface de l'entrée). Renvoie l'écart relatif
  * moyen avant / après (0.05 = 5 %).
  */
-export function fitAreas(plan: Plan3D, targets: Map<string, number>): FitResult {
+export function fitAreas(plan: Plan3D, targets: Map<string, number>, groups: Map<string, string> = new Map()): FitResult {
     const rooms = plan.rooms;
     const verts: { r: number; v: number; p: Pt }[] = [];
     rooms.forEach((room, r) => room.polygon.forEach((p, v) => verts.push({ r, v, p })));
@@ -109,7 +110,9 @@ export function fitAreas(plan: Plan3D, targets: Map<string, number>): FitResult 
     verts.forEach((o, k) => { ref[o.r][o.v] = [xs.index[k], ys.index[k]]; });
 
     const idx = rooms.map((room, r) => (targets.has(room.id) ? r : -1)).filter(r => r >= 0);
-    const areaOf = (X: number[], Y: number[], r: number) => polygonArea(ref[r].map(([i, j]) => ({ x: X[i], y: Y[j] })));
+    const members = rooms.map(room => rooms.map((m, k) => (groups.get(m.id) === room.id ? k : -1)).filter(k => k >= 0));
+    const own = (X: number[], Y: number[], r: number) => polygonArea(ref[r].map(([i, j]) => ({ x: X[i], y: Y[j] })));
+    const areaOf = (X: number[], Y: number[], r: number) => members[r].reduce((a, k) => a + own(X, Y, k), own(X, Y, r));
     const span = Math.max(x0[nx - 1] - x0[0], y0[ny - 1] - y0[0], 1);
     const cost = (X: number[], Y: number[]) => {
         let c = 0;
