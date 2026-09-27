@@ -565,16 +565,13 @@ export default function GenerateurQR() {
 
     return (
         <div className="min-h-screen bg-[#0a0a0c] text-white pb-32">
-            {/* Typos unifiées avec /mes-biens : Fraunces (display) + Inter Tight (body) */}
+            {/* Typographie iOS unifiée avec /mes-biens : SF Pro (Apple) / Inter */}
             <style dangerouslySetInnerHTML={{ __html: `
-                @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700;9..144,900&family=Inter+Tight:wght@400;500;600;700;800&display=swap');
                 .font-display {
-                    font-family: 'Fraunces', serif;
-                    font-optical-sizing: auto;
-                    font-variation-settings: "SOFT" 50, "WONK" 0;
+                    font-family: var(--font-ios); font-weight: 700; letter-spacing: -0.028em;
                 }
-                .font-body { font-family: 'Inter Tight', sans-serif; }
-                .font-sans { font-family: 'Inter Tight', sans-serif; }
+                .font-body { font-family: var(--font-ios); }
+                .font-sans { font-family: var(--font-ios); }
             `}}/>
 
             {/* Header unifié — mêmes proportions que /mes-biens */}

@@ -185,7 +185,7 @@ const StepHeader = ({ n, icon, title, subtitle }: { n: number; icon: React.React
             {icon}
         </div>
         <div>
-            <p className="text-[10.5px] text-[var(--p-faint)] uppercase tracking-[0.22em] font-medium">Étape {n} / 4</p>
+            <p className="text-[11px] text-[var(--p-faint)] uppercase tracking-[0.06em] font-medium">Étape {n} / 4</p>
             <h2 className="text-[28px] leading-tight font-medium text-[var(--p-fg)] display-font">{title}</h2>
             {subtitle && <p className="text-[13px] text-[var(--p-muted)] mt-0.5">{subtitle}</p>}
         </div>
@@ -196,7 +196,7 @@ const Section = ({ icon, title, hint, action, children }: { icon: React.ReactNod
     <section className="rounded-[22px] border p-5 md:p-6 space-y-4" style={{ backgroundColor: 'var(--p-sunken)', borderColor: "var(--p-line)" }}>
         <div className="flex items-start justify-between gap-3 flex-wrap">
             <div>
-                <h3 className="text-[11px] font-semibold uppercase tracking-[0.2em] flex items-center gap-2 text-[var(--p-accent)] [&_svg]:w-[14px] [&_svg]:h-[14px]">{icon} {title}</h3>
+                <h3 className="text-[11px] font-semibold uppercase tracking-[0.06em] flex items-center gap-2 text-[var(--p-accent)] [&_svg]:w-[14px] [&_svg]:h-[14px]">{icon} {title}</h3>
                 {hint && <p className="text-xs text-[var(--p-muted)] mt-1.5">{hint}</p>}
             </div>
             {action}
@@ -207,7 +207,7 @@ const Section = ({ icon, title, hint, action, children }: { icon: React.ReactNod
 
 const Field = ({ label, className, children }: { label: string; className?: string; children: React.ReactNode }) => (
     <div className={`space-y-2 ${className ?? ""}`}>
-        <label className="text-[10.5px] font-medium text-[var(--p-muted)] uppercase tracking-[0.14em]">{label}</label>
+        <label className="text-[11px] font-medium text-[var(--p-muted)] uppercase tracking-[0.04em]">{label}</label>
         {children}
     </div>
 );
@@ -220,12 +220,12 @@ const ToggleTile = ({ label, icon, checked, onChange }: { label: string; icon?: 
 );
 
 /** Choix d'une option parmi quelques-unes (type de bien…) */
-const Segmented = <T extends string>({ options, value, onChange }: { options: { value: T; label: string; icon?: React.ReactNode }[]; value: T; onChange: (v: T) => void }) => (
-    <div className="grid gap-1 p-1 rounded-2xl bg-[var(--p-field)] border border-[var(--p-line)]" style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}>
+const Segmented = <T extends string>({ options, value, onChange }: { options: { value: T; label: string; short?: string; icon?: React.ReactNode }[]; value: T; onChange: (v: T) => void }) => (
+    <div className="grid gap-0.5 p-0.5 rounded-[14px] bg-[var(--p-sunken)]" style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}>
         {options.map(o => (
             <button key={o.value} type="button" onClick={() => onChange(o.value)}
-                className={`h-11 rounded-xl flex items-center justify-center gap-2 text-sm font-semibold transition-all ${value === o.value ? 'bg-[var(--p-invert-bg)] text-[var(--p-invert-fg)] shadow-lg' : 'text-[var(--p-muted)] hover:text-[var(--p-fg)]'}`}>
-                {o.icon}{o.label}
+                className={`h-10 min-w-0 rounded-xl flex items-center justify-center gap-1.5 text-[13px] sm:text-sm font-semibold transition-all ${value === o.value ? 'bg-[var(--p-segment)] text-[var(--p-fg)] shadow-[0_3px_8px_rgba(0,0,0,0.12),0_1px_1px_rgba(0,0,0,0.04)]' : 'text-[var(--p-muted)] hover:text-[var(--p-fg)]'}`}>
+                {o.icon && <span className="hidden sm:inline-flex">{o.icon}</span>}<span className="truncate sm:hidden">{o.short || o.label}</span><span className="truncate hidden sm:inline">{o.label}</span>
             </button>
         ))}
     </div>
@@ -910,9 +910,8 @@ export default function EstimationEditor({
         return (
             <div className="patrim-ui min-h-screen font-sans pb-32 relative">
                 <style>{`
-                    @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter+Tight:wght@300;400;500;600;700&display=swap');
-                    .dash-font { font-family: 'Inter Tight', 'DM Sans', sans-serif; letter-spacing: -0.005em; }
-                    .display-font { font-family: 'Fraunces', Georgia, serif; font-optical-sizing: auto; letter-spacing: -0.015em; }
+                    .dash-font { font-family: var(--font-ios); }
+                    .display-font { font-family: var(--font-ios); font-weight: 700; letter-spacing: -0.028em; }
                     .custom-scrollbar::-webkit-scrollbar { width: 4px; }
                     .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
                     .custom-scrollbar::-webkit-scrollbar-thumb { background: var(--p-line-strong); border-radius: 2px; }
@@ -921,7 +920,7 @@ export default function EstimationEditor({
                 <div className="editor-glow pointer-events-none absolute inset-x-0 top-0 h-[520px]"/>
 
                 {/* Nav Bar */}
-                <div className="fixed top-4 left-1/2 -translate-x-1/2 w-[95%] max-w-4xl z-50 flex justify-between items-center px-6 py-3 rounded-full border shadow-2xl dash-font"
+                <div className="fixed top-4 left-1/2 -translate-x-1/2 w-[95%] max-w-4xl z-50 flex justify-between items-center px-2.5 sm:px-6 py-2.5 sm:py-3 rounded-full border shadow-2xl dash-font"
                     style={{ backgroundColor: 'var(--p-glass)', backdropFilter: 'blur(24px)', borderColor: "var(--p-line)" }}>
                     <Button variant="ghost" onClick={goToMesBiens} className="text-[var(--p-muted)] hover:text-[var(--p-fg)] rounded-full gap-2 text-sm px-2 sm:px-4">
                         <ArrowLeft size={16}/> <span className="hidden sm:inline">Mes biens</span>
@@ -940,7 +939,7 @@ export default function EstimationEditor({
                             </button>
                         ))}
                     </div>
-                    <div className="flex items-center gap-2.5">
+                    <div className="flex items-center gap-1.5 sm:gap-2.5">
                         <ThemeToggle/>
                         <span className="hidden lg:inline text-[11px] text-[var(--p-muted)] whitespace-nowrap">
                             {isUploading ? "Upload des photos…"
@@ -950,8 +949,8 @@ export default function EstimationEditor({
                                 : saveState === "saved" && lastSavedAt ? `Enregistré à ${lastSavedAt.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`
                                 : saveState === "saved" ? "Enregistré" : ""}
                         </span>
-                        <Button onClick={() => handleSave(true)} disabled={isUploading || saveState === "saving"} className={`rounded-full h-9 px-5 text-sm font-semibold transition-all ${saveState === "saved" ? 'bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25' : saveState === "error" ? 'bg-rose-500 text-[#fff] hover:bg-rose-600' : isUploading ? 'bg-[var(--p-line-strong)] text-[var(--p-muted)] cursor-not-allowed' : 'bg-[var(--p-invert-bg)] text-[var(--p-invert-fg)] hover:opacity-90'}`}>
-                            {isUploading || saveState === "saving" ? <><Loader2 size={14} className="animate-spin mr-1.5"/>{isUploading ? 'Upload…' : 'Enregistrement'}</> : saveState === "saved" ? <><Check size={14} className="mr-1.5"/>Enregistré</> : saveState === "error" ? 'Réessayer' : 'Enregistrer'}
+                        <Button onClick={() => handleSave(true)} disabled={isUploading || saveState === "saving"} className={`rounded-full h-9 px-3 sm:px-5 text-sm font-semibold transition-all ${saveState === "saved" ? 'bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25' : saveState === "error" ? 'bg-rose-500 text-[#fff] hover:bg-rose-600' : isUploading ? 'bg-[var(--p-line-strong)] text-[var(--p-muted)] cursor-not-allowed' : 'bg-[var(--p-invert-bg)] text-[var(--p-invert-fg)] hover:opacity-90'}`}>
+                            {isUploading || saveState === "saving" ? <><Loader2 size={14} className="animate-spin sm:mr-1.5"/><span className="hidden sm:inline">{isUploading ? 'Upload…' : 'Enregistrement'}</span></> : saveState === "saved" ? <><Check size={14} className="sm:mr-1.5"/><span className="hidden sm:inline">Enregistré</span></> : saveState === "error" ? 'Réessayer' : 'Enregistrer'}
                         </Button>
                     </div>
                 </div>
@@ -988,7 +987,7 @@ export default function EstimationEditor({
                                             value={data.propertyType}
                                             onChange={v => setData(prev => ({ ...prev, propertyType: v }))}
                                             options={[
-                                                { value: "Appartement" as const, label: "Appartement", icon: <Building2 size={15}/> },
+                                                { value: "Appartement" as const, label: "Appartement", short: "Appart.", icon: <Building2 size={15}/> },
                                                 { value: "Maison" as const, label: "Maison", icon: <Home size={15}/> },
                                                 { value: "Autre" as const, label: "Autre" },
                                             ]}/>
@@ -1272,7 +1271,7 @@ export default function EstimationEditor({
                                             </div>
                                             {data.marketStats && (
                                                 <div className="text-right">
-                                                    <p className="text-[10px] uppercase tracking-widest text-[var(--p-muted)] font-semibold">Médiane secteur</p>
+                                                    <p className="text-[11px] uppercase tracking-widest text-[var(--p-muted)] font-semibold">Médiane secteur</p>
                                                     <p className="text-lg font-black text-[var(--p-fg)]">{formatPrice(data.marketStats.median)} <span className="text-xs text-[var(--p-muted)] font-semibold">€/m²</span></p>
                                                     <p className="text-[10px] text-[var(--p-muted)]">{data.marketStats.count} ventes · {data.marketStats.radius >= 1000 ? `${data.marketStats.radius / 1000} km` : `${data.marketStats.radius} m`} · {data.marketStats.years[0]}–{data.marketStats.years[data.marketStats.years.length - 1]}</p>
                                                 </div>
@@ -1408,7 +1407,7 @@ export default function EstimationEditor({
                                                                 ["Baisses de prix", `${withDrop}`, listings.length ? `${Math.round((withDrop / listings.length) * 100)} % des annonces` : ""],
                                                             ].map(([label, value, sub]) => (
                                                                 <div key={label} className="rounded-xl border border-[var(--p-line)] px-3.5 py-3" style={{ backgroundColor: 'var(--p-card)' }}>
-                                                                    <p className="text-[10px] uppercase tracking-[0.14em] text-[var(--p-muted)] font-semibold">{label}</p>
+                                                                    <p className="text-[11px] uppercase tracking-[0.04em] text-[var(--p-muted)] font-semibold">{label}</p>
                                                                     <p className="text-lg font-semibold text-[var(--p-fg)] mt-0.5">{value}</p>
                                                                     <p className="text-[10px] text-[var(--p-muted)]">{sub}</p>
                                                                 </div>
@@ -1626,7 +1625,7 @@ export default function EstimationEditor({
                                                     )}
                                                     {col.suggestions.length > 0 && (
                                                         <div>
-                                                            <p className="text-[10px] uppercase tracking-widest text-[var(--p-faint)] font-semibold mb-1.5">Suggestions · un clic pour ajouter</p>
+                                                            <p className="text-[11px] uppercase tracking-widest text-[var(--p-faint)] font-semibold mb-1.5">Suggestions · un clic pour ajouter</p>
                                                             <div className="flex flex-wrap gap-1.5">
                                                                 {col.suggestions.slice(0, 10).map(sg => (
                                                                     <button key={sg} type="button" onClick={() => add(sg)}

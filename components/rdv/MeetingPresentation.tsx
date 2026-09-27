@@ -64,7 +64,7 @@ function Reveal({ children, delay = 0 }: { children: React.ReactNode; delay?: nu
 function SectionTitle({ kicker, title }: { kicker: string; title: string }) {
     return (
         <div className="mb-5">
-            <p className="text-[10.5px] uppercase tracking-[0.25em] text-[var(--p-accent)] font-semibold">{kicker}</p>
+            <p className="text-[11px] uppercase tracking-[0.06em] text-[var(--p-accent)] font-semibold">{kicker}</p>
             <h2 className="mp-display text-[28px] sm:text-4xl leading-tight text-[var(--p-fg)] mt-1.5">{title}</h2>
         </div>
     );
@@ -100,9 +100,8 @@ export default function MeetingPresentation({ data: d, mode, askingPrice, financ
 
     return (
         <div className="mp-body">
-            <style>{`@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter+Tight:wght@400;500;600;700&display=swap');
-                .mp-body { font-family: 'Inter Tight', Inter, sans-serif; }
-                .mp-display { font-family: 'Fraunces', Georgia, serif; letter-spacing: -0.01em; }
+            <style>{`                .mp-body { font-family: var(--font-ios); }
+                .mp-display { font-family: var(--font-ios); font-weight: 700; letter-spacing: -0.028em; }
                 .mp-num { font-variant-numeric: tabular-nums; }`}</style>
 
             {/* ── COUVERTURE ── */}
@@ -114,7 +113,7 @@ export default function MeetingPresentation({ data: d, mode, askingPrice, financ
                 <div className="relative w-full max-w-5xl mx-auto px-5 sm:px-8 pb-10 sm:pb-14 text-[#fff]">
                     <motion.div initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}>
                         <span className="inline-flex items-center rounded-2xl bg-[rgba(255,255,255,0.92)] px-3 py-2 mb-8 shadow-lg"><img src="/logo-patrim.png" alt="Patrim" className="h-6 object-contain"/></span>
-                        <p className="text-[11px] uppercase tracking-[0.3em] text-[rgba(255,255,255,0.72)] font-semibold">{mode === "vendeur" ? "Avis de valeur" : "Analyse d'achat"}</p>
+                        <p className="text-[11px] uppercase tracking-[0.06em] text-[rgba(255,255,255,0.72)] font-semibold">{mode === "vendeur" ? "Avis de valeur" : "Analyse d'achat"}</p>
                         <h1 className="mp-display text-[38px] sm:text-6xl leading-[1.02] mt-3 max-w-3xl">{street || "Votre bien"}</h1>
                         {cityPart && <p className="text-[rgba(255,255,255,0.78)] mt-2 flex items-center gap-1.5 text-sm sm:text-base"><MapPin size={15}/>{cityPart}</p>}
                         <div className="flex flex-wrap gap-2 mt-6">
@@ -141,13 +140,13 @@ export default function MeetingPresentation({ data: d, mode, askingPrice, financ
                         <div className="grid lg:grid-cols-[1.2fr_1fr] gap-4">
                             <div className="relative overflow-hidden rounded-[32px] p-7 sm:p-10 text-[#fff]" style={{ background: "radial-gradient(120% 140% at 0% 0%, #b3261a 0%, #8a0e01 42%, #240806 100%)", boxShadow: "0 40px 90px -40px rgba(138,14,1,0.6)" }}>
                                 <div className="absolute -right-20 -top-20 w-72 h-72 rounded-full opacity-20 blur-3xl bg-[#ffb4a8]"/>
-                                <p className="relative text-[10.5px] uppercase tracking-[0.25em] text-[rgba(255,255,255,0.72)] font-semibold">Valeur de marché estimée</p>
+                                <p className="relative text-[11px] uppercase tracking-[0.06em] text-[rgba(255,255,255,0.72)] font-semibold">Valeur de marché estimée</p>
                                 <p className="relative mp-display mp-num text-[46px] sm:text-7xl leading-none mt-4">{central ? eur(central) : "—"}</p>
                                 {low > 0 && high > 0 && <p className="relative mp-num text-sm sm:text-base text-[rgba(255,255,255,0.82)] mt-4">Fourchette de {eur(low)} à {eur(high)}</p>}
                                 {sqm > 0 && <p className="relative mp-num inline-block text-xs mt-6 px-3 py-1.5 rounded-full bg-[rgba(255,255,255,0.14)]">{sqm.toLocaleString("fr-FR")} €/m²</p>}
                             </div>
                             <div className="rounded-[32px] border border-[var(--p-line)] p-7" style={{ backgroundColor: "var(--p-card)" }}>
-                                <p className="text-[10.5px] uppercase tracking-[0.2em] text-[var(--p-muted)] font-semibold">Position dans le quartier</p>
+                                <p className="text-[11px] uppercase tracking-[0.06em] text-[var(--p-muted)] font-semibold">Position dans le quartier</p>
                                 {stats && sqm ? (
                                     <>
                                         <MarketBar p25={stats.p25} p75={stats.p75} median={stats.median} value={sqm}/>
@@ -173,7 +172,7 @@ export default function MeetingPresentation({ data: d, mode, askingPrice, financ
                             <Stat label="Prix demandé" value={ask ? eur(ask) : "—"} sub={ask && S ? `${Math.round(ask / S).toLocaleString("fr-FR")} €/m²` : "à saisir"}/>
                             <Stat label="Valeur estimée" value={central ? eur(central) : "—"} sub={sqm ? `${sqm.toLocaleString("fr-FR")} €/m²` : ""}/>
                             <div className="rounded-[28px] p-6 text-[#fff]" style={{ background: verdict === "high" ? "linear-gradient(135deg, #7c2d12, #c2410c)" : verdict === "opportunity" ? "linear-gradient(135deg, #065f46, #10b981)" : "linear-gradient(135deg, #1e293b, #475569)" }}>
-                                <p className="text-[10.5px] uppercase tracking-[0.2em] opacity-80 font-semibold">Verdict</p>
+                                <p className="text-[11px] uppercase tracking-[0.06em] opacity-80 font-semibold">Verdict</p>
                                 <p className="mp-display text-2xl mt-2">{verdict === "high" ? "Au-dessus du marché" : verdict === "opportunity" ? "Opportunité" : verdict === "fair" ? "Prix cohérent" : "—"}</p>
                                 {gap !== null && <p className="mp-num text-sm opacity-90 mt-1">{gap > 0 ? "+" : ""}{(gap * 100).toFixed(1).replace(".", ",")} % vs notre estimation</p>}
                             </div>
@@ -291,7 +290,7 @@ export default function MeetingPresentation({ data: d, mode, askingPrice, financ
                 {d.agentAnalysis && (
                     <Reveal>
                         <SectionTitle kicker="Notre analyse" title="L'avis de l'agent"/>
-                        <p className="mp-display text-xl sm:text-2xl leading-relaxed text-[var(--p-fg-2)] whitespace-pre-line">{d.agentAnalysis}</p>
+                        <p className="text-xl sm:text-2xl leading-relaxed font-medium tracking-[-0.015em] text-[var(--p-fg-2)] whitespace-pre-line">{d.agentAnalysis}</p>
                     </Reveal>
                 )}
 
@@ -299,7 +298,7 @@ export default function MeetingPresentation({ data: d, mode, askingPrice, financ
                 <Reveal>
                     <div className="rounded-[32px] p-7 sm:p-10 border border-[var(--p-line)] flex flex-col sm:flex-row sm:items-center justify-between gap-6" style={{ backgroundColor: "var(--p-card)" }}>
                         <div>
-                            <p className="text-[10.5px] uppercase tracking-[0.25em] text-[var(--p-accent)] font-semibold">Votre interlocuteur</p>
+                            <p className="text-[11px] uppercase tracking-[0.06em] text-[var(--p-accent)] font-semibold">Votre interlocuteur</p>
                             <p className="mp-display text-3xl text-[var(--p-fg)] mt-2">{agent?.name || "Agence Patrim"}</p>
                             <p className="text-sm text-[var(--p-muted)] mt-1">{agent?.role || "Service Transaction"} · Patrim Toulouse</p>
                         </div>
@@ -315,7 +314,7 @@ export default function MeetingPresentation({ data: d, mode, askingPrice, financ
 function Stat({ label, value, sub, icon: Icon }: { label: string; value: string; sub?: string; icon?: typeof TrendingUp }) {
     return (
         <div className="rounded-[24px] border border-[var(--p-line)] p-5" style={{ backgroundColor: "var(--p-card)" }}>
-            <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--p-muted)] font-semibold flex items-center gap-1.5">{Icon && <Icon size={12} className="text-[var(--p-accent)]"/>}{label}</p>
+            <p className="text-[11px] uppercase tracking-[0.04em] text-[var(--p-muted)] font-semibold flex items-center gap-1.5">{Icon && <Icon size={12} className="text-[var(--p-accent)]"/>}{label}</p>
             <p className="mp-display mp-num text-2xl sm:text-[28px] text-[var(--p-fg)] mt-2 leading-tight">{value}</p>
             {sub && <p className="text-[11px] text-[var(--p-muted)] mt-1">{sub}</p>}
         </div>

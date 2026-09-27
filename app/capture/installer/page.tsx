@@ -34,16 +34,15 @@ const USE_STEPS = [
 export default function InstallerPage() {
     return (
         <div className="patrim-ui inst-body min-h-screen">
-            <style>{`@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter+Tight:wght@400;500;600;700&display=swap');
-                .inst-body { font-family: 'Inter Tight', Inter, sans-serif; }
-                .inst-display { font-family: 'Fraunces', Georgia, serif; }`}</style>
+            <style>{`                .inst-body { font-family: var(--font-ios); }
+                .inst-display { font-family: var(--font-ios); font-weight: 700; letter-spacing: -0.028em; }`}</style>
             <header className="max-w-4xl mx-auto px-6 pt-8 flex items-center justify-between">
                 <Link href="/mes-biens" className="text-sm text-[var(--p-muted)] hover:text-[var(--p-fg)] inline-flex items-center gap-2"><ArrowLeft size={15}/> Mes biens</Link>
                 <ThemeToggle/>
             </header>
             <main className="max-w-4xl mx-auto px-6 py-10 space-y-10">
                 <div className="space-y-3">
-                    <p className="text-[11px] uppercase tracking-[0.25em] text-[var(--p-accent)] font-semibold flex items-center gap-2"><Puzzle size={14}/> Extension navigateur</p>
+                    <p className="text-[11px] uppercase tracking-[0.06em] text-[var(--p-accent)] font-semibold flex items-center gap-2"><Puzzle size={14}/> Extension navigateur</p>
                     <h1 className="inst-display text-5xl text-[var(--p-fg)] leading-tight">Les annonces en vente,<br/>en un clic dans vos dossiers</h1>
                     <p className="text-[var(--p-muted)] max-w-2xl">Vous naviguez sur les portails comme d&apos;habitude : l&apos;extension Patrim envoie les annonces affichées dans votre dossier d&apos;estimation, avec leur photo, leur date de parution, leurs baisses de prix et une analyse de leurs particularités.</p>
                     <a href="/api/extension" className="inline-flex items-center gap-2 h-12 px-6 rounded-full text-sm font-semibold text-[#fff] mt-2" style={{ background: "linear-gradient(135deg, #8a0e01, #d35f52)" }}>

@@ -123,13 +123,12 @@ export default function CapturePage() {
 
     return (
         <div className="patrim-ui cap-body min-h-screen">
-            <style>{`@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter+Tight:wght@400;500;600;700&display=swap');
-                .cap-body { font-family: 'Inter Tight', Inter, sans-serif; }
-                .cap-display { font-family: 'Fraunces', Georgia, serif; }`}</style>
+            <style>{`                .cap-body { font-family: var(--font-ios); }
+                .cap-display { font-family: var(--font-ios); font-weight: 700; letter-spacing: -0.028em; }`}</style>
             <header className="max-w-5xl mx-auto px-6 pt-8 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                     <img src="/logo-patrim.png" alt="Patrim" className="h-8 object-contain"/>
-                    <span className="text-[10px] uppercase tracking-[0.3em] text-[var(--p-muted)] font-semibold">Capture d&apos;annonces</span>
+                    <span className="text-[11px] uppercase tracking-[0.06em] text-[var(--p-muted)] font-semibold">Capture d&apos;annonces</span>
                 </div>
                 <ThemeToggle/>
             </header>
@@ -153,7 +152,7 @@ export default function CapturePage() {
                 {(phase === "ready" || phase === "importing") && payload && (
                     <div className="max-w-2xl mx-auto rounded-[28px] border border-[var(--p-line)] p-8 space-y-6" style={{ backgroundColor: "var(--p-card)", boxShadow: "var(--p-shadow)" }}>
                         <div>
-                            <p className="text-[11px] uppercase tracking-[0.2em] text-[var(--p-accent)] font-semibold">{portal}</p>
+                            <p className="text-[11px] uppercase tracking-[0.06em] text-[var(--p-accent)] font-semibold">{portal}</p>
                             <h1 className="cap-display text-3xl text-[var(--p-fg)] mt-1">
                                 {cardCount >= 3 ? `${cardCount} annonces détectées` : "1 annonce détectée"}
                             </h1>
@@ -164,7 +163,7 @@ export default function CapturePage() {
                             <p className="text-sm text-[var(--p-muted)]">Créez d&apos;abord un dossier d&apos;estimation dans « Mes biens ».</p>
                         ) : (
                             <label className="block space-y-2">
-                                <span className="text-[11px] uppercase tracking-[0.14em] text-[var(--p-muted)] font-semibold">Ajouter au dossier</span>
+                                <span className="text-[11px] uppercase tracking-[0.04em] text-[var(--p-muted)] font-semibold">Ajouter au dossier</span>
                                 <select value={dossierId} onChange={e => setDossierId(e.target.value)} disabled={phase === "importing"}
                                     className="w-full h-12 rounded-2xl border px-4 text-sm outline-none cursor-pointer">
                                     {dossiers.map(d => (
@@ -206,7 +205,7 @@ export default function CapturePage() {
                     <div className="space-y-8">
                         <div className="flex items-end justify-between gap-4 flex-wrap">
                             <div>
-                                <p className="text-[11px] uppercase tracking-[0.2em] text-[var(--p-accent)] font-semibold flex items-center gap-2"><CheckCircle2 size={14}/> {result.portal}</p>
+                                <p className="text-[11px] uppercase tracking-[0.06em] text-[var(--p-accent)] font-semibold flex items-center gap-2"><CheckCircle2 size={14}/> {result.portal}</p>
                                 <h1 className="cap-display text-4xl text-[var(--p-fg)] mt-1">
                                     {result.added} nouvelle{result.added > 1 ? "s" : ""} annonce{result.added > 1 ? "s" : ""}
                                 </h1>

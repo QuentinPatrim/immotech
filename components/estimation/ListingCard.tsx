@@ -38,7 +38,7 @@ function SimilarityRing({ score }: { score: number }) {
             </svg>
             <span className="leading-tight">
                 <span className="block text-[13px] font-bold tabular-nums">{score}</span>
-                <span className="block text-[8px] uppercase tracking-[0.14em] opacity-70">similarité</span>
+                <span className="block text-[8px] uppercase tracking-[0.04em] opacity-70">similarité</span>
             </span>
         </div>
     );

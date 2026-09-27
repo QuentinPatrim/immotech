@@ -33,7 +33,7 @@ export default function FiscalSection({ inputs, rate, tmi, onTmi }: { inputs: Fi
                     </div>
                 </div>
                 <div>
-                    <p className="text-[10px] uppercase tracking-[0.16em] text-[var(--p-muted)] font-semibold mb-1.5">Tranche marginale d&apos;imposition</p>
+                    <p className="text-[11px] uppercase tracking-[0.04em] text-[var(--p-muted)] font-semibold mb-1.5">Tranche marginale d&apos;imposition</p>
                     <div className="grid grid-cols-5 p-1 rounded-xl gap-1" style={{ backgroundColor: "var(--p-sunken)" }} role="radiogroup" aria-label="Tranche marginale d'imposition">
                         {TMI_OPTIONS.map(t => (
                             <button key={t} type="button" role="radio" aria-checked={tmi === t} onClick={() => onTmi(t)}
@@ -50,17 +50,17 @@ export default function FiscalSection({ inputs, rate, tmi, onTmi }: { inputs: Fi
                     <div className="absolute -right-10 -bottom-24 w-72 h-72 rounded-full opacity-20 blur-3xl bg-[#ffb4a8]"/>
                     <div className="relative grid sm:grid-cols-[1.3fr_1fr] gap-5 items-end">
                         <div>
-                            <p className="text-[10.5px] uppercase tracking-[0.25em] text-[rgba(255,255,255,0.7)] font-semibold flex items-center gap-1.5"><Crown size={12}/> Régime recommandé</p>
+                            <p className="text-[11px] uppercase tracking-[0.06em] text-[rgba(255,255,255,0.7)] font-semibold flex items-center gap-1.5"><Crown size={12}/> Régime recommandé</p>
                             <p className="mp-display text-[30px] sm:text-4xl leading-tight mt-2">{best.label}</p>
                             {c.savingVsDefault > 500 && <p className="mp-num text-sm text-[rgba(255,255,255,0.85)] mt-2">{signed(c.savingVsDefault)} sur 10 ans face au régime par défaut</p>}
                         </div>
                         <div className="grid grid-cols-2 gap-3">
                             <div className="rounded-2xl px-4 py-3 bg-[rgba(255,255,255,0.1)] backdrop-blur-sm">
-                                <p className="text-[10px] uppercase tracking-[0.16em] text-[rgba(255,255,255,0.65)] font-semibold">{best.taxPerYear < 0 ? "Économie / an" : "Impôt / an"}</p>
+                                <p className="text-[11px] uppercase tracking-[0.04em] text-[rgba(255,255,255,0.65)] font-semibold">{best.taxPerYear < 0 ? "Économie / an" : "Impôt / an"}</p>
                                 <p className="mp-num text-xl font-semibold mt-1">{eur(Math.abs(best.taxPerYear))}</p>
                             </div>
                             <div className="rounded-2xl px-4 py-3 bg-[rgba(255,255,255,0.1)] backdrop-blur-sm">
-                                <p className="text-[10px] uppercase tracking-[0.16em] text-[rgba(255,255,255,0.65)] font-semibold">Cash-flow net</p>
+                                <p className="text-[11px] uppercase tracking-[0.04em] text-[rgba(255,255,255,0.65)] font-semibold">Cash-flow net</p>
                                 <p className="mp-num text-xl font-semibold mt-1">{signed(best.cashflowAfterTax)}<span className="text-xs font-normal opacity-70"> /mois</span></p>
                             </div>
                         </div>

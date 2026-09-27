@@ -3,7 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { PATRIM_THEME_SCRIPT } from "@/lib/patrimThemeScript";
 
-const inter = Inter({ subsets: ["latin"] });
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
 export const metadata: Metadata = {
   title: "Nexus Invest",
@@ -24,7 +24,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="fr" className="dark" suppressHydrationWarning>
+    <html lang="fr" className={`dark ${inter.variable}`} suppressHydrationWarning>
       <head>
         {/* Thème clair/sombre de l'espace agent, appliqué avant l'affichage */}
         <script dangerouslySetInnerHTML={{ __html: PATRIM_THEME_SCRIPT }} />

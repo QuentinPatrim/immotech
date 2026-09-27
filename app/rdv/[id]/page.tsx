@@ -138,7 +138,7 @@ export default function MeetingPage() {
                             <div className="flex p-1 rounded-xl gap-1" style={{ backgroundColor: "var(--p-sunken)" }} role="radiogroup" aria-label="Parcours">
                                 {(["vendeur", "acquereur"] as const).map(m => (
                                     <button key={m} type="button" role="radio" aria-checked={mode === m} onClick={() => setMode(m)}
-                                        className={`h-8 px-3 rounded-lg text-xs font-semibold transition-all ${mode === m ? "bg-[var(--p-invert-bg)] text-[var(--p-invert-fg)] shadow" : "text-[var(--p-muted)]"}`}>
+                                        className={`h-8 px-3 rounded-lg text-xs font-semibold transition-all ${mode === m ? "bg-[var(--p-segment)] text-[var(--p-fg)] shadow-[0_3px_8px_rgba(0,0,0,0.12),0_1px_1px_rgba(0,0,0,0.04)]" : "text-[var(--p-muted)]"}`}>
                                         {m === "vendeur" ? "Vendeur" : "Acquéreur"}
                                     </button>
                                 ))}
@@ -185,8 +185,8 @@ export default function MeetingPage() {
                             style={{ backgroundColor: "var(--p-card)", paddingBottom: "max(1.5rem, env(safe-area-inset-bottom))" }}>
                             <div className="flex items-start justify-between">
                                 <div>
-                                    <p className="text-[10.5px] uppercase tracking-[0.22em] text-[var(--p-accent)] font-semibold">Fin de rendez-vous</p>
-                                    <p className="mp-display text-2xl text-[var(--p-fg)] mt-1" style={{ fontFamily: "Fraunces, Georgia, serif" }}>Laissez l&apos;avis au client</p>
+                                    <p className="text-[11px] uppercase tracking-[0.06em] text-[var(--p-accent)] font-semibold">Fin de rendez-vous</p>
+                                    <p className="mp-display text-2xl text-[var(--p-fg)] mt-1">Laissez l&apos;avis au client</p>
                                 </div>
                                 <button type="button" onClick={() => setSheet(false)} className="h-9 w-9 rounded-full flex items-center justify-center text-[var(--p-muted)] hover:bg-[var(--p-hover)]" aria-label="Fermer"><X size={17}/></button>
                             </div>

@@ -323,17 +323,14 @@ export default function MesBiensPage() {
     // --- RENDU ---
     return (
         <div className="patrim-ui min-h-screen pb-24 md:pb-0" style={{ backgroundColor: "var(--p-bg)" }}>
-            {/* Import de la typo Fraunces (élégante) + Inter Tight (body) */}
+            {/* Typographie iOS : SF Pro (Apple) / Inter, voir globals.css */}
             <style dangerouslySetInnerHTML={{ __html: `
-                @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700;9..144,900&family=Inter+Tight:wght@400;500;600;700;800&display=swap');
 
                 .font-display {
-                    font-family: 'Fraunces', serif;
-                    font-optical-sizing: auto;
-                    font-variation-settings: "SOFT" 50, "WONK" 0;
+                    font-family: var(--font-ios); font-weight: 700; letter-spacing: -0.028em;
                 }
                 .font-body {
-                    font-family: 'Inter Tight', sans-serif;
+                    font-family: var(--font-ios);
                 }
 
                 @keyframes fadeInUp {
@@ -373,7 +370,7 @@ export default function MesBiensPage() {
                             <img src="/logo-patrim.png" alt="PATRIM" className="h-10 object-contain"/>
                             <div className="hidden sm:block h-10 w-px bg-[var(--p-line-strong)]"/>
                             <div className="hidden sm:block">
-                                <p className="text-[9px] uppercase tracking-[0.3em] text-[var(--p-muted)] font-bold font-body">Espace agent</p>
+                                <p className="text-[11px] uppercase tracking-[0.06em] text-[var(--p-muted)] font-bold font-body">Espace agent</p>
                                 <p className="text-xs text-[var(--p-fg-2)] font-body mt-0.5">Toulouse</p>
                             </div>
                         </div>
@@ -408,7 +405,7 @@ export default function MesBiensPage() {
                     {/* Titre éditorial énorme */}
                     <div className="flex items-end justify-between gap-6 flex-wrap">
                         <div>
-                            <p className="text-[10px] uppercase tracking-[0.4em] font-bold mb-2 font-body" style={{ color: COLORS.secondary }}>
+                            <p className="text-[11px] uppercase tracking-[0.06em] font-bold mb-2 font-body" style={{ color: COLORS.secondary }}>
                                 Vos dossiers
                             </p>
                             <h1 className="font-display text-5xl md:text-7xl text-[var(--p-fg)] tracking-tight leading-[0.95]" style={{ fontWeight: 500 }}>
@@ -677,7 +674,7 @@ function KpiTile({ label, value, hint, accent, onClick }: {
             className={`text-left rounded-2xl border px-4 py-3 min-w-[128px] transition-colors ${onClick ? 'hover:bg-[var(--p-hover)] cursor-pointer' : ''}`}
             style={{ backgroundColor: 'var(--p-card)', borderColor: accent ? accent + '55' : "var(--p-line)" }}
         >
-            <p className="p-tint text-[9px] uppercase tracking-[0.2em] font-bold font-body" style={{ color: accent || 'var(--p-muted)' }}>{label}</p>
+            <p className="p-tint text-[11px] uppercase tracking-[0.06em] font-bold font-body" style={{ color: accent || 'var(--p-muted)' }}>{label}</p>
             <p className="font-display text-2xl text-[var(--p-fg)] mt-0.5 leading-none" style={{ fontWeight: 600 }}>{value}</p>
             {hint && <p className="text-[10px] text-[var(--p-muted)] mt-1 font-body truncate">{hint}</p>}
         </Tag>
@@ -759,7 +756,7 @@ function EstimationCard({
                         <div className="relative">
                             <button
                                 onClick={(e) => { e.stopPropagation(); setOpenMenuId(statusMenuOpen ? null : estim.id + '-status'); }}
-                                className="p-tint inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider font-body border transition-colors hover:brightness-125"
+                                className="p-tint inline-flex items-center gap-1.5 text-[11px] font-bold px-2 py-1 rounded-full uppercase tracking-wider font-body border transition-colors hover:brightness-125"
                                 style={{ color: meta.color, borderColor: meta.color + '55', backgroundColor: meta.color + '14' }}
                             >
                                 <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: meta.color }}/>
@@ -787,17 +784,17 @@ function EstimationCard({
                                 </div>
                             )}
                         </div>
-                        <span className="text-[9px] uppercase tracking-[0.2em] font-bold text-[var(--p-muted)] font-body">{propertyType}</span>
+                        <span className="text-[11px] uppercase tracking-[0.06em] font-bold text-[var(--p-muted)] font-body">{propertyType}</span>
                         {relance && (
                             <button onClick={(e) => { e.stopPropagation(); onFollowedUp(); }}
                                 title="Marquer comme relancé (le compteur repart à zéro)"
-                                className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider font-body bg-amber-400/15 text-amber-300 hover:bg-amber-400/25">
+                                className="inline-flex items-center gap-1 text-[11px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider font-body bg-amber-400/15 text-amber-300 hover:bg-amber-400/25">
                                 <BellRing size={9}/> À relancer · J+{relanceDays}
                             </button>
                         )}
                         {hasQrLink && (
                             <span
-                                className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider font-body"
+                                className="inline-flex items-center gap-1 text-[11px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider font-body"
                                 style={{ background: COLORS.secondary + '20', color: COLORS.secondary }}
                             >
                                 <Link2 size={9}/> Lié QR
@@ -847,7 +844,7 @@ function EstimationCard({
                 {/* Actions */}
                 <div className="flex items-center gap-2 pr-4 pl-2">
                     <div className="hidden sm:flex flex-col items-end pr-2 gap-1">
-                        <p className="text-[10px] uppercase tracking-widest text-[var(--p-faint)] font-bold font-body">{formattedDate}</p>
+                        <p className="text-[11px] uppercase tracking-widest text-[var(--p-faint)] font-bold font-body">{formattedDate}</p>
                         {statusDays !== null && status !== "en_cours" && (
                             <p className="text-[10px] text-[var(--p-faint)] font-body">{meta.short} {statusDays === 0 ? "aujourd'hui" : `il y a ${statusDays} j`}</p>
                         )}
@@ -980,12 +977,12 @@ function QrCodeCard({
                 {/* Infos */}
                 <button onClick={onOpen} className="flex-1 min-w-0 text-left p-4 sm:p-5">
                     <div className="flex items-center gap-2 mb-1.5">
-                        <span className="text-[9px] uppercase tracking-[0.2em] font-bold text-[var(--p-muted)] font-body">
+                        <span className="text-[11px] uppercase tracking-[0.06em] font-bold text-[var(--p-muted)] font-body">
                             {qr.property_type || "QR Code"}
                         </span>
                         {hasEstimationLink && (
                             <span
-                                className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider font-body"
+                                className="inline-flex items-center gap-1 text-[11px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider font-body"
                                 style={{ background: COLORS.secondary + '20', color: COLORS.secondary }}
                             >
                                 <Link2 size={9}/> Aussi estimation
@@ -1012,7 +1009,7 @@ function QrCodeCard({
                 {/* Actions */}
                 <div className="flex items-center gap-2 pr-4 pl-2">
                     <div className="hidden sm:block text-right pr-2">
-                        <p className="text-[10px] uppercase tracking-widest text-[var(--p-faint)] font-bold font-body">{formattedDate}</p>
+                        <p className="text-[11px] uppercase tracking-widest text-[var(--p-faint)] font-bold font-body">{formattedDate}</p>
                     </div>
                     <button
                         onClick={onOpen}

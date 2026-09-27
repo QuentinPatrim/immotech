@@ -162,64 +162,98 @@ input[type=number] {
    par l'agent (bouton soleil / lune) et mémorisé sur le poste.
    Hors @layer : ces règles passent devant les utilitaires Tailwind.
    ===================================================================== */
+/* Typographie façon iOS : SF Pro sur les appareils Apple (police système),
+   Inter ailleurs (même dessin néo-grotesque, chargée par next/font). */
+:root {
+  --font-ios: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", var(--font-inter), "Inter", system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+/* Couleurs système iOS (fonds groupés, séparateurs, libellés) + rouge Patrim */
 .patrim-ui {
-  --p-bg: #0d0d0f;
-  --p-card: #141417;
-  --p-card-2: #1a1a1e;
-  --p-sunken: #111114;
-  --p-field: #0a0a0c;
-  --p-line: rgba(255, 255, 255, 0.07);
-  --p-line-strong: rgba(255, 255, 255, 0.14);
-  --p-hover: rgba(255, 255, 255, 0.05);
-  --p-fg: #f4f1ec;
-  --p-fg-2: #d6d0c8;
-  --p-muted: #928b83;
-  --p-faint: #615b55;
-  --p-glass: rgba(20, 20, 23, 0.84);
-  --p-accent: #d35f52;
+  --p-bg: #000000;
+  --p-card: #1c1c1e;
+  --p-card-2: #2c2c2e;
+  --p-sunken: rgba(118, 118, 128, 0.18);
+  --p-field: rgba(118, 118, 128, 0.2);
+  --p-line: rgba(255, 255, 255, 0.08);
+  --p-line-strong: rgba(255, 255, 255, 0.16);
+  --p-hover: rgba(255, 255, 255, 0.06);
+  --p-fg: #ffffff;
+  --p-fg-2: rgba(235, 235, 245, 0.86);
+  --p-muted: rgba(235, 235, 245, 0.6);
+  --p-faint: rgba(235, 235, 245, 0.32);
+  --p-glass: rgba(28, 28, 30, 0.72);
+  --p-accent: #ff6159;
   --p-accent-strong: #8a0e01;
-  --p-accent-soft: rgba(211, 95, 82, 0.12);
-  --p-invert-bg: #f4f1ec;
-  --p-invert-fg: #121212;
-  --p-shadow: 0 40px 80px -30px rgba(0, 0, 0, 0.75);
-  --p-positive: #34d399;
-  --p-warning: #fbbf24;
-  --p-negative: #fb7185;
+  --p-accent-soft: rgba(255, 97, 89, 0.14);
+  --p-invert-bg: #ffffff;
+  --p-invert-fg: #000000;
+  --p-segment: #636366;
+  --p-shadow: 0 30px 60px -30px rgba(0, 0, 0, 0.8);
+  --p-positive: #30d158;
+  --p-warning: #ff9f0a;
+  --p-negative: #ff453a;
   background-color: var(--p-bg);
   color: var(--p-fg);
   color-scheme: dark;
+  font-family: var(--font-ios);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  letter-spacing: -0.006em;
 }
 
 html[data-patrim-theme="light"] .patrim-ui {
-  --p-bg: #f3f0eb;
+  --p-bg: #f2f2f7;
   --p-card: #ffffff;
-  --p-card-2: #fbf9f6;
-  --p-sunken: #f8f6f2;
+  --p-card-2: #fafafa;
+  --p-sunken: rgba(118, 118, 128, 0.07);
   --p-field: #ffffff;
-  --p-line: #e9e3db;
-  --p-line-strong: #d8d0c6;
-  --p-hover: rgba(40, 28, 16, 0.05);
-  --p-fg: #1e1a16;
-  --p-fg-2: #3d3731;
-  --p-muted: #7c746b;
-  --p-faint: #aaa196;
-  --p-glass: rgba(255, 255, 255, 0.86);
-  --p-accent: #a93a2b;
+  --p-line: rgba(60, 60, 67, 0.12);
+  --p-line-strong: rgba(60, 60, 67, 0.22);
+  --p-hover: rgba(0, 0, 0, 0.04);
+  --p-fg: #1d1d1f;
+  --p-fg-2: #3a3a3c;
+  --p-muted: #86868b;
+  --p-faint: #aeaeb2;
+  --p-glass: rgba(255, 255, 255, 0.72);
+  --p-accent: #c4271b;
   --p-accent-strong: #8a0e01;
-  --p-accent-soft: rgba(138, 14, 1, 0.07);
-  --p-invert-bg: #1e1a16;
+  --p-accent-soft: rgba(196, 39, 27, 0.08);
+  --p-invert-bg: #1d1d1f;
   --p-invert-fg: #ffffff;
-  --p-shadow: 0 30px 70px -40px rgba(70, 45, 20, 0.28);
-  --p-positive: #047857;
-  --p-warning: #b45309;
-  --p-negative: #be123c;
+  --p-segment: #ffffff;
+  --p-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 16px 40px -16px rgba(0, 0, 0, 0.14);
+  --p-positive: #248a3d;
+  --p-warning: #c93400;
+  --p-negative: #d70015;
   color-scheme: light;
 }
 
 html[data-patrim-theme="light"] body:has(.patrim-ui) {
-  background-color: #f3f0eb !important;
-  color: #1e1a16 !important;
+  background-color: #f2f2f7 !important;
+  color: #1d1d1f !important;
 }
+
+/* Toutes les familles locales des pages (anciennes Fraunces / Inter Tight) → iOS */
+.patrim-ui .font-body, .patrim-ui .font-sans, .patrim-ui .dash-font,
+.mp-body, .xp-body, .cap-body, .inst-body {
+  font-family: var(--font-ios) !important;
+}
+/* Titres : « Large Title » iOS, gras et serrés */
+.patrim-ui .font-display, .patrim-ui .display-font,
+.mp-display, .xp-display, .cap-display, .inst-display {
+  font-family: var(--font-ios) !important;
+  font-weight: 700;
+  letter-spacing: -0.028em !important;
+  font-variation-settings: normal !important;
+}
+/* Matériaux translucides iOS */
+.patrim-ui .backdrop-blur-xl, .patrim-ui .backdrop-blur-md, .patrim-ui .backdrop-blur-lg {
+  -webkit-backdrop-filter: saturate(180%) blur(24px);
+  backdrop-filter: saturate(180%) blur(24px);
+}
+.patrim-ui .tabular-nums, .patrim-ui .mp-num { font-variant-numeric: tabular-nums; }
 
 /* Champs, boutons et interrupteurs des composants partagés */
 .patrim-ui [data-slot="input"],
@@ -258,7 +292,7 @@ html[data-patrim-theme="light"] body:has(.patrim-ui) {
   color: var(--p-fg);
 }
 .patrim-ui button[role="switch"][data-state="checked"] {
-  background-color: var(--p-accent);
+  background-color: var(--p-positive);
 }
 .patrim-ui button[role="switch"][data-state="unchecked"] {
   background-color: var(--p-line-strong);
@@ -275,8 +309,8 @@ html[data-patrim-theme="light"] .patrim-ui .text-sky-300 { color: #0369a1; }
 /* Couleurs de statut (pensées pour le sombre) assombries sur fond clair */
 html[data-patrim-theme="light"] .patrim-ui .p-tint { filter: brightness(0.66) saturate(1.35); }
 
-html[data-patrim-theme="light"] .patrim-ui ::-webkit-scrollbar { background-color: #f3f0eb; }
-html[data-patrim-theme="light"] .patrim-ui ::-webkit-scrollbar-thumb { background-color: #d8d0c6; }
+html[data-patrim-theme="light"] .patrim-ui ::-webkit-scrollbar { background-color: #f2f2f7; }
+html[data-patrim-theme="light"] .patrim-ui ::-webkit-scrollbar-thumb { background-color: #c7c7cc; }
 
 /* Signature manuscrite lisible en thème sombre */
 html:not([data-patrim-theme="light"]) .patrim-ui .dark-invert { filter: invert(1) brightness(1.4); }

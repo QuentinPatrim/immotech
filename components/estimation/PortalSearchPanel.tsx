@@ -183,7 +183,7 @@ export default function PortalSearchPanel({ estimationId, subject, onImported }:
     const num = (v?: number) => (v ? formatNumber(v) : "…");
     const numInput = (k: keyof SearchCriteria, label: string, suffix: string) => (
         <label className="block">
-            <span className="text-[10px] uppercase tracking-[0.12em] text-[var(--p-muted)] font-semibold">{label}</span>
+            <span className="text-[11px] uppercase tracking-[0.04em] text-[var(--p-muted)] font-semibold">{label}</span>
             <div className="relative mt-1">
                 <input type="number" inputMode="numeric" min={0} value={(criteria[k] as number | undefined) ?? ""}
                     onChange={e => setField(k, (e.target.value === "" ? undefined : Number(e.target.value)) as never)}
@@ -229,13 +229,13 @@ export default function PortalSearchPanel({ estimationId, subject, onImported }:
                     {numInput("priceMax", "Prix max", "€")}
                     {numInput("radiusKm", "Rayon", "km")}
                     <label className="block">
-                        <span className="text-[10px] uppercase tracking-[0.12em] text-[var(--p-muted)] font-semibold">Pages par portail</span>
+                        <span className="text-[11px] uppercase tracking-[0.04em] text-[var(--p-muted)] font-semibold">Pages par portail</span>
                         <select value={criteria.pages} onChange={e => setField("pages", Number(e.target.value))} className="mt-1 w-full h-9 rounded-lg border px-2.5 text-sm outline-none">
                             {[1, 2].map(n => <option key={n} value={n}>{n}</option>)}
                         </select>
                     </label>
                     <div className="col-span-2 sm:col-span-4">
-                        <span className="text-[10px] uppercase tracking-[0.12em] text-[var(--p-muted)] font-semibold">Exigence de similarité</span>
+                        <span className="text-[11px] uppercase tracking-[0.04em] text-[var(--p-muted)] font-semibold">Exigence de similarité</span>
                         <div className="mt-1 grid grid-cols-3 gap-1 p-1 rounded-xl border border-[var(--p-line)]" role="radiogroup" style={{ backgroundColor: "var(--p-sunken)" }}>
                             {STRICTNESS.map(x => (
                                 <button key={x.key} type="button" role="radio" aria-checked={strictness === x.key} onClick={() => set({ strictness: x.key })}
@@ -247,7 +247,7 @@ export default function PortalSearchPanel({ estimationId, subject, onImported }:
                         </div>
                     </div>
                     <div className="col-span-2 sm:col-span-4 flex flex-wrap items-center gap-2">
-                        <span className="text-[10px] uppercase tracking-[0.12em] text-[var(--p-muted)] font-semibold mr-1">Portails</span>
+                        <span className="text-[11px] uppercase tracking-[0.04em] text-[var(--p-muted)] font-semibold mr-1">Portails</span>
                         {PORTALS.map(p => (
                             <button key={p.key} type="button" onClick={() => togglePortal(p.key)} aria-pressed={portals.includes(p.key)}
                                 className={`h-8 px-3 rounded-full text-xs font-semibold border transition-colors ${portals.includes(p.key) ? "bg-[var(--p-invert-bg)] text-[var(--p-invert-fg)] border-transparent" : "border-[var(--p-line-strong)] text-[var(--p-muted)]"}`}>

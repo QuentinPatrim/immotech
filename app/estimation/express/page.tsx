@@ -139,13 +139,12 @@ export default function ExpressEstimationPage() {
     };
 
     const card = "rounded-3xl border border-[var(--p-line)] p-5";
-    const label = "text-[10.5px] uppercase tracking-[0.16em] text-[var(--p-muted)] font-semibold";
+    const label = "text-[11px] uppercase tracking-[0.04em] text-[var(--p-muted)] font-semibold";
 
     return (
         <div className="patrim-ui xp-body min-h-screen pb-36">
-            <style>{`@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter+Tight:wght@400;500;600;700&display=swap');
-                .xp-body { font-family: 'Inter Tight', Inter, sans-serif; }
-                .xp-display { font-family: 'Fraunces', Georgia, serif; }
+            <style>{`                .xp-body { font-family: var(--font-ios); }
+                .xp-display { font-family: var(--font-ios); font-weight: 700; letter-spacing: -0.028em; }
                 .xp-num { font-variant-numeric: tabular-nums; }`}</style>
             <div className="pointer-events-none fixed inset-x-0 top-0 h-72 opacity-70" style={{ background: "radial-gradient(60% 100% at 50% 0%, var(--p-accent-soft), transparent)" }}/>
 
@@ -159,7 +158,7 @@ export default function ExpressEstimationPage() {
                     {phase !== "result" ? (
                         <motion.div key="form" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} className="space-y-5">
                             <div>
-                                <p className="text-[11px] uppercase tracking-[0.25em] text-[var(--p-accent)] font-semibold flex items-center gap-2"><Sparkles size={13}/> Estimation express</p>
+                                <p className="text-[11px] uppercase tracking-[0.06em] text-[var(--p-accent)] font-semibold flex items-center gap-2"><Sparkles size={13}/> Estimation express</p>
                                 <h1 className="xp-display text-[34px] sm:text-5xl leading-[1.05] text-[var(--p-fg)] mt-2">Le prix du bien,<br/>en deux minutes.</h1>
                                 <p className="text-sm text-[var(--p-muted)] mt-2">Ventes réelles DVF autour de l&apos;adresse, ajustées selon l&apos;étage, l&apos;état et les prestations.</p>
                             </div>
@@ -243,7 +242,7 @@ export default function ExpressEstimationPage() {
                         <motion.div key="result" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-5">
                             <div className="relative overflow-hidden rounded-[32px] p-6 sm:p-8 text-[#fff]" style={{ background: "radial-gradient(120% 140% at 0% 0%, #b3261a 0%, #8a0e01 40%, #2a0a06 100%)", boxShadow: "0 30px 80px -30px rgba(138,14,1,0.55)" }}>
                                 <div className="absolute -right-16 -top-16 w-56 h-56 rounded-full opacity-25 blur-2xl" style={{ background: "#ffb4a8" }}/>
-                                <p className="relative text-[10.5px] uppercase tracking-[0.25em] text-[rgba(255,255,255,0.7)] font-semibold">Valeur estimée</p>
+                                <p className="relative text-[11px] uppercase tracking-[0.06em] text-[rgba(255,255,255,0.7)] font-semibold">Valeur estimée</p>
                                 <p className="relative xp-display xp-num text-[44px] sm:text-6xl leading-none mt-3">{fmtEur(result.central)}</p>
                                 <p className="relative xp-num text-sm text-[rgba(255,255,255,0.8)] mt-3">Fourchette {fmtEur(result.low)} – {fmtEur(result.high)}</p>
                                 <div className="relative mt-5 flex flex-wrap gap-2 text-[11px]">
@@ -319,7 +318,7 @@ export default function ExpressEstimationPage() {
 function Stepper({ label, value, min, max, onChange, format }: { label: string; value: number; min: number; max: number; onChange: (v: number) => void; format?: (v: number) => string }) {
     return (
         <div>
-            <span className="text-[10.5px] uppercase tracking-[0.16em] text-[var(--p-muted)] font-semibold">{label}</span>
+            <span className="text-[11px] uppercase tracking-[0.04em] text-[var(--p-muted)] font-semibold">{label}</span>
             <div className="mt-2 h-14 rounded-2xl border border-[var(--p-line-strong)] flex items-center justify-between px-1.5" style={{ backgroundColor: "var(--p-field)" }}>
                 <button type="button" onClick={() => onChange(Math.max(min, value - 1))} className="h-11 w-11 rounded-xl flex items-center justify-center text-[var(--p-fg)] hover:bg-[var(--p-hover)] active:scale-95" aria-label={`${label} moins`}><Minus size={17}/></button>
                 <span className="text-2xl font-semibold text-[var(--p-fg)] tabular-nums">{format ? format(value) : value}</span>

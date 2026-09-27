@@ -102,7 +102,7 @@ export default function FinancingSection({ price, estimatedValue, dpe, value, on
                         <Money label="Apport" value={inputs.downPayment} onChange={n => set({ downPayment: n })}/>
                         <Money label="Travaux" value={inputs.works} onChange={n => set({ works: n })}/>
                         <label className="flex flex-col gap-1.5">
-                            <span className="text-[10px] uppercase tracking-[0.16em] text-[var(--p-muted)] font-semibold">Type</span>
+                            <span className="text-[11px] uppercase tracking-[0.04em] text-[var(--p-muted)] font-semibold">Type</span>
                             <button type="button" onClick={() => set({ newBuild: !inputs.newBuild })}
                                 className="h-11 rounded-xl border border-[var(--p-line)] px-3 text-sm text-left text-[var(--p-fg)]" style={{ backgroundColor: "var(--p-field)" }}>
                                 {inputs.newBuild ? "Neuf · frais 2,5 %" : "Ancien · frais 8 %"}
@@ -111,7 +111,7 @@ export default function FinancingSection({ price, estimatedValue, dpe, value, on
                     </div>
 
                     <div>
-                        <p className="text-[10px] uppercase tracking-[0.16em] text-[var(--p-muted)] font-semibold mb-2">Durée et taux</p>
+                        <p className="text-[11px] uppercase tracking-[0.04em] text-[var(--p-muted)] font-semibold mb-2">Durée et taux</p>
                         <div className="grid grid-cols-3 gap-2">
                             {DURATIONS.map(y => {
                                 const on = inputs.years === y;
@@ -151,16 +151,16 @@ export default function FinancingSection({ price, estimatedValue, dpe, value, on
                         <div className="absolute -right-16 -top-24 w-72 h-72 rounded-full opacity-25 blur-3xl bg-[#d35f52]"/>
                         <div className="relative flex items-start justify-between gap-4">
                             <div>
-                                <p className="text-[10.5px] uppercase tracking-[0.25em] text-[rgba(255,255,255,0.6)] font-semibold flex items-center gap-1.5"><Landmark size={12}/> Mensualité</p>
+                                <p className="text-[11px] uppercase tracking-[0.06em] text-[rgba(255,255,255,0.6)] font-semibold flex items-center gap-1.5"><Landmark size={12}/> Mensualité</p>
                                 <p className="mp-display mp-num text-[44px] sm:text-6xl leading-none mt-3">{r.loan ? eur(r.monthly) : "—"}</p>
                                 <p className="mp-num text-xs sm:text-sm text-[rgba(255,255,255,0.7)] mt-3">
                                     {r.loan ? <>dont {eur(r.monthlyInsurance)} d&apos;assurance · {inputs.years} ans à {rate(r.rate)}</> : "Apport suffisant : pas de crédit"}
                                 </p>
                             </div>
                             <div className="text-right shrink-0">
-                                <p className="text-[10px] uppercase tracking-[0.2em] text-[rgba(255,255,255,0.55)] font-semibold">Emprunt</p>
+                                <p className="text-[11px] uppercase tracking-[0.06em] text-[rgba(255,255,255,0.55)] font-semibold">Emprunt</p>
                                 <p className="mp-num text-lg font-semibold mt-1">{kEur(r.loan)}</p>
-                                <p className="text-[10px] uppercase tracking-[0.2em] text-[rgba(255,255,255,0.55)] font-semibold mt-3">TAEG</p>
+                                <p className="text-[11px] uppercase tracking-[0.06em] text-[rgba(255,255,255,0.55)] font-semibold mt-3">TAEG</p>
                                 <p className={`mp-num text-lg font-semibold mt-1 ${r.usuryOk ? "" : "text-[#fca5a5]"}`}>{r.taeg !== null ? rate(r.taeg) : "—"}</p>
                             </div>
                         </div>
@@ -250,7 +250,7 @@ export default function FinancingSection({ price, estimatedValue, dpe, value, on
                     <div className="flex items-center gap-4">
                         <ScoreRing score={v.score}/>
                         <div>
-                            <p className="text-[10.5px] uppercase tracking-[0.22em] opacity-75 font-semibold">Notre verdict</p>
+                            <p className="text-[11px] uppercase tracking-[0.06em] opacity-75 font-semibold">Notre verdict</p>
                             <p className="mp-display text-[28px] leading-tight mt-1">{v.label}</p>
                         </div>
                     </div>
@@ -286,7 +286,7 @@ function Segmented<T extends string>({ value, onChange, options }: { value: T; o
         <div className="grid grid-cols-2 p-1 rounded-2xl gap-1" style={{ backgroundColor: "var(--p-sunken)" }} role="radiogroup">
             {options.map(o => (
                 <button key={o.id} type="button" role="radio" aria-checked={value === o.id} onClick={() => onChange(o.id)}
-                    className={`h-11 rounded-xl text-xs sm:text-sm font-semibold inline-flex items-center justify-center gap-1.5 transition-all ${value === o.id ? "bg-[var(--p-card)] text-[var(--p-fg)] shadow" : "text-[var(--p-muted)]"}`}>
+                    className={`h-11 rounded-xl text-xs sm:text-sm font-semibold inline-flex items-center justify-center gap-1.5 transition-all ${value === o.id ? "bg-[var(--p-segment)] text-[var(--p-fg)] shadow-[0_3px_8px_rgba(0,0,0,0.12),0_1px_1px_rgba(0,0,0,0.04)]" : "text-[var(--p-muted)]"}`}>
                     <o.icon size={14} className="shrink-0"/><span className="sm:hidden">{o.short || o.label}</span><span className="hidden sm:inline">{o.label}</span>
                 </button>
             ))}
@@ -297,7 +297,7 @@ function Segmented<T extends string>({ value, onChange, options }: { value: T; o
 function Money({ label, value, onChange, placeholder }: { label: string; value: number; onChange: (n: number) => void; placeholder?: string }) {
     return (
         <label className="flex flex-col gap-1.5 min-w-0">
-            <span className="text-[10px] uppercase tracking-[0.16em] text-[var(--p-muted)] font-semibold truncate">{label}</span>
+            <span className="text-[11px] uppercase tracking-[0.04em] text-[var(--p-muted)] font-semibold truncate">{label}</span>
             <span className="relative">
                 <input inputMode="numeric" value={value ? value.toLocaleString("fr-FR") : ""} placeholder={placeholder || "0"}
                     onChange={e => onChange(Number(e.target.value.replace(/\D/g, "")) || 0)}
@@ -314,7 +314,7 @@ function Num({ label, value, onChange, suffix, step }: { label: string; value: n
     const shown = focus ? txt : value.toFixed(2).replace(".", ",");
     return (
         <label className="flex flex-col gap-1.5 min-w-0">
-            <span className="text-[10px] uppercase tracking-[0.16em] text-[var(--p-muted)] font-semibold truncate">{label}</span>
+            <span className="text-[11px] uppercase tracking-[0.04em] text-[var(--p-muted)] font-semibold truncate">{label}</span>
             <span className="relative flex items-center">
                 <button type="button" onClick={() => onChange(+Math.max(0, value - step).toFixed(2))} className="absolute left-1 h-9 w-8 rounded-lg text-[var(--p-muted)] hover:bg-[var(--p-hover)]" aria-label={`Diminuer ${label}`}>−</button>
                 <input inputMode="decimal" value={shown}
@@ -332,7 +332,7 @@ function Num({ label, value, onChange, suffix, step }: { label: string; value: n
 function Tile({ label, value, sub, tone, children }: { label: string; value: string; sub?: string; tone?: "pos" | "neg"; children?: React.ReactNode }) {
     return (
         <div className="rounded-[22px] border border-[var(--p-line)] p-4 sm:p-5 min-w-0" style={{ backgroundColor: "var(--p-card)" }}>
-            <p className="text-[10px] uppercase tracking-[0.16em] text-[var(--p-muted)] font-semibold truncate">{label}</p>
+            <p className="text-[11px] uppercase tracking-[0.04em] text-[var(--p-muted)] font-semibold truncate">{label}</p>
             <p className={`mp-display mp-num text-[22px] sm:text-[26px] leading-tight mt-1.5 ${tone === "pos" ? "text-[var(--p-positive)]" : tone === "neg" ? "text-[var(--p-negative)]" : "text-[var(--p-fg)]"}`}>{value}</p>
             {sub && <p className="text-[11px] text-[var(--p-muted)] mt-1 leading-snug">{sub}</p>}
             {children}
