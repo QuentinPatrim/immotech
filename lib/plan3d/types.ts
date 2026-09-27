@@ -12,7 +12,7 @@ export interface Pt { x: number; y: number }
 
 export type RoomKind =
     | "sejour" | "cuisine" | "chambre" | "sdb" | "wc" | "entree" | "couloir"
-    | "bureau" | "dressing" | "cellier" | "buanderie" | "balcon" | "terrasse" | "autre";
+    | "bureau" | "dressing" | "cellier" | "buanderie" | "balcon" | "terrasse" | "jardin" | "autre";
 
 export const ROOM_KINDS: { id: RoomKind; label: string }[] = [
     { id: "sejour", label: "Séjour" },
@@ -27,12 +27,13 @@ export const ROOM_KINDS: { id: RoomKind; label: string }[] = [
     { id: "cellier", label: "Cellier / rangement" },
     { id: "buanderie", label: "Buanderie" },
     { id: "balcon", label: "Balcon" },
+    { id: "jardin", label: "Jardin" },
     { id: "terrasse", label: "Terrasse" },
     { id: "autre", label: "Autre" },
 ];
 
 /** Pièces extérieures : pas de murs pleins (garde-corps), non comptées dans la surface habitable */
-export const OUTDOOR_KINDS: RoomKind[] = ["balcon", "terrasse"];
+export const OUTDOOR_KINDS: RoomKind[] = ["balcon", "terrasse", "jardin"];
 
 export interface Room {
     id: string;
@@ -107,6 +108,13 @@ export interface Plan3D {
     schematic?: boolean;
     /** Surfaces de référence verrouillées à l'édition (vrai par défaut quand elles existent) */
     lockAreas?: boolean;
+    /**
+     * Orientation : cap (degrés, sens horaire depuis le nord) du haut du plan.
+     * 0 = le haut du plan regarde le nord ; 90 = l'est. Sert au soleil et à la vue extérieure.
+     */
+    north?: number;
+    /** Position du bien (géocodage de l'adresse) */
+    geo?: { lat: number; lng: number };
     updatedAt?: string;
 }
 
@@ -121,6 +129,8 @@ export interface Wall {
     thickness: number;
     /** Garde-corps bas (côté extérieur d'un balcon / d'une terrasse) */
     railing: boolean;
+    /** Bordure de jardin : haie plutôt que garde-corps */
+    hedge?: boolean;
     /** Ouvertures sur ce mur, positions exprimées en mètres depuis `a` le long du mur */
     openings: { kind: OpeningKind; from: number; to: number; id: string }[];
 }

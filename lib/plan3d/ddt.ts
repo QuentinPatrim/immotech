@@ -81,6 +81,7 @@ const KIND_RULES: { kind: RoomKind; re: RegExp }[] = [
     { kind: "dressing", re: /dressing/i },
     { kind: "buanderie", re: /buanderie|lingerie/i },
     { kind: "cellier", re: /placard|rangement|cellier|d[ée]barras|\brgt\b|remise/i },
+    { kind: "jardin", re: /jardin|pelouse|espace vert/i },
     { kind: "terrasse", re: /terrasse/i },
     { kind: "balcon", re: /balcon|loggia/i },
     { kind: "autre", re: /mezzanine|v[ée]randa|pi[èe]ce|biblioth[èe]que|salle de jeux|atelier/i },
@@ -131,7 +132,7 @@ export function parseCarrez(lines: string[], kind: "carrez" | "habitable" = "car
         const k = kindFromLabel(label);
         if (!k) continue;
         const first = nums[0].v, second = nums[1]?.v ?? 0;
-        const isOutdoor = k === "balcon" || k === "terrasse";
+        const isOutdoor = k === "balcon" || k === "terrasse" || k === "jardin";
         const area = isOutdoor ? (first > 0 ? first : second) : first > 0 ? first : 0;
         if (!(area > 0.2 && area < 500)) continue;
         const key = `${label.toLowerCase()}|${area}`;

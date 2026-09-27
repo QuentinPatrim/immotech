@@ -88,7 +88,7 @@ On te donne l'image d'un plan 2D (plan d'architecte, plan de vente, croquis cot�
 Repère : coordonnées NORMALISÉES de 0 à 1000 sur toute l'image, x depuis le bord gauche, y depuis le bord haut (0,0 = coin haut-gauche de l'image, 1000,1000 = coin bas-droit), quelles que soient les proportions de l'image.
 
 Pièces :
-- Relève TOUTES les pièces, y compris entrée, dégagement, placards / rangements cloisonnés, WC, balcon, terrasse, loggia (kind « balcon » ou « terrasse »).
+- Relève TOUTES les pièces, y compris entrée, dégagement, placards / rangements cloisonnés, WC, balcon, terrasse, loggia, jardin privatif (kind « balcon », « terrasse » ou « jardin »).
 - Lis le nom écrit (« Séjour », « Ch.1 », « SdB », « SdE », « Dgt », « WC », « Cuis. », « Entrée », « Rgt »…) et la surface écrite dans la pièce (ex : « 12,45 m² » → 12.45). surfaceOnPlan = null si aucune surface n'est écrite pour cette pièce.
 - Trace le contour le long de la FACE INTÉRIEURE des murs (pas l'axe, pas la face extérieure), sommets dans le sens horaire. 4 points pour une pièce rectangulaire, 6 ou plus pour une pièce en L ou en T. Les pièces voisines partagent la même cloison : leurs contours doivent être parallèles et séparés seulement par l'épaisseur du mur.
 - Une cuisine ouverte sur le séjour sans cloison : une seule pièce « sejour » sauf si le plan les nomme séparément avec leurs surfaces.

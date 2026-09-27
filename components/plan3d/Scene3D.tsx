@@ -15,7 +15,10 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentRef, type RefObject } from "react";
 import * as THREE from "three";
 import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
-import { ContactShadows, Environment, Lightformer, OrbitControls } from "@react-three/drei";
+import { ContactShadows, Environment, Lightformer, OrbitControls, Sky } from "@react-three/drei";
+import { EffectComposer, N8AO, SMAA, ToneMapping } from "@react-three/postprocessing";
+import { ToneMappingMode } from "postprocessing";
+import { DEFAULT_GEO, localDate, planDirection, sunPosition } from "@/lib/plan3d/sun";
 import type { Plan3D, Pt, Room, Wall } from "@/lib/plan3d/types";
 import { centroid, computeWalls, edgePoint, isOutdoor, planBBox, pointInPolygon, roomArea } from "@/lib/plan3d/geometry";
 import { STYLES, type StylePalette } from "@/lib/plan3d/styles";
@@ -39,6 +42,12 @@ export interface Scene3DProps {
     onEdit?: (plan: Plan3D) => void;
     /** Surfaces de référence verrouillées pendant l'édition */
     lockAreas?: boolean;
+    /** Visite : angle de vue horizontal (degrés), heure du jour (soleil), étage (hauteur du sol extérieur) */
+    walkFov?: number;
+    hour?: number;
+    floorLevel?: number;
+    /** Rendu soigné (occlusion ambiante, anticrénelage) ; désactivable sur appareil modeste */
+    quality?: "high" | "low";
     selectedOpeningId?: string | null;
     onSelectOpening?: (id: string | null) => void;
 }
@@ -79,7 +88,7 @@ class Batch {
     }
 }
 
-interface WallGeometries { sides: THREE.BufferGeometry; caps: THREE.BufferGeometry; frames: THREE.BufferGeometry; glass: THREE.BufferGeometry; rails: THREE.BufferGeometry }
+interface WallGeometries { sides: THREE.BufferGeometry; caps: THREE.BufferGeometry; frames: THREE.BufferGeometry; glass: THREE.BufferGeometry; rails: THREE.BufferGeometry; hedges: THREE.BufferGeometry }
 
 const BOX_TOP_GROUP = 2;
 
@@ -89,7 +98,7 @@ const BOX_TOP_GROUP = 2;
  * Chaque mur a son repère local : X le long du mur (de a vers b), Y vertical, Z l'épaisseur.
  */
 function buildWalls(walls: Wall[], height: number, ox: number, oy: number): WallGeometries {
-    const sides = new Batch(), caps = new Batch(), frames = new Batch(), glass = new Batch(), rails = new Batch();
+    const sides = new Batch(), caps = new Batch(), frames = new Batch(), glass = new Batch(), rails = new Batch(), hedges = new Batch();
     const local = new THREE.Matrix4();
     const matrix = new THREE.Matrix4();
 
@@ -115,6 +124,15 @@ function buildWalls(walls: Wall[], height: number, ox: number, oy: number): Wall
             g.dispose();
         };
 
+        if (w.railing && w.hedge) {
+            // Jardin : haie taillée, légèrement irrégulière
+            const parts = Math.max(1, Math.round(L / 0.9));
+            for (let i = 0; i < parts; i++) {
+                const s0 = (i * L) / parts, s1 = ((i + 1) * L) / parts;
+                put(hedges, s0 - 0.02, s1 + 0.02, 0, 1.15 + ((i * 37) % 7) * 0.02, 0.55);
+            }
+            continue;
+        }
         if (w.railing) {
             put(sides, 0, L, 0, 0.05, 0.1, true);
             put(glass, 0, L, 0.05, RAILING - 0.02, 0.012);
@@ -161,7 +179,7 @@ function buildWalls(walls: Wall[], height: number, ox: number, oy: number): Wall
         }
         put(sides, cursor, L + ext, 0, height, t, true);
     }
-    return { sides: sides.build(), caps: caps.build(), frames: frames.build(), glass: glass.build(), rails: rails.build() };
+    return { sides: sides.build(), caps: caps.build(), frames: frames.build(), glass: glass.build(), rails: rails.build(), hedges: hedges.build() };
 }
 
 function Walls({ plan, palette, ox, oy }: { plan: Pick<Plan3D, "rooms" | "openings" | "wallHeight">; palette: StylePalette; ox: number; oy: number }) {
@@ -186,6 +204,9 @@ function Walls({ plan, palette, ox, oy }: { plan: Pick<Plan3D, "rooms" | "openin
             <mesh geometry={geo.rails} castShadow receiveShadow onClick={stop}>
                 <meshStandardMaterial color={palette.metal} roughness={0.35} metalness={0.8} />
             </mesh>
+            <mesh geometry={geo.hedges} castShadow receiveShadow onClick={stop}>
+                <meshStandardMaterial color="#4f7a36" roughness={1} />
+            </mesh>
             <mesh geometry={geo.glass} renderOrder={2} onClick={stop}>
                 <meshPhysicalMaterial color="#cfe4ee" transparent opacity={0.25} roughness={0.05} metalness={0} depthWrite={false} side={THREE.DoubleSide} envMapIntensity={1.4} />
             </mesh>
@@ -203,9 +224,11 @@ interface FloorItem { room: Room; geometry: THREE.ShapeGeometry; texture: THREE.
  * devient +Y : le sol regarde vers le haut). Les UV de ShapeGeometry sont les
  * coordonnées de la forme, donc des mètres : la texture porte sa propre échelle.
  */
-function Floors({ plan, palette, ox, oy, selectedRoomId, onFloorClick }: {
+function Floors({ plan, palette, ox, oy, selectedRoomId, onFloorClick, ceilings }: {
     plan: Plan3D; palette: StylePalette; ox: number; oy: number; selectedRoomId: string | null;
     onFloorClick: (e: ThreeEvent<MouseEvent>, room: Room) => void;
+    /** Plafonds (visite à hauteur d'œil) */
+    ceilings: boolean;
 }) {
     const items = useMemo<FloorItem[]>(() => plan.rooms.filter(r => r.polygon.length >= 3).map(room => {
         const shape = new THREE.Shape(room.polygon.map(p => new THREE.Vector2(p.x - ox, -(p.y - oy))));
@@ -241,6 +264,13 @@ function Floors({ plan, palette, ox, oy, selectedRoomId, onFloorClick }: {
                     </mesh>
                 );
             })}
+            {ceilings && items.filter(i => !isOutdoor(i.room)).map(i => (
+                // Même forme que le sol, retournée vers le bas à hauteur sous plafond
+                <mesh key={`c${i.room.id}`} geometry={i.geometry} rotation={[Math.PI / 2, 0, 0]} position={[0, plan.wallHeight || 2.5, 0]} scale={[1, -1, 1]} receiveShadow>
+                    {/* Lumière renvoyée par le sol et les murs : un plafond blanc n'est jamais gris */}
+                    <meshStandardMaterial color="#f7f6f3" roughness={0.95} side={THREE.DoubleSide} emissive="#fffaf2" emissiveIntensity={0.42} />
+                </mesh>
+            ))}
         </group>
     );
 }
@@ -333,22 +363,43 @@ function LabelLayer({ items, selectedRoomId, onSelect, dark, elements }: {
 
 /* ─────────────────────────── ÉCLAIRAGE ─────────────────────────── */
 
-function Lights({ radius, dark }: { radius: number; dark: boolean }) {
-    const sun = useRef<THREE.DirectionalLight>(null);
+/** Soleil dans le repère de la scène : direction (vers le soleil), intensité et teinte selon sa hauteur */
+export interface SunLight { dir: THREE.Vector3; altitude: number; intensity: number; color: string; up: boolean }
+
+export function sunLightFor(plan: Pick<Plan3D, "north" | "geo">, hour: number): SunLight {
+    const geo = plan.geo ?? DEFAULT_GEO;
+    const pos = sunPosition(localDate(hour), geo.lat, geo.lng);
+    const h = planDirection(pos.azimuth, plan.north ?? 0);
+    const alt = Math.max(-10, pos.altitude) * (Math.PI / 180);
+    const dir = new THREE.Vector3(h.x * Math.cos(alt), Math.sin(alt), h.y * Math.cos(alt)).normalize();
+    const up = pos.altitude > 1;
+    // Lumière chaude au lever / coucher, blanche en journée
+    const warm = Math.max(0, Math.min(1, 1 - pos.altitude / 25));
+    const color = new THREE.Color("#fff6e8").lerp(new THREE.Color("#ffb070"), warm).getStyle();
+    const intensity = up ? 1.2 + 2.2 * Math.min(1, Math.sin(alt) * 1.6) : 0;
+    return { dir, altitude: pos.altitude, intensity, color, up };
+}
+
+function Lights({ radius, dark, sun, interior }: { radius: number; dark: boolean; sun: SunLight; interior: boolean }) {
+    const light = useRef<THREE.DirectionalLight>(null);
     const r = Math.max(6, radius);
     const s = r + 1.5;
     useLayoutEffect(() => {
-        sun.current?.shadow.camera.updateProjectionMatrix();
+        light.current?.shadow.camera.updateProjectionMatrix();
     }, [s, r]);
+    // Soleil sous l'horizon : lumière de ciel seule (crépuscule / nuit)
+    const pos = sun.up ? sun.dir.clone().multiplyScalar(r * 2.2) : new THREE.Vector3(-r * 0.55, r * 1.15, r * 0.7);
+    const night = !sun.up;
     return (
         <>
-            <hemisphereLight args={["#ffffff", "#d8cdbf", dark ? 0.4 : 0.6]} />
-            <ambientLight intensity={dark ? 0.12 : 0.18} />
+            {/* En visite, lumière de rebond plus forte (pièce éclairée par ses fenêtres) */}
+            <hemisphereLight args={[night ? "#9fb3d9" : "#ffffff", "#d8cdbf", (dark || night ? 0.35 : 0.6) * (interior ? 1.5 : 1)]} />
+            <ambientLight intensity={dark || night ? 0.12 : 0.16} />
             <directionalLight
-                ref={sun}
-                position={[-r * 0.55, r * 1.15, r * 0.7]}
-                intensity={dark ? 2 : 2.5}
-                color="#fff0da"
+                ref={light}
+                position={pos}
+                intensity={night ? (dark ? 0.6 : 0.8) : sun.intensity * (dark ? 0.8 : 1)}
+                color={night ? "#c9d6f0" : sun.color}
                 castShadow
                 shadow-mapSize={[2048, 2048]}
                 shadow-camera-left={-s}
@@ -356,11 +407,12 @@ function Lights({ radius, dark }: { radius: number; dark: boolean }) {
                 shadow-camera-top={s}
                 shadow-camera-bottom={-s}
                 shadow-camera-near={0.5}
-                shadow-camera-far={r * 4}
+                shadow-camera-far={r * 5}
                 shadow-bias={-0.0004}
                 shadow-normalBias={0.03}
+                shadow-radius={4}
             />
-            <Environment resolution={256} environmentIntensity={dark ? 0.55 : 0.85}>
+            <Environment resolution={256} environmentIntensity={(dark || night ? 0.5 : 0.85) * (interior ? 1.25 : 1)}>
                 <Lightformer form="rect" intensity={2.2} position={[0, 9, 0]} scale={[14, 14, 1]} color="#ffffff" />
                 <Lightformer form="rect" intensity={1.3} position={[-9, 3, 5]} scale={[12, 4, 1]} color="#fff0dc" />
                 <Lightformer form="rect" intensity={0.8} position={[9, 3, -5]} scale={[12, 4, 1]} color="#e4edfb" />
@@ -398,6 +450,26 @@ function walkStartOf(plan: Pick<Plan3D, "rooms" | "openings">): WalkStart | null
     let eye = { x: c.x - (dx / len) * back, y: c.y - (dy / len) * back };
     if (!pointInPolygon(eye, room.polygon)) eye = c;
     return { eye, look };
+}
+
+/**
+ * Départ de la visite, façon photographe immobilier : dans l'angle de la pièce le
+ * plus éloigné de sa grande baie, en retrait de 45 cm, regard en diagonale vers la
+ * baie — avec un grand angle, toute la pièce est dans le cadre.
+ */
+function walkCornerOf(plan: Pick<Plan3D, "rooms" | "openings">): WalkStart | null {
+    const base = walkStartOf(plan);
+    if (!base) return null;
+    const room = plan.rooms.find(r => pointInPolygon(base.eye, r.polygon) && !isOutdoor(r))
+        ?? plan.rooms.find(r => r.kind === "sejour");
+    if (!room) return base;
+    const c = centroid(room.polygon);
+    const far = room.polygon.reduce((a, p) => (Math.hypot(p.x - base.look.x, p.y - base.look.y) > Math.hypot(a.x - base.look.x, a.y - base.look.y) ? p : a));
+    const toC = { x: c.x - far.x, y: c.y - far.y };
+    const l = Math.hypot(toC.x, toC.y) || 1;
+    let eye = { x: far.x + (toC.x / l) * 0.6, y: far.y + (toC.y / l) * 0.6 };
+    if (!pointInPolygon(eye, room.polygon)) eye = base.eye;
+    return { eye, look: { x: (c.x + base.look.x) / 2, y: (c.y + base.look.y) / 2 } };
 }
 
 function fovs(aspect: number) {
@@ -441,9 +513,11 @@ interface Anim { fromPos: THREE.Vector3; fromTarget: THREE.Vector3; toPos: THREE
 
 const ease = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 
-function CameraRig({ view, plan, bb, ox, oy, autoRotate, walkRequestRef }: {
+function CameraRig({ view, plan, bb, ox, oy, autoRotate, walkRequestRef, walkFov }: {
     view: ViewMode; plan: Plan3D; bb: BBox; ox: number; oy: number; autoRotate: boolean;
     walkRequestRef: RefObject<THREE.Vector3 | null>;
+    /** Angle de vue horizontal en visite (degrés) */
+    walkFov: number;
 }) {
     const controls = useRef<Controls>(null);
     const get = useThree(s => s.get);
@@ -452,8 +526,21 @@ function CameraRig({ view, plan, bb, ox, oy, autoRotate, walkRequestRef }: {
     const wallH = plan.wallHeight || 2.5;
     const { rooms, openings } = plan;
     const walk = useMemo(() => walkStartOf({ rooms, openings }), [rooms, openings]);
-    const latest = useRef({ bb, wallH, walk, ox, oy });
-    useEffect(() => { latest.current = { bb, wallH, walk, ox, oy }; });
+    const corner = useMemo(() => walkCornerOf({ rooms, openings }), [rooms, openings]);
+    const latest = useRef({ bb, wallH, walk, corner, ox, oy });
+    useEffect(() => { latest.current = { bb, wallH, walk, corner, ox, oy }; });
+
+    // Grand angle en visite : l'angle horizontal voulu, converti en angle vertical selon le cadre
+    const size = useThree(s => s.size);
+    useEffect(() => {
+        const { camera } = get();
+        if (!(camera instanceof THREE.PerspectiveCamera)) return;
+        const aspect = size.width / Math.max(1, size.height);
+        const h = THREE.MathUtils.degToRad(Math.min(110, Math.max(40, walkFov)));
+        const v = view === "walk" ? Math.min(100, THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(h / 2) / aspect))) : FOV;
+        camera.fov = Math.max(FOV, v);
+        camera.updateProjectionMatrix();
+    }, [view, walkFov, size, get]);
 
     // Recadrage uniquement au changement de vue ou d'emprise du plan (pas à chaque édition)
     const fitKey = `${Math.round(bb.w * 2)}|${Math.round(bb.h * 2)}`;
@@ -461,7 +548,7 @@ function CameraRig({ view, plan, bb, ox, oy, autoRotate, walkRequestRef }: {
         const { camera, size } = get();
         const c = controls.current;
         const l = latest.current;
-        const to = poseFor(view, l.bb, l.wallH, size.width / Math.max(1, size.height), l.walk, l.ox, l.oy);
+        const to = poseFor(view, l.bb, l.wallH, size.width / Math.max(1, size.height), view === "walk" ? l.corner : l.walk, l.ox, l.oy);
         // Plan proche serré en visite seulement : en vue maquette/dessus, un near plus grand
         // garde la précision du tampon de profondeur (sols à 3 mm du socle, joints de façade…)
         if (camera instanceof THREE.PerspectiveCamera) {
@@ -535,8 +622,9 @@ function CameraRig({ view, plan, bb, ox, oy, autoRotate, walkRequestRef }: {
 
 /* ─────────────────────────── SCÈNE ─────────────────────────── */
 
-function SceneContent({ plan, dragging, onDraft, labels, labelEls, view, showFurniture, selectedRoomId, onSelectRoom, dark, autoRotate, onEdit, lockAreas, selectedOpeningId, onSelectOpening }: {
+function SceneContent({ plan, dragging, onDraft, labels, labelEls, view, showFurniture, selectedRoomId, onSelectRoom, dark, autoRotate, onEdit, lockAreas, selectedOpeningId, onSelectOpening, walkFov, hour, floorLevel, quality }: {
     plan: Plan3D; dragging: boolean; onDraft: (p: Plan3D | null) => void; labels: LabelItem[]; labelEls: RefObject<Map<string, HTMLElement>>;
+    walkFov: number; hour: number; floorLevel: number; quality: "high" | "low";
     view: ViewMode; showFurniture: boolean; selectedRoomId: string | null;
     onSelectRoom?: (id: string | null) => void; dark: boolean; autoRotate: boolean;
     onEdit?: (plan: Plan3D) => void; lockAreas: boolean; selectedOpeningId: string | null; onSelectOpening?: (id: string | null) => void;
@@ -555,6 +643,11 @@ function SceneContent({ plan, dragging, onDraft, labels, labelEls, view, showFur
     const bg = dark ? "#0f0f11" : "#eceae6";
     const radius = 0.5 * Math.hypot(Math.max(bb.w, 3), Math.max(bb.h, 3), plan.wallHeight || 2.5);
     const walkRequestRef = useRef<THREE.Vector3 | null>(null);
+    const walking = view === "walk";
+    const { north, geo } = plan;
+    const sun = useMemo(() => sunLightFor({ north, geo }, hour), [north, geo, hour]);
+    // Sol extérieur à la hauteur réelle (3 m par étage) : vue plongeante depuis les fenêtres
+    const groundY = -Math.max(0, floorLevel) * 3 - 0.14;
 
     const onFloorClick = (e: ThreeEvent<MouseEvent>, room: Room) => {
         e.stopPropagation();
@@ -565,11 +658,26 @@ function SceneContent({ plan, dragging, onDraft, labels, labelEls, view, showFur
 
     return (
         <>
-            <color attach="background" args={[bg]} />
-            <fog attach="fog" args={[bg, radius * 8, radius * 20]} />
-            <Lights radius={radius} dark={dark} />
+            {walking ? (
+                <>
+                    {/* Visite : vrai ciel, soleil à sa place selon l'adresse, l'orientation et l'heure */}
+                    <Sky distance={4500} sunPosition={sun.up ? [sun.dir.x, sun.dir.y, sun.dir.z] : [sun.dir.x, -0.05, sun.dir.z]}
+                        turbidity={5} rayleigh={sun.up ? 1.2 : 3} mieCoefficient={0.004} mieDirectionalG={0.85} />
+                    <fog attach="fog" args={[sun.up ? "#dfe8ef" : "#2a3444", 60, 900]} />
+                    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, groundY, 0]} receiveShadow>
+                        <circleGeometry args={[900, 64]} />
+                        <meshStandardMaterial color={sun.up ? "#8c9476" : "#2e3326"} roughness={1} />
+                    </mesh>
+                </>
+            ) : (
+                <>
+                    <color attach="background" args={[bg]} />
+                    <fog attach="fog" args={[bg, radius * 8, radius * 20]} />
+                </>
+            )}
+            <Lights radius={radius} dark={dark} sun={sun} interior={walking} />
 
-            {hasRooms && (
+            {hasRooms && !walking && (
                 <>
                     {/* Socle de maquette */}
                     <mesh position={[0, -0.06, 0]} castShadow receiveShadow>
@@ -589,12 +697,21 @@ function SceneContent({ plan, dragging, onDraft, labels, labelEls, view, showFur
                 </>
             )}
             {/* Sol récepteur d'ombres, quasi invisible */}
-            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.13, 0]} receiveShadow>
-                <planeGeometry args={[400, 400]} />
-                <shadowMaterial opacity={dark ? 0.3 : 0.12} />
-            </mesh>
+            {!walking && (
+                <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.13, 0]} receiveShadow>
+                    <planeGeometry args={[400, 400]} />
+                    <shadowMaterial opacity={dark ? 0.3 : 0.12} />
+                </mesh>
+            )}
+            {walking && hasRooms && (
+                // Dalle du logement (vue de l'extérieur par les fenêtres)
+                <mesh position={[0, -0.1, 0]} receiveShadow>
+                    <boxGeometry args={[bb.w + 0.5, 0.2, bb.h + 0.5]} />
+                    <meshStandardMaterial color="#c9c4bc" roughness={0.9} />
+                </mesh>
+            )}
 
-            <Floors plan={plan} palette={palette} ox={ox} oy={oy} selectedRoomId={selectedRoomId} onFloorClick={onFloorClick} />
+            <Floors plan={plan} palette={palette} ox={ox} oy={oy} selectedRoomId={selectedRoomId} onFloorClick={onFloorClick} ceilings={walking} />
             <Walls plan={plan} palette={palette} ox={ox} oy={oy} />
             {showFurniture && <FurnitureLayer plan={plan} palette={palette} ox={ox} oy={oy} />}
             <LabelProjector items={labels} ox={ox} oy={oy} elements={labelEls} />
@@ -604,7 +721,15 @@ function SceneContent({ plan, dragging, onDraft, labels, labelEls, view, showFur
                     selectedOpeningId={selectedOpeningId} onSelectOpening={id => onSelectOpening?.(id)}
                     onDraft={onDraft} onCommit={onEdit}/>
             )}
-            <CameraRig view={view} plan={plan} bb={bb} ox={ox} oy={oy} autoRotate={autoRotate && view === "dollhouse"} walkRequestRef={walkRequestRef} />
+            <CameraRig view={view} plan={plan} bb={bb} ox={ox} oy={oy} autoRotate={autoRotate && view === "dollhouse"} walkRequestRef={walkRequestRef} walkFov={walkFov} />
+            {quality === "high" && (
+                // Occlusion ambiante (angles, pieds de meubles), anticrénelage, tonalité filmique
+                <EffectComposer multisampling={0} enableNormalPass={false}>
+                    <N8AO halfRes aoRadius={walking ? 0.8 : 0.6} distanceFalloff={0.6} intensity={walking ? 2.4 : 1.8} quality="performance" />
+                    <SMAA />
+                    <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
+                </EffectComposer>
+            )}
         </>
     );
 }
@@ -623,6 +748,10 @@ export default function Scene3D({
     autoRotate = false,
     onEdit,
     lockAreas = false,
+    walkFov = 80,
+    hour = 15,
+    floorLevel = 1,
+    quality = "high",
     selectedOpeningId = null,
     onSelectOpening,
 }: Scene3DProps) {
@@ -682,6 +811,10 @@ export default function Scene3D({
                     autoRotate={autoRotate}
                     onEdit={onEdit}
                     lockAreas={lockAreas}
+                    walkFov={walkFov}
+                    hour={hour}
+                    floorLevel={floorLevel}
+                    quality={quality}
                     selectedOpeningId={selectedOpeningId}
                     onSelectOpening={onSelectOpening}
                 />

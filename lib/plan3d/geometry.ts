@@ -102,7 +102,7 @@ export function nearestEdge(room: Room, p: Pt) {
 
 /* ─────────────────────────── MURS ─────────────────────────── */
 
-interface EdgeRef { a: Pt; b: Pt; roomId: string; outdoor: boolean }
+interface EdgeRef { a: Pt; b: Pt; roomId: string; outdoor: boolean; garden: boolean }
 
 /**
  * Murs du plan : les côtés de toutes les pièces sont regroupés par droite
@@ -119,7 +119,7 @@ export function computeWalls(plan: Pick<Plan3D, "rooms" | "openings">): Wall[] {
         if (n < 3) continue;
         for (let i = 0; i < n; i++) {
             const a = r.polygon[i], b = r.polygon[(i + 1) % n];
-            if (dist(a, b) > 0.05) edges.push({ a, b, roomId: r.id, outdoor: isOutdoor(r) });
+            if (dist(a, b) > 0.05) edges.push({ a, b, roomId: r.id, outdoor: isOutdoor(r), garden: r.kind === "jardin" });
         }
     }
 
@@ -145,7 +145,7 @@ export function computeWalls(plan: Pick<Plan3D, "rooms" | "openings">): Wall[] {
         const at = (s: number): Pt => ({ x: g.ux * s + g.nx * off, y: g.uy * s + g.ny * off });
         const spans = g.items.map(e => {
             const s1 = e.a.x * g.ux + e.a.y * g.uy, s2 = e.b.x * g.ux + e.b.y * g.uy;
-            return { from: Math.min(s1, s2), to: Math.max(s1, s2), roomId: e.roomId, outdoor: e.outdoor };
+            return { from: Math.min(s1, s2), to: Math.max(s1, s2), roomId: e.roomId, outdoor: e.outdoor, garden: e.garden };
         });
         const cuts = Array.from(new Set(spans.flatMap(s => [s.from, s.to]))).sort((a, b) => a - b);
         let current: Wall | null = null;
@@ -174,6 +174,7 @@ export function computeWalls(plan: Pick<Plan3D, "rooms" | "openings">): Wall[] {
                 exterior: kind === "ext",
                 thickness: kind === "ext" ? EXTERIOR_WALL : kind === "int" ? INTERIOR_WALL : 0.06,
                 railing: kind === "rail",
+                hedge: kind === "rail" && cover.some(c => c.garden),
                 openings: [],
             };
             currentKey = kind;
@@ -251,7 +252,7 @@ export interface RoomSpec { kind: RoomKind; name?: string; area: number }
 const KIND_LABEL: Record<RoomKind, string> = {
     sejour: "Séjour", cuisine: "Cuisine", chambre: "Chambre", sdb: "Salle d'eau", wc: "WC", entree: "Entrée",
     couloir: "Dégagement", bureau: "Bureau", dressing: "Dressing", cellier: "Rangement", buanderie: "Buanderie",
-    balcon: "Balcon", terrasse: "Terrasse", autre: "Pièce",
+    balcon: "Balcon", terrasse: "Terrasse", jardin: "Jardin", autre: "Pièce",
 };
 export const kindLabel = (k: RoomKind) => KIND_LABEL[k];
 

@@ -65,6 +65,7 @@ const KIND_RGB: Record<RoomKind, [number, number, number]> = {
     buanderie: [118, 198, 186],
     balcon: [178, 128, 84],
     terrasse: [178, 128, 84],
+    jardin: [118, 176, 96],
     autre: [196, 196, 200],
 };
 const kindFill = (k: RoomKind, a: number) => `rgba(${KIND_RGB[k].join(", ")}, ${a})`;

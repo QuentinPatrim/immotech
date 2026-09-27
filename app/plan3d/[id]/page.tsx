@@ -17,13 +17,15 @@ import dynamic from "next/dynamic";
 import { AnimatePresence, motion } from "framer-motion";
 import {
     AlertTriangle, ArrowLeft, Box, Check, ChevronLeft, CircleAlert, FileUp, Info, LayoutGrid, Loader2, Plus, Presentation,
-    Redo2, RotateCcw, Sofa, Sparkles, Trash2, Undo2, Wand2, X,
+    Redo2, RotateCcw, Sofa, Sparkles, Sun as SunIcon, Trash2, Undo2, Wand2, X,
 } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { getAuthHeaders } from "@/lib/apiHelpers";
 import { usePatrimTheme } from "@/lib/patrimTheme";
 import ThemeToggle from "@/components/estimation/ThemeToggle";
 import PlanEditor2D, { OpeningInspector, RoomInspector } from "@/components/plan3d/PlanEditor2D";
+import LightPanel from "@/components/plan3d/LightPanel";
+import { geocodePoint } from "@/lib/listingArea";
 import { NEW_ROOM, countedArea, deleteRoom, duplicateRoom, hasTargets, patchOpening, placardGroups, relock, setRoomArea, setRoomSize, setRoomTarget } from "@/lib/plan3d/edit";
 import type { ViewMode } from "@/components/plan3d/Scene3D";
 import { autoFurnish } from "@/lib/plan3d/furnish";
@@ -39,6 +41,7 @@ import { DEFAULT_WALL_HEIGHT, OUTDOOR_KINDS, ROOM_KINDS, type ExtractResponse, t
 
 type Dossier = {
     propertyAddress?: string;
+    floor?: string | number;
     surface?: number;
     rooms?: number;
     propertyType?: string;
@@ -328,6 +331,11 @@ export default function Plan3DPage() {
     const [selected, setSelected] = useState<string | null>(null);
     const [opening3d, setOpening3d] = useState<string | null>(null);
     const [view, setView] = useState<ViewMode>("dollhouse");
+    // Lumière et vue : heure (soleil), grand angle de la visite, panneau
+    const [hour, setHour] = useState(() => Math.min(19, Math.max(9, new Date().getHours() + new Date().getMinutes() / 60)));
+    const [walkFov, setWalkFov] = useState(85);
+    const [lightOpen, setLightOpen] = useState(false);
+    const geoTried = useRef(false);
     const [furniture, setFurniture] = useState(true);
     const [pane, setPane] = useState<Pane>("3d");
     const [suggest, setSuggest] = useState(false);
@@ -472,6 +480,30 @@ export default function Plan3DPage() {
     };
     const canUndo = histTick >= 0 && past.current.length > 0;
     const canRedo = histTick >= 0 && future.current.length > 0;
+
+    // Position du bien (soleil, vue extérieure) : géocodage de l'adresse, une fois par plan
+    useEffect(() => {
+        const address = data?.propertyAddress;
+        if (!plan || plan.geo || !address || geoTried.current) return;
+        geoTried.current = true;
+        void geocodePoint(address).then(p => {
+            if (!p) return;
+            setPlan(cur => {
+                if (!cur || cur.geo) return cur;
+                const next = { ...cur, geo: { lat: p.lat, lng: p.lon } };
+                scheduleSave(next);
+                return next;
+            });
+        }).catch(() => { /* hors ligne : soleil par défaut */ });
+    }, [plan, data?.propertyAddress, scheduleSave]);
+
+    const setNorth = (deg: number) => { if (plan) commit({ ...plan, north: deg }); };
+    const floorLevel = (() => {
+        const f = String(data?.floor ?? "").trim().toLowerCase();
+        if (!f || /rdc|rez/.test(f)) return 0;
+        const n = parseInt(f, 10);
+        return Number.isFinite(n) ? Math.max(0, Math.min(40, n)) : 1;
+    })();
 
     const refurnish = () => {
         if (!plan) return;
@@ -752,7 +784,7 @@ export default function Plan3DPage() {
                             <section className={`relative min-h-0 rounded-[24px] overflow-hidden border border-[var(--p-line)] shadow-[var(--p-shadow)] ${show3D ? "" : "hidden"}`} style={{ backgroundColor: "var(--p-card)" }} aria-label="Vue 3D" aria-hidden={!show3D}>
                                 <Scene3D plan={plan} view={view} showFurniture={furniture} showLabels selectedRoomId={selectedRoomId}
                                     onSelectRoom={id => { setSelected(id); setOpening3d(null); }}
-                                    onEdit={onEditorChange} lockAreas={lockAreas} selectedOpeningId={selOpening3d?.id ?? null}
+                                    onEdit={onEditorChange} lockAreas={lockAreas} walkFov={walkFov} hour={hour} floorLevel={floorLevel} selectedOpeningId={selOpening3d?.id ?? null}
                                     onSelectOpening={id => { setOpening3d(id); const o = plan.openings.find(x => x.id === id); if (o) setSelected(o.roomId); }}
                                     theme={theme} className="absolute inset-0"/>
 
@@ -760,6 +792,7 @@ export default function Plan3DPage() {
                                 <div className="absolute top-3 inset-x-3 flex items-start justify-between gap-2 pointer-events-none">
                                     <Segmented label="Vue" value={view} onChange={setView} options={VIEWS} glass/>
                                     <div className="pointer-events-auto flex items-center gap-0.5 p-1 rounded-xl border border-[var(--p-line)] backdrop-blur-xl shadow-lg" style={{ backgroundColor: "var(--p-glass)" }}>
+                                        <GlassButton label="Lumière" icon={<SunIcon size={15}/>} active={lightOpen} onClick={() => setLightOpen(v => !v)}/>
                                         <GlassButton label="Meubles" icon={<Sofa size={15}/>} active={furniture} onClick={() => setFurniture(v => !v)}/>
                                         <GlassButton label="Réaménager" icon={<Wand2 size={15}/>} onClick={refurnish}/>
                                         <GlassButton label="Recommencer" icon={<RotateCcw size={15}/>} onClick={() => setConfirmReset(true)}/>
@@ -768,6 +801,12 @@ export default function Plan3DPage() {
                                         <GlassButton label="Rétablir" iconOnly icon={<Redo2 size={15}/>} disabled={!canRedo} onClick={redo}/>
                                     </div>
                                 </div>
+                                {lightOpen && (
+                                    <div className="absolute top-16 right-3 z-20">
+                                        <LightPanel hour={hour} onHour={setHour} north={plan.north ?? 0} onNorth={setNorth} fov={walkFov} onFov={setWalkFov}
+                                            walking={view === "walk"} located={!!plan.geo} onClose={() => setLightOpen(false)}/>
+                                    </div>
+                                )}
 
                                 <div className="absolute bottom-3 inset-x-3 flex flex-col items-center gap-2 pointer-events-none">
                                     <AnimatePresence>{!panel3d && suggestChip}</AnimatePresence>

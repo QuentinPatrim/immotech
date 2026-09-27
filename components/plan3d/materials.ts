@@ -22,6 +22,7 @@ export const TEXTURE_METERS: Record<FloorKind, number> = {
     tiles: 1.2,
     concrete: 3,
     decking: 2.1,
+    grass: 2,
 };
 
 /** Rugosité conseillée par type de sol (vernis mat, céramique satinée, béton ciré…) */
@@ -31,6 +32,7 @@ export const FLOOR_ROUGHNESS: Record<FloorKind, number> = {
     tiles: 0.3,
     concrete: 0.62,
     decking: 0.85,
+    grass: 0.95,
 };
 
 const SIZE = 1024;
@@ -271,12 +273,46 @@ function drawDecking(ctx: CanvasRenderingContext2D, base: string, alt: string, r
     }
 }
 
+/** Pelouse : fond vert nuancé, brins courts, touffes plus claires et plus sombres */
+function drawGrass(ctx: CanvasRenderingContext2D, base: string, alt: string, rand: () => number) {
+    ctx.fillStyle = base;
+    ctx.fillRect(0, 0, SIZE, SIZE);
+    // Taches de teinte (tonte, ombre, zones plus sèches)
+    for (let i = 0; i < 70; i++) {
+        const x = rand() * SIZE, y = rand() * SIZE, r = 40 + rand() * 140;
+        const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+        const c = mixColor(base, rand() < 0.5 ? alt : "#b9c46a", rand() * 0.6);
+        g.addColorStop(0, c);
+        g.addColorStop(1, "rgba(0,0,0,0)");
+        for (const dx of [0, -SIZE, SIZE]) for (const dy of [0, -SIZE, SIZE]) {
+            ctx.save();
+            ctx.translate(dx, dy);
+            ctx.globalAlpha = 0.35;
+            ctx.fillStyle = g;
+            ctx.fillRect(x - r, y - r, r * 2, r * 2);
+            ctx.restore();
+        }
+    }
+    // Brins
+    ctx.lineCap = "round";
+    for (let i = 0; i < 26000; i++) {
+        const x = rand() * SIZE, y = rand() * SIZE, len = 4 + rand() * 9, a = -Math.PI / 2 + (rand() - 0.5) * 1.1;
+        ctx.strokeStyle = mixColor(base, rand() < 0.5 ? alt : "#d8e08a", rand() * 0.7, (rand() - 0.5) * 0.12);
+        ctx.lineWidth = 1 + rand() * 1.2;
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x + Math.cos(a) * len, y + Math.sin(a) * len);
+        ctx.stroke();
+    }
+}
+
 const DRAW: Record<FloorKind, (ctx: CanvasRenderingContext2D, base: string, alt: string, rand: () => number) => void> = {
     parquet: drawParquet,
     parquet_chevron: drawChevron,
     tiles: drawTiles,
     concrete: drawConcrete,
     decking: drawDecking,
+    grass: drawGrass,
 };
 
 /**

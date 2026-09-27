@@ -898,7 +898,7 @@ function furnishOutdoor(ctx: Ctx) {
     } else {
         plantCorner(ctx);
     }
-    if (ctx.room.kind === "terrasse" && ctx.area >= 8) {
+    if ((ctx.room.kind === "terrasse" || ctx.room.kind === "jardin") && ctx.area >= 8) {
         place(ctx, wallCands(ctx, "lounger", (it, side) => (hasOpening(ctx, side, ["french"]) ? 0 : 1)), 2);
         plantCorner(ctx);
     }
@@ -932,6 +932,7 @@ const PROGRAMS: Record<RoomKind, (ctx: Ctx) => void> = {
     cellier: () => undefined,
     buanderie: furnishLaundry,
     balcon: furnishOutdoor,
+    jardin: furnishOutdoor,
     terrasse: furnishOutdoor,
     autre: furnishOther,
 };
