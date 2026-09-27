@@ -20,7 +20,7 @@ import {
     Plus, Search, ChevronRight, QrCode, FileText, Home as HomeIcon,
     Image as ImageIcon, Calculator, MoreVertical, Trash2, Copy, Check,
     Sparkles, ArrowUpRight, Link2, Edit3, Wand2, Building2,
-    BellRing, ChevronDown, StickyNote, Printer, CopyPlus, ArrowUpDown, Presentation, Zap,
+    BellRing, ChevronDown, StickyNote, Printer, CopyPlus, ArrowUpDown, Presentation, Zap, Box,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -892,6 +892,9 @@ function EstimationCard({
                                 <button onClick={onOpenPlaquette} className={itemClass}>
                                     <Sparkles size={13}/> Plaquette commerciale
                                 </button>
+                                <a href={`/plan3d/${estim.id}`} className={itemClass}>
+                                    <Box size={13}/> {d.plan3d ? "Plan 3D du bien" : "Créer le plan 3D"}
+                                </a>
                                 <button onClick={onEditNote} className={itemClass}>
                                     <StickyNote size={13}/> {d.followUpNote ? "Modifier la note de suivi" : "Ajouter une note de suivi"}
                                 </button>

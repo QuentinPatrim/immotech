@@ -8,7 +8,7 @@ import {
     Printer, ArrowRight, ArrowLeft, Plus, Trash2, UploadCloud, FileText,
     List, Edit, X, Leaf, ThumbsUp, ThumbsDown, BarChart3, Loader2, Euro, Building2, Banknote,
     Sparkles, Star, Globe, Wand2, Search, Target, AlertCircle, Check,
-    Camera, Satellite, RefreshCw, User, KeyRound, ArrowUpDown
+    Camera, Satellite, RefreshCw, User, KeyRound, ArrowUpDown, Box
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -145,7 +145,7 @@ interface DvfSaleResult {
 
 // Champs de suivi gérés depuis "Mes biens" : l'éditeur ne les écrase jamais
 // (on reprend la valeur en base au moment d'enregistrer).
-const HUB_KEYS = ["status", "statusUpdatedAt", "lastFollowUpAt", "mandateType", "followUpNote", "meeting", "shareAvis", "financingIncome"] as const;
+const HUB_KEYS = ["status", "statusUpdatedAt", "lastFollowUpAt", "mandateType", "followUpNote", "meeting", "shareAvis", "financingIncome", "plan3d"] as const;
 
 // Prix au m² d'un comparable (0 si surface ou prix manquant, exclu des médianes)
 const sqmOf = (c: { price: number; surface: number }) => (c.price > 0 && c.surface > 0 ? c.price / c.surface : 0);
@@ -1140,6 +1140,17 @@ export default function EstimationEditor({
                                     <StepHeader n={2} icon={<ImageIcon size={18} className="text-[#fff]"/>} title="Photos du bien"
                                         subtitle="Glissez-déposez vos photos, ou utilisez la photo de façade trouvée à partir de l'adresse."/>
                                     {photoError && <p className="text-xs text-amber-300 flex items-center gap-1.5"><AlertCircle size={13}/> {photoError}</p>}
+
+                                    {currentId && (
+                                        <a href={`/plan3d/${currentId}`} className="flex items-center gap-4 rounded-[22px] border p-4 md:p-5 transition-colors hover:bg-[var(--p-hover)]" style={{ backgroundColor: 'var(--p-sunken)', borderColor: "var(--p-line)" }}>
+                                            <span className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0" style={{ background: `linear-gradient(135deg, ${COLORS.primary}, ${COLORS.secondary})` }}><Box size={18} className="text-[#fff]"/></span>
+                                            <span className="flex-1 min-w-0">
+                                                <span className="block text-sm font-semibold text-[var(--p-fg)]">Plan 3D et aménagement</span>
+                                                <span className="block text-xs text-[var(--p-muted)] mt-0.5">Importez le plan 2D (image ou PDF) ou partez des surfaces : maquette 3D meublée à montrer au client.</span>
+                                            </span>
+                                            <ArrowRight size={16} className="text-[var(--p-muted)] shrink-0"/>
+                                        </a>
+                                    )}
 
                                     <Section icon={<Star size={16}/>} title="Photo de couverture" hint="En grand sur la première page de l'avis de valeur.">
                                         <div className="grid md:grid-cols-[1fr_210px] gap-4">

@@ -13,7 +13,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowLeft, Maximize2, Minimize2, Share2, CheckCircle2, PencilRuler, Loader2, X, Copy, Check, MessageCircle, Mail, Link2, BellRing } from "lucide-react";
+import { ArrowLeft, Box, Maximize2, Minimize2, Share2, CheckCircle2, PencilRuler, Loader2, X, Copy, Check, MessageCircle, Mail, Link2, BellRing } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import ThemeToggle from "@/components/estimation/ThemeToggle";
 import MeetingPresentation, { type MeetingMode, type PresentationData } from "@/components/rdv/MeetingPresentation";
@@ -152,6 +152,7 @@ export default function MeetingPage() {
                             )}
                             <div className="ml-auto flex items-center gap-1">
                                 <Link href={`/estimation/${id}`} className="hidden sm:flex h-10 w-10 rounded-xl items-center justify-center text-[var(--p-muted)] hover:text-[var(--p-fg)] hover:bg-[var(--p-hover)]" title="Ouvrir le dossier"><PencilRuler size={16}/></Link>
+                                <Link href={`/plan3d/${id}`} className="flex h-10 w-10 rounded-xl items-center justify-center text-[var(--p-muted)] hover:text-[var(--p-fg)] hover:bg-[var(--p-hover)]" title="Plan 3D" aria-label="Plan 3D"><Box size={16}/></Link>
                                 <ThemeToggle className="!rounded-xl !w-10 !h-10"/>
                                 <button type="button" onClick={() => void toggleFullscreen()} className="hidden sm:flex h-10 w-10 rounded-xl items-center justify-center text-[var(--p-muted)] hover:text-[var(--p-fg)] hover:bg-[var(--p-hover)]" title="Plein écran"><Maximize2 size={16}/></button>
                                 <button type="button" onClick={() => void openShare()} className="h-10 px-3 sm:px-4 rounded-xl text-xs sm:text-sm font-semibold text-[#fff] inline-flex items-center gap-2" style={{ background: "linear-gradient(135deg, #8a0e01, #d35f52)" }}>

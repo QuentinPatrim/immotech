@@ -4,6 +4,8 @@ import { motion } from "framer-motion";
 import { MapPin, Ruler, BedDouble, Building, Leaf, TrendingUp, TrendingDown, Sparkles, ShieldAlert, Target, Clock, CheckCircle2, Scale, ArrowDownRight, Megaphone, Camera, Globe2 } from "lucide-react";
 import MarketBar from "@/components/rdv/MarketBar";
 import FinancingSection, { type FinancingState } from "@/components/rdv/FinancingSection";
+import VisitSection from "@/components/plan3d/VisitSection";
+import type { Plan3D } from "@/lib/plan3d/types";
 import { PATRIM_AGENTS } from "@/lib/dossier";
 
 /* ============================================================
@@ -44,6 +46,7 @@ export interface PresentationData {
     marketStats?: { count: number; median: number; p25: number; p75: number; radius?: number; years?: number[] } | null;
     agentId?: string;
     express?: { adjustments?: { label: string; pct: number }[] } | null;
+    plan3d?: Plan3D | null;
 }
 
 const eur = (n: number) => `${Math.round(n).toLocaleString("fr-FR")} €`;
@@ -189,6 +192,16 @@ export default function MeetingPresentation({ data: d, mode, askingPrice, financ
                                 {high > 0 && <p className="text-xs text-[var(--p-muted)] mp-num">Plafond conseillé : <b className="text-[var(--p-fg)]">{eur(high)}</b></p>}
                             </div>
                         )}
+                    </Reveal>
+                )}
+
+                {/* ── VISITE 3D ── */}
+                {d.plan3d && d.plan3d.rooms?.length > 0 && (
+                    <Reveal>
+                        <div id="visite-3d" className="scroll-mt-24">
+                            <SectionTitle kicker="Visite 3D" title={mode === "vendeur" ? "Votre bien, mis en scène" : "Projetez-vous dans le bien"}/>
+                            <VisitSection plan={d.plan3d}/>
+                        </div>
                     </Reveal>
                 )}
 
