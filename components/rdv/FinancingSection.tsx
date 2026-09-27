@@ -11,7 +11,9 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { Landmark, Home, KeyRound, AlertTriangle, CheckCircle2, XCircle, Info } from "lucide-react";
+import { Landmark, Home, KeyRound, AlertTriangle, BadgeCheck, CheckCircle2, XCircle, Info } from "lucide-react";
+import FiscalSection from "@/components/rdv/FiscalSection";
+import type { Tmi } from "@/lib/fiscalite";
 import {
     DEFAULT_INPUTS, DEBT_LIMIT, DURATIONS, FALLBACK_RATES, computeFinancing, verdict,
     type Duration, type FinancingInputs, type Rates,
@@ -24,7 +26,7 @@ const rate = (v: number) => `${v.toFixed(2).replace(".", ",")} %`;
 const MONTHS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
 const periodLabel = (p: string) => { const [y, m] = p.split("-"); return `${MONTHS[Number(m) - 1] || ""} ${y}`.trim(); };
 
-export type FinancingState = Partial<FinancingInputs> & { priceTouched?: boolean };
+export type FinancingState = Partial<FinancingInputs> & { priceTouched?: boolean; tmi?: Tmi };
 
 export default function FinancingSection({ price, estimatedValue, dpe, value, onChange }: {
     price: number;
@@ -260,9 +262,20 @@ export default function FinancingSection({ price, estimatedValue, dpe, value, on
                 </div>
             </div>
 
+            {/* ── Fiscalité ── */}
+            {rental && inputs.rent > 0 && (
+                <FiscalSection inputs={inputs} rate={r.rate} tmi={s.tmi ?? 30} onTmi={t => set({ tmi: t })}/>
+            )}
+            {!rental && (
+                <div className="rounded-[22px] border border-[var(--p-line)] px-5 py-4 flex gap-3 items-start" style={{ backgroundColor: "var(--p-card)" }}>
+                    <BadgeCheck size={18} className="shrink-0 mt-0.5 text-[var(--p-positive)]"/>
+                    <p className="text-sm text-[var(--p-fg-2)]"><b className="text-[var(--p-fg)]">Fiscalité de la résidence principale :</b> pas d&apos;impôt sur le logement occupé et plus-value totalement exonérée à la revente, quelle que soit la durée de détention. Seule la taxe foncière reste due.</p>
+                </div>
+            )}
+
             <p className="text-[11px] text-[var(--p-faint)] flex gap-1.5">
                 <Info size={12} className="shrink-0 mt-0.5"/>
-                Simulation indicative hors fiscalité. Taux : moyenne des nouveaux crédits habitat en France (BCE), grille par durée indicative ; usure {rates.usuryEstimated ? "estimée selon la règle légale (TAEG moyen + 1/3)" : "Banque de France"}. Garantie et frais de dossier estimés ; les conditions définitives dépendent de la banque.
+                Simulation indicative. Taux : moyenne des nouveaux crédits habitat en France (BCE), grille par durée indicative ; usure {rates.usuryEstimated ? "estimée selon la règle légale (TAEG moyen + 1/3)" : "Banque de France"}. Garantie et frais de dossier estimés ; les conditions définitives dépendent de la banque.
             </p>
         </div>
     );

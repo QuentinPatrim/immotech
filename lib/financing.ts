@@ -92,10 +92,10 @@ export const notaryFees = (price: number, newBuild: boolean) => Math.round(price
 export const guaranteeFees = (loan: number) => (loan > 0 ? Math.round(loan * 0.012 + 800) : 0);
 
 export const DEBT_LIMIT = 0.35;
-const VACANCY = 1 / 24;       // ~2 semaines par an
-const PNO = 180;              // assurance propriétaire non occupant / an
-const RESALE_FEES = 0.05;     // frais de revente (agence, diagnostics)
-const RENT_INDEX = 0.015;     // indexation annuelle du loyer
+export const VACANCY = 1 / 24;       // ~2 semaines par an
+export const PNO = 180;              // assurance propriétaire non occupant / an
+export const RESALE_FEES = 0.05;     // frais de revente (agence, diagnostics)
+export const RENT_INDEX = 0.015;     // indexation annuelle du loyer
 
 export const monthlyPayment = (principal: number, annualRatePct: number, years: number) => {
     const n = years * 12;

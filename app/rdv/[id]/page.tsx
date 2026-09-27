@@ -20,14 +20,14 @@ import MeetingPresentation, { type MeetingMode, type PresentationData } from "@/
 import type { FinancingState } from "@/components/rdv/FinancingSection";
 
 type Meeting = { mode: MeetingMode; askingPrice?: number; financing?: FinancingState };
-type Income = { income?: number; otherLoans?: number };
+type Income = { income?: number; otherLoans?: number; tmi?: FinancingState["tmi"] };
 
-/** Le lien partagé reçoit le scénario de financement, jamais les revenus du client */
+/** Le lien partagé reçoit le scénario de financement, jamais les revenus ni la tranche d'imposition du client */
 function toSaved(mode: MeetingMode, ask: string, fin?: FinancingState) {
     const askingPrice = Number(ask.replace(/\s/g, "")) || undefined;
     if (!fin) return { meeting: { mode, askingPrice } as Meeting };
-    const { income, otherLoans, ...pub } = fin;
-    return { meeting: { mode, askingPrice, financing: pub } as Meeting, financingIncome: { income, otherLoans } as Income };
+    const { income, otherLoans, tmi, ...pub } = fin;
+    return { meeting: { mode, askingPrice, financing: pub } as Meeting, financingIncome: { income, otherLoans, tmi } as Income };
 }
 
 export default function MeetingPage() {
