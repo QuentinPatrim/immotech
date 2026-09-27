@@ -12,7 +12,7 @@
    Y vers le haut ; le plan est centré sur l'origine.
    ============================================================ */
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentRef, type RefObject } from "react";
+import { Suspense, lazy, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentRef, type RefObject } from "react";
 import * as THREE from "three";
 import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import { ContactShadows, Environment, Lightformer, OrbitControls, Sky } from "@react-three/drei";
@@ -63,6 +63,9 @@ export interface Scene3DProps {
 }
 
 const FOV = 40;
+/** Vue réelle Google 3D (clé Map Tiles API) : chargée seulement en visite */
+const GOOGLE_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY || "";
+const GoogleTiles3D = lazy(() => import("@/components/plan3d/GoogleTiles3D"));
 const EYE = 1.6;
 const ACCENT = "#d35f52";
 const DOOR_HEAD = 2.1;
@@ -693,7 +696,13 @@ function SceneContent({ plan, dragging, onDraft, labels, labelEls, view, showFur
                     <Sky distance={4500} sunPosition={sun.up ? [sun.dir.x, sun.dir.y, sun.dir.z] : [sun.dir.x, -0.05, sun.dir.z]}
                         turbidity={5} rayleigh={sun.up ? 1.2 : 3} mieCoefficient={0.004} mieDirectionalG={0.85} />
                     <fog attach="fog" args={[sun.up ? "#dfe8ef" : "#2a3444", 60, 900]} />
-                    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, groundY, 0]} receiveShadow>
+                    {GOOGLE_KEY && geo && (
+                        <Suspense fallback={null}>
+                            <GoogleTiles3D apiKey={GOOGLE_KEY} lat={geo.lat} lng={geo.lng} north={north ?? 0} groundY={groundY}
+                                halfX={bb.w / 2 + 6} halfZ={bb.h / 2 + 6} />
+                        </Suspense>
+                    )}
+                    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, groundY - (GOOGLE_KEY && geo ? 1.5 : 0), 0]} receiveShadow>
                         <circleGeometry args={[900, 64]} />
                         <meshStandardMaterial color={sun.up ? "#8c9476" : "#2e3326"} roughness={1} />
                     </mesh>
