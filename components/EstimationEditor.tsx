@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -153,19 +153,7 @@ const sqmOf = (c: { price: number; surface: number }) => (c.price > 0 && c.surfa
 const DPE_COLORS: Record<string, string> = { "A": "#00A06D", "B": "#52B153", "C": "#A5CC74", "D": "#F3E724", "E": "#F0B328", "F": "#EB8235", "G": "#D7221F" };
 
 // --- HELPERS ---
-const getPriceSizeClass = (price: number) => {
-    const len = formatPrice(price).length;
-    if (len >= 10) return "text-2xl";
-    if (len >= 8) return "text-3xl";
-    return "text-4xl";
-};
 
-const getPriceSizeClassSplit = (price: number) => {
-    const len = formatPrice(price).length;
-    if (len >= 10) return "text-xl";
-    if (len >= 8) return "text-2xl";
-    return "text-3xl";
-};
 
 const getDisplayFloor = (f: string) => {
     if (!f) return "";
@@ -300,6 +288,9 @@ export interface EstimationEditorProps {
     initialStep?: number;
 }
 
+/** Largeur de la fenêtre, pour mettre l'aperçu A4 à l'échelle de l'écran */
+const subscribeResize = (cb: () => void) => { window.addEventListener("resize", cb); return () => window.removeEventListener("resize", cb); };
+
 export default function EstimationEditor({
     initialData,
     existingId,
@@ -307,6 +298,8 @@ export default function EstimationEditor({
     initialStep = 1,
 }: EstimationEditorProps) {
     const router = useRouter();
+    const viewportWidth = useSyncExternalStore(subscribeResize, () => window.innerWidth, () => 1280);
+    const pdfZoom = Math.min(1, (viewportWidth - 16) / 794);
     const [view, setView] = useState<"EDIT" | "PRINT">(initialView);
     const [step, setStep] = useState(initialStep);
     const [currentId, setCurrentId] = useState<string | null>(existingId);
@@ -1784,841 +1777,505 @@ export default function EstimationEditor({
     // =========================================================================
     const allComps = [...data.soldComparables, ...data.forSaleComparables];
     // Pagination dynamique (les pages Marché et Photos sont optionnelles)
-    const hasMarketPage = data.soldComparables.length > 0 || data.forSaleComparables.length > 0;
+    const hasMarketPage = allComps.length > 0;
     const hasPhotoPage = (data.extraPhotos ?? []).length > 0;
     const totalPages = 3 + (hasMarketPage ? 1 : 0) + (hasPhotoPage ? 1 : 0);
     const pageOf = (n: number) => `${n} / ${totalPages}`;
     const conclusionPage = hasMarketPage ? 4 : 3;
     const pad2 = (n: number) => String(n).padStart(2, "0");
     const pricesPerSqm = allComps.map(sqmOf).filter(p => p > 0);
-    const estimatedPriceSqm = ((data.lowPrice + data.highPrice) / 2) / (data.surface || 1);
+    const low = data.lowPrice || 0, high = data.highPrice || 0;
+    const central = low && high ? Math.round((low + high) / 2) : low || high;
+    const estimatedPriceSqm = central / (data.surface || 1);
+    const singleValue = !!central && (!low || !high || low === high);
     let minPriceGraph = Math.min(...pricesPerSqm, estimatedPriceSqm || Infinity);
     let maxPriceGraph = Math.max(...pricesPerSqm, estimatedPriceSqm || 0);
     if (minPriceGraph === Infinity) minPriceGraph = 0;
-    minPriceGraph = minPriceGraph * 0.9; maxPriceGraph = maxPriceGraph * 1.1;
+    minPriceGraph = minPriceGraph * 0.92; maxPriceGraph = maxPriceGraph * 1.08;
     const getPositionPercent = (price: number) => { if (maxPriceGraph === minPriceGraph) return 50; return ((price - minPriceGraph) / (maxPriceGraph - minPriceGraph)) * 100; };
+    const agent = AGENTS.find(a => a.id === data.agentId);
+    const today = new Date().toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
+    // « 46 Rue de la Colombette 31000 Toulouse » → rue / code postal + ville
+    const addr = data.propertyAddress || "";
+    const cpMatch = addr.match(/,?\s*(\d{5}\s+.+)$/);
+    const street = (cpMatch ? addr.slice(0, cpMatch.index) : addr.split(",")[0]).replace(/,\s*$/, "").trim() || "Votre bien";
+    const city = cpMatch ? cpMatch[1].trim() : addr.split(",").slice(1).join(",").trim();
+    const eur = (n: number) => `${formatPrice(Math.round(n))} €`;
+    const amenityLabels = (data.amenities ?? []).map(id => ALL_AMENITIES.find(a => a.id === id)?.label || id);
+    const dpeLetter = (data.dpe || "").toUpperCase().slice(0, 1);
 
-    const renderEnergyRail = (currentLetter: string) => (
-        <div className="flex w-full items-end h-10 gap-[2px] mt-1">
-            {["A","B","C","D","E","F","G"].map((letter) => {
-                const isSelected = currentLetter === letter;
-                const color = DPE_COLORS[letter];
-                return (
-                    <div key={letter}
-                        className={`flex justify-center items-center font-black text-white rounded-sm origin-bottom transition-all duration-300 ${isSelected ? 'h-12 z-10 shadow-lg text-sm border-2 border-white/80' : 'h-5 flex-1 text-[8px] opacity-35'}`}
-                        style={{ backgroundColor: color, width: isSelected ? '34px' : 'auto', flexShrink: isSelected ? 0 : 1 }}>
-                        {letter}
-                    </div>
-                );
-            })}
+    const PAGE = "print-page relative mx-auto bg-white overflow-hidden w-[210mm] h-[297mm] flex flex-col mb-8 rounded-[6px] shadow-[0_24px_60px_-24px_rgba(0,0,0,0.35)]";
+    const LABEL = "text-[8.5px] font-semibold uppercase tracking-[0.08em] text-[#86868b]";
+
+    const renderHeader = (n: number, title: string) => (
+        <div className="flex items-center justify-between px-[14mm] pt-[11mm] shrink-0">
+            <div className="flex items-center gap-2.5">
+                <span className="text-[10px] font-bold tabular-nums" style={{ color: COLORS.primary }}>{pad2(n)}</span>
+                <span className="h-3 w-px bg-[#d2d2d7]"/>
+                <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[#86868b]">{title}</span>
+            </div>
+            <img src="/logo-patrim.png" alt="Patrim" className="h-[18px] object-contain"/>
         </div>
     );
-
-    // COMPOSANT POUR GÉNÉRER LA SIGNATURE ET LE TAMPON
-    const renderSignature = () => {
-        if (!data.agentId) return null;
-        const agent = AGENTS.find(a => a.id === data.agentId);
-        if (!agent) return null;
+    const renderTitle = (title: string, subtitle?: string) => (
+        <div className="px-[14mm] pt-[7mm] pb-[6mm] shrink-0">
+            <h2 className="text-[30px] font-bold tracking-[-0.03em] leading-[1.05] text-[#1d1d1f]">{title}</h2>
+            {subtitle && <p className="text-[12px] text-[#6e6e73] mt-1.5">{subtitle}</p>}
+        </div>
+    );
+    const renderFooter = (n: number) => (
+        <div className="mt-auto px-[14mm] pb-[8mm] pt-[4mm] shrink-0">
+            <div className="h-px bg-[#e8e8ed] mb-[3mm]"/>
+            <div className="flex items-center justify-between text-[7.5px] text-[#86868b]">
+                <span>Agence Patrim · 45, allées Jean Jaurès, 31000 Toulouse · 05 61 99 08 08 · patrim.fr</span>
+                <span className="tabular-nums font-semibold">{pageOf(n)}</span>
+            </div>
+        </div>
+    );
+    const renderEnergyRail = (current: string, label: string, caption: string) => {
+        const cur = (current || "").toUpperCase().slice(0, 1);
         return (
-            // Images recadrées sur l'encre (public/signatures) : tailles fixes et lisibles
-            <div className="absolute bottom-3 right-5 flex flex-col items-end z-10 pointer-events-none">
-                <p className="text-[12px] font-black text-zinc-800 leading-tight">{agent.name}</p>
-                <p className="text-[8.5px] text-zinc-500 uppercase tracking-widest">{agent.role}</p>
-                <div className="flex items-center gap-3 mt-1.5">
-                    <img
-                        src={agent.signatureUrl}
-                        alt="Signature"
-                        className="h-16 w-auto max-w-[150px] object-contain mix-blend-multiply"
-                        onError={(e) => e.currentTarget.style.display = 'none'}
-                    />
-                    <img
-                        src="/signatures/signature-agence.png"
-                        alt="Tampon Agence"
-                        className="h-[60px] w-auto object-contain mix-blend-multiply opacity-85"
-                        onError={(e) => e.currentTarget.style.display = 'none'}
-                    />
+            <div>
+                <div className="flex items-baseline justify-between mb-2">
+                    <p className={LABEL}>{label}</p>
+                    <p className="text-[8px] text-[#86868b]">{caption}</p>
+                </div>
+                <div className="flex items-end gap-[3px] h-[26px]">
+                    {["A", "B", "C", "D", "E", "F", "G"].map(l => {
+                        const on = cur === l;
+                        return (
+                            <div key={l} className={`flex-1 rounded-[5px] flex items-center justify-center font-bold ${on ? "h-[26px] text-[11px] shadow-[0_2px_6px_rgba(0,0,0,0.18)]" : "h-[12px] text-[7px] opacity-30"}`}
+                                style={{ backgroundColor: DPE_COLORS[l], color: "CD".includes(l) ? "#1d1d1f" : "#fff" }}>{l}</div>
+                        );
+                    })}
+                </div>
+                {!cur && <p className="text-[8px] text-[#86868b] mt-1.5">Non communiqué</p>}
+            </div>
+        );
+    };
+    const renderSignature = () => (
+        <div className="flex items-end justify-between gap-6">
+            <div>
+                <p className={LABEL}>Fait à Toulouse, le {today}</p>
+                <p className="text-[14px] font-semibold text-[#1d1d1f] mt-2">{agent?.name || "Agence Patrim"}</p>
+                <p className="text-[10px] text-[#6e6e73]">{agent?.role || "Service Transaction"} · Patrim Toulouse</p>
+            </div>
+            <div className="flex items-center gap-4">
+                {agent?.signatureUrl && <img src={agent.signatureUrl} alt="Signature" className="h-[15mm] w-auto max-w-[38mm] object-contain mix-blend-multiply" onError={e => { e.currentTarget.style.display = "none"; }}/>}
+                <img src="/signatures/signature-agence.png" alt="Tampon de l'agence" className="h-[15mm] w-auto object-contain mix-blend-multiply opacity-90" onError={e => { e.currentTarget.style.display = "none"; }}/>
+            </div>
+        </div>
+    );
+    const renderCompRow = (comp: Comparable, accent: string) => {
+        const compSqm = sqmOf(comp);
+        const ref = estimatedPriceSqm > 0 ? estimatedPriceSqm : (pricesPerSqm.length ? pricesPerSqm.reduce((a, b) => a + b, 0) / pricesPerSqm.length : 0);
+        const delta = ref > 0 && compSqm > 0 ? Math.round(((compSqm - ref) / ref) * 100) : null;
+        const d = comp.source === "portal" ? daysOnline({ publishedAt: comp.publishedAt, firstSeenAt: comp.firstSeenAt || "" }) : null;
+        const meta = [
+            comp.surface ? `${formatSurface(comp.surface)} m²` : "",
+            comp.soldDate ? `vendu en ${formatMonthYear(comp.soldDate)}` : "",
+            comp.distance !== undefined && comp.distance !== null ? `à ${comp.distance} m` : "",
+            comp.source === "portal" && comp.portal ? comp.portal : "",
+            d !== null ? `en ligne depuis ${d} j` : "",
+        ].filter(Boolean).join(" · ");
+        return (
+            <div key={comp.id} className="flex items-center gap-3.5 py-[2.6mm] border-b border-[#f0f0f2] last:border-b-0">
+                {comp.photoUrl
+                    ? <img src={comp.photoUrl} alt="" className="w-[15mm] h-[15mm] rounded-[10px] object-cover shrink-0"/>
+                    : <div className="w-[15mm] h-[15mm] rounded-[10px] bg-[#f5f5f7] shrink-0 flex items-center justify-center"><Home size={15} className="text-[#aeaeb2]"/></div>}
+                <div className="flex-1 min-w-0">
+                    <p className="text-[11px] font-semibold text-[#1d1d1f] truncate">{comp.address}</p>
+                    <p className="text-[9px] text-[#86868b] mt-0.5 truncate">{meta}</p>
+                    {comp.source === "portal" && comp.initialPrice && comp.initialPrice > comp.price
+                        ? <p className="text-[8.5px] font-semibold text-[#d70015] mt-0.5">Baisse de {eur(comp.initialPrice - comp.price)}</p> : null}
+                </div>
+                <div className="text-right shrink-0">
+                    <p className="text-[13px] font-bold text-[#1d1d1f] tabular-nums tracking-[-0.01em]">{eur(comp.price)}</p>
+                    <div className="flex items-center justify-end gap-1.5 mt-0.5">
+                        {compSqm > 0 && <span className="text-[9px] font-semibold tabular-nums" style={{ color: accent }}>{formatPrice(Math.round(compSqm))} €/m²</span>}
+                        {delta !== null && <span className={`text-[8px] font-bold px-1.5 py-[1px] rounded-full tabular-nums ${delta > 0 ? "bg-[#e8f7ec] text-[#248a3d]" : "bg-[#fdecec] text-[#d70015]"}`}>{delta > 0 ? "+" : ""}{delta} %</span>}
+                    </div>
                 </div>
             </div>
         );
     };
 
+    const soldList = data.soldComparables.slice(0, 5);
+    const saleList = data.forSaleComparables.slice(0, soldList.length >= 5 ? 4 : 5);
+    const photoCredits = Array.from(new Set([...soldList, ...saleList].filter(c => c.photoUrl && c.photoAuto?.credit).map(c => c.photoAuto!.credit)));
+    const extra = data.extraPhotos ?? [];
+    const photoRows = extra.length <= 2 ? 1 : extra.length <= 4 ? 2 : extra.length <= 6 ? 3 : 4;
+    const photoCols = extra.length === 1 ? 1 : extra.length > 8 ? 3 : 2;
+    const hasCharges = data.taxeFonciere > 0 || data.isCopropriete;
+    const hasOpinion = data.strengths.length > 0 || data.weaknesses.length > 0;
+
     return (
         <>
             <style dangerouslySetInnerHTML={{ __html: `
-                @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=DM+Sans:wght@300;400;500;600;700&display=swap');
-
+                .pdf-font { font-family: var(--font-ios); -webkit-font-smoothing: antialiased; letter-spacing: -0.005em; }
+                .pdf-stage { zoom: var(--pdf-zoom, 1); }
                 @media print {
-                    @page { size: A4 landscape; margin: 0; }
-                    body {
-                        -webkit-print-color-adjust: exact !important;
-                        print-color-adjust: exact !important;
-                        background-color: #f1f1f3 !important;
-                        margin: 0; padding: 0;
-                    }
+                    @page { size: A4 portrait; margin: 0; }
+                    html, body { background: #ffffff !important; }
+                    body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; margin: 0 !important; padding: 0 !important; }
                     .print-hidden { display: none !important; }
-                    .print-page {
-                        width: 297mm !important;
-                        height: 210mm !important;
-                        page-break-after: always !important;
-                        break-after: page !important;
-                        margin: 0 !important;
-                        box-shadow: none !important;
-                        position: relative;
-                        overflow: hidden !important;
-                    }
-                    .premium-card {
-                        background-color: #ffffff !important;
-                        border: 1px solid #e8e8ec !important;
-                        border-radius: 1.25rem !important;
-                        box-shadow: 0 2px 12px -2px rgba(0,0,0,0.06) !important;
-                    }
-                    .inner-card {
-                        background-color: #f5f5f7 !important;
-                        border: 1px solid #e8e8ec !important;
-                        border-radius: 0.75rem !important;
-                    }
-                    .dark-cover-half {
-                        background-color: #0a0a0c !important;
-                        color: white !important;
-                    }
-                    .print-no-blur {
-                        backdrop-filter: none !important;
-                        -webkit-backdrop-filter: none !important;
-                        background-color: white !important;
-                        box-shadow: none !important;
-                    }
-                    .patrim-gradient-bar {
-                        background: linear-gradient(90deg, #8a0e01 0%, #d35f52 100%) !important;
-                    }
-                }
-
-                .pdf-font { font-family: 'DM Sans', -apple-system, sans-serif; }
-                .pdf-display { font-family: 'Playfair Display', Georgia, serif; }
-
-                @media print {
-                    .page-watermark::after {
-                        content: 'PATRIM';
-                        position: absolute;
-                        bottom: 24px;
-                        right: 32px;
-                        font-size: 9px;
-                        font-weight: 700;
-                        letter-spacing: 0.4em;
-                        color: #d0d0d8;
-                        opacity: 0.4;
-                        font-family: 'DM Sans', sans-serif;
-                    }
+                    .pdf-stage { zoom: 1 !important; padding: 0 !important; background: none !important; }
+                    .print-page { margin: 0 !important; box-shadow: none !important; border-radius: 0 !important; break-after: page; page-break-after: always; }
+                    .print-page:last-child { break-after: auto; page-break-after: auto; }
                 }
             `}}/>
 
-            {/* Floating Action Bar */}
-            <div className="fixed bottom-10 left-1/2 -translate-x-1/2 text-white px-8 py-4 rounded-full flex items-center gap-5 shadow-2xl z-50 print-hidden border"
-                style={{ backgroundColor: 'rgba(17,17,20,0.92)', backdropFilter: 'blur(24px)', borderColor: 'rgba(255,255,255,0.08)' }}>
-                <Button variant="ghost" onClick={() => setView("EDIT")} className="text-zinc-400 hover:text-white rounded-full gap-2 text-sm">
-                    <Edit size={15}/> Modifier
-                </Button>
-                <div className="w-px h-5 bg-white/10"></div>
-                <Button variant="ghost" onClick={goToMesBiens} className="text-zinc-400 hover:text-white rounded-full gap-2 text-sm">
-                    <List size={15}/> Mes biens
-                </Button>
-                <div className="w-px h-5 bg-white/10"></div>
-                <Button 
-                    variant="ghost" 
-                    onClick={() => router.push(`/plaquette/${currentId}`)} 
-                    className="text-zinc-300 hover:text-[#d35f52] rounded-full gap-2 text-sm font-bold"
-                >
-                    <Sparkles size={15} className="text-[#d35f52]"/> Plaquette Com
-                </Button>
-                <div className="w-px h-5 bg-white/10"></div>
-                <Button onClick={() => window.print()} className="rounded-full px-7 h-10 font-bold text-sm text-white gap-2 shadow-lg transition-all hover:scale-105"
-                    style={{ background: `linear-gradient(135deg, ${COLORS.primary}, ${COLORS.secondary})`, boxShadow: `0 8px 24px -8px rgba(138,14,1,0.5)` }}>
-                    <Printer size={15}/> Imprimer / PDF
-                </Button>
+            {/* Barre d'actions : pilule sur ordinateur, barre pleine largeur sur téléphone */}
+            <div className="print-hidden fixed z-50 bottom-0 inset-x-0 sm:bottom-8 sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 border-t sm:border sm:rounded-full shadow-2xl text-white"
+                style={{ backgroundColor: "rgba(28,28,30,0.82)", backdropFilter: "saturate(180%) blur(24px)", WebkitBackdropFilter: "saturate(180%) blur(24px)", borderColor: "rgba(255,255,255,0.1)", paddingBottom: "env(safe-area-inset-bottom)" }}>
+                <div className="grid grid-cols-4 sm:flex sm:items-center sm:gap-1 sm:px-2 sm:py-2">
+                    <button type="button" onClick={() => setView("EDIT")} className="flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 py-2.5 sm:py-0 sm:h-10 sm:px-4 rounded-full text-[11px] sm:text-sm font-medium text-[rgba(235,235,245,0.7)] hover:text-white">
+                        <Edit size={17} className="sm:w-[15px] sm:h-[15px]"/> Modifier
+                    </button>
+                    <button type="button" onClick={goToMesBiens} className="flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 py-2.5 sm:py-0 sm:h-10 sm:px-4 rounded-full text-[11px] sm:text-sm font-medium text-[rgba(235,235,245,0.7)] hover:text-white">
+                        <List size={17} className="sm:w-[15px] sm:h-[15px]"/> Mes biens
+                    </button>
+                    <button type="button" onClick={() => router.push(`/plaquette/${currentId}`)} className="flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 py-2.5 sm:py-0 sm:h-10 sm:px-4 rounded-full text-[11px] sm:text-sm font-semibold text-white">
+                        <Sparkles size={17} className="sm:w-[15px] sm:h-[15px] text-[#ff6159]"/> Plaquette
+                    </button>
+                    <div className="flex items-center justify-center p-1.5 sm:p-0 sm:ml-1">
+                        <button type="button" onClick={() => window.print()} className="w-full sm:w-auto h-full sm:h-10 min-h-[44px] rounded-2xl sm:rounded-full px-3 sm:px-6 font-semibold text-[11px] sm:text-sm text-white flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2"
+                            style={{ background: `linear-gradient(135deg, ${COLORS.primary}, ${COLORS.secondary})`, boxShadow: "0 8px 24px -8px rgba(138,14,1,0.6)" }}>
+                            <Printer size={16} className="sm:w-[15px] sm:h-[15px]"/> <span className="sm:hidden">PDF</span><span className="hidden sm:inline">Imprimer / PDF</span>
+                        </button>
+                    </div>
+                </div>
             </div>
 
-            <div className="min-h-screen py-10 pdf-font print:p-0 print:py-0" style={{ backgroundColor: '#e8e8ec' }}>
+            <div className="pdf-stage pdf-font min-h-screen py-6 sm:py-10 pb-32 sm:pb-36 print:p-0" style={{ backgroundColor: "#e5e5ea", ["--pdf-zoom" as string]: pdfZoom }}>
 
-                {/* ================================================================= */}
-                {/* PAGE 1 : COUVERTURE                                               */}
-                {/* ================================================================= */}
-                <div className="print-page w-[297mm] h-[210mm] mx-auto bg-white flex overflow-hidden mb-8 shadow-2xl rounded-none relative">
-                    <div className="w-[55%] h-full relative">
-                        {data.mainPhoto 
-                            ? <img src={data.mainPhoto} className="w-full h-full object-cover"/>
-                            : <div className="w-full h-full flex items-center justify-center" style={{ backgroundColor: '#1a1a1d' }}>
-                                <span className="text-zinc-600 font-semibold uppercase tracking-widest text-xs">Aucune photo</span>
-                              </div>}
-                        <div className="absolute inset-0" style={{ background: 'linear-gradient(to right, transparent 60%, rgba(10,10,12,0.4) 100%)' }}></div>
-                        <div className="absolute right-0 top-0 h-full w-1" style={{ background: `linear-gradient(to bottom, ${COLORS.primary}, ${COLORS.secondary})` }}></div>
-                        {data.mainPhoto && data.mainPhotoAuto?.credit && (
-                            <span className="absolute left-4 bottom-[46px] text-[7px] text-white/80 bg-black/35 px-2 py-0.5 rounded">{data.mainPhotoAuto.credit}</span>
-                        )}
+                {/* ============ PAGE 1 : COUVERTURE ============ */}
+                <div className={PAGE}>
+                    <div className="relative h-[168mm] shrink-0 bg-[#1c1c1e]">
+                        {data.mainPhoto
+                            ? <img src={data.mainPhoto} alt="" className="absolute inset-0 w-full h-full object-cover"/>
+                            : <div className="absolute inset-0" style={{ background: "radial-gradient(120% 100% at 20% 0%, #5a1208, #120807 70%)" }}/>}
+                        <div className="absolute inset-0" style={{ background: "linear-gradient(180deg, rgba(0,0,0,0.38) 0%, rgba(0,0,0,0) 30%, rgba(0,0,0,0) 70%, rgba(0,0,0,0.25) 100%)" }}/>
+                        <div className="absolute top-[11mm] inset-x-[14mm] flex items-start justify-between">
+                            <span className="inline-flex items-center rounded-[14px] bg-white px-3.5 py-2.5 shadow-lg"><img src="/logo-patrim.png" alt="Patrim" className="h-[26px] object-contain"/></span>
+                            <div className="text-right text-white" style={{ textShadow: "0 1px 8px rgba(0,0,0,0.35)" }}>
+                                <p className="text-[8.5px] font-semibold uppercase tracking-[0.08em] opacity-80">Document établi le</p>
+                                <p className="text-[13px] font-semibold mt-0.5">{today}</p>
+                            </div>
+                        </div>
+                        {data.mainPhoto && data.mainPhotoAuto?.credit && <span className="absolute left-[14mm] bottom-[4mm] text-[7px] text-white/85 bg-black/35 px-2 py-0.5 rounded">{data.mainPhotoAuto.credit}</span>}
                     </div>
-
-                    <div className="dark-cover-half w-[45%] h-full text-white flex flex-col justify-between relative" style={{ backgroundColor: '#0a0a0c', padding: '2.8rem 3rem 2.8rem 3rem' }}>
-                        <div className="absolute inset-0 opacity-[0.02]" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '24px 24px' }}></div>
-                        
-                        <div className="relative z-10 flex justify-between items-start gap-4">
-                            <div className="flex flex-col gap-2">
-                                <div className="bg-white rounded-2xl p-3 shadow-xl print-no-blur inline-flex items-center justify-center" style={{ minWidth: '110px' }}>
-                                    <img src="/logo-patrim.png" alt="PATRIM" className="h-10 object-contain"/>
-                                </div>
-                                <div className="space-y-0.5 pl-0.5">
-                                    <p className="text-[8px] text-zinc-600 font-semibold leading-relaxed">SAS PATRIM</p>
-                                    <p className="text-[7.5px] text-zinc-700 leading-relaxed">Carte pro n° CPI31012016000013177</p>
-                                    <p className="text-[7.5px] text-zinc-700 leading-relaxed">RCS Toulouse B 403 231 145</p>
-                                </div>
-                            </div>
-                            <div className="text-right">
-                                <p className="text-[8px] text-zinc-600 uppercase tracking-widest font-semibold mb-1">Document réalisé le</p>
-                                <p className="text-[13px] font-bold text-white leading-tight">{new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+                    <div className="flex-1 flex flex-col px-[14mm] pt-[10mm]">
+                        <p className="text-[10px] font-bold uppercase tracking-[0.1em]" style={{ color: COLORS.primary }}>Avis de valeur</p>
+                        <h1 className="text-[40px] font-bold tracking-[-0.035em] leading-[1.02] text-[#1d1d1f] mt-2">{street}</h1>
+                        {city && <p className="text-[15px] text-[#6e6e73] mt-1.5">{city}</p>}
+                        <div className="flex flex-wrap gap-1.5 mt-5">
+                            {[data.propertyType, data.surface > 0 ? `${formatSurface(data.surface)} m²` : "", data.rooms > 0 ? `${data.rooms} pièces` : "", data.floor ? getDisplayFloor(data.floor) : "", data.buildYear > 0 ? `Construit en ${data.buildYear}` : ""].filter(Boolean).map(t => (
+                                <span key={t} className="text-[10px] font-medium text-[#1d1d1f] bg-[#f5f5f7] px-3 py-1.5 rounded-full">{t}</span>
+                            ))}
+                            {dpeLetter && DPE_COLORS[dpeLetter] && <span className="text-[10px] font-bold px-3 py-1.5 rounded-full" style={{ backgroundColor: DPE_COLORS[dpeLetter], color: "CD".includes(dpeLetter) ? "#1d1d1f" : "#fff" }}>DPE {dpeLetter}</span>}
+                        </div>
+                        <div className="mt-[11mm]">
+                            <p className={`${LABEL} mb-2.5`}>Sommaire</p>
+                            <div className="grid grid-cols-2 gap-x-8">
+                                {[
+                                    { t: "Le bien", p: 2 },
+                                    ...(hasMarketPage ? [{ t: "Le marché", p: 3 }] : []),
+                                    { t: "Notre estimation", p: conclusionPage },
+                                    ...(hasPhotoPage ? [{ t: "Photographies", p: totalPages }] : []),
+                                ].map((x, i) => (
+                                    <div key={x.t} className="flex items-baseline gap-3 py-2 border-b border-[#f0f0f2]">
+                                        <span className="text-[10px] font-bold tabular-nums" style={{ color: COLORS.primary }}>{pad2(i + 1)}</span>
+                                        <span className="text-[11.5px] font-medium text-[#1d1d1f] flex-1">{x.t}</span>
+                                        <span className="text-[9.5px] text-[#86868b] tabular-nums">p. {x.p}</span>
+                                    </div>
+                                ))}
                             </div>
                         </div>
-
-                        <div className="relative z-10 space-y-3">
-                            <div className="flex items-center gap-2 mb-2">
-                                <div className="h-px flex-1" style={{ background: `linear-gradient(to right, ${COLORS.primary}, transparent)` }}></div>
-                                <span className="text-[9px] font-bold uppercase tracking-[0.3em] text-zinc-600">Estimation immobilière</span>
+                        <div className="mt-auto grid grid-cols-2 gap-8 pt-[6mm] border-t border-[#e8e8ed]">
+                            <div>
+                                <p className={LABEL}>Établi pour</p>
+                                <p className="text-[14px] font-semibold text-[#1d1d1f] mt-1.5">{data.clientName || "—"}</p>
+                                {data.clientAddress && <p className="text-[10px] text-[#6e6e73] mt-0.5 leading-snug">{data.clientAddress}</p>}
                             </div>
-                            <h1 className="pdf-display font-black uppercase leading-[0.88] tracking-tight" style={{ fontSize: '48px', color: COLORS.secondary }}>
-                                Avis <br/>
-                                <span style={{ color: '#ffffff' }}>de valeur</span>
-                            </h1>
-                            <div className="border-t border-white/10 pt-3 mt-3">
-                                <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-semibold mb-1">A la demande de</p>
-                                <p className="text-[17px] font-bold text-white leading-snug">{data.clientName || "—"}</p>
-                                {(data.clientAddress) && (
-                                    <p className="text-[11px] text-zinc-400 mt-1 leading-snug">
-                                        Domicilié{data.clientName?.includes('&') || data.clientName?.toLowerCase().includes(' et ') ? '(s)' : ''} au&nbsp;
-                                        <span className="text-zinc-300 font-medium">{data.clientAddress}</span>
-                                    </p>
-                                )}
-                            </div>
-                        </div>
-
-                        <div className="relative z-10 border-l-[3px] pl-5" style={{ borderColor: COLORS.primary }}>
-                            <p className="text-[10px] uppercase tracking-widest text-zinc-500 mb-1.5 font-bold">Le Bien Estimé</p>
-                            <p className="text-[15px] font-bold text-white leading-tight">{data.propertyAddress || "Adresse non renseignée"}</p>
-                            <div className="flex items-center gap-2.5 mt-2.5 flex-wrap">
-                                <span className="text-[10px] font-semibold px-2.5 py-1 rounded-full border text-zinc-300" style={{ borderColor: 'rgba(255,255,255,0.15)' }}>{data.propertyType}</span>
-                                {data.surface > 0 && <span className="text-[10px] font-semibold px-2.5 py-1 rounded-full border text-zinc-300" style={{ borderColor: 'rgba(255,255,255,0.15)' }}>{formatSurface(data.surface)} m²</span>}
-                                {data.rooms > 0 && <span className="text-[10px] font-semibold px-2.5 py-1 rounded-full border text-zinc-300" style={{ borderColor: 'rgba(255,255,255,0.15)' }}>{data.rooms} pièces</span>}
-                                {data.floor && <span className="text-[10px] font-semibold px-2.5 py-1 rounded-full border text-zinc-300" style={{ borderColor: 'rgba(255,255,255,0.15)' }}>{getDisplayFloor(data.floor)}</span>}
+                            <div>
+                                <p className={LABEL}>Votre conseiller</p>
+                                <p className="text-[14px] font-semibold text-[#1d1d1f] mt-1.5">{agent?.name || "Agence Patrim"}</p>
+                                <p className="text-[10px] text-[#6e6e73] mt-0.5">{agent?.role || "Service Transaction"} · Patrim Toulouse</p>
                             </div>
                         </div>
                     </div>
-
-                    <div className="absolute bottom-0 left-0 right-0 h-[38px] flex items-center px-8 gap-5 z-30"
-                        style={{ background: `linear-gradient(90deg, ${COLORS.primary} 0%, ${COLORS.secondary} 100%)` }}>
-                        <span className="text-white text-[9.5px] font-bold uppercase tracking-widest">Agence Patrim</span>
-                        <span className="text-white/40 text-[9px]">|</span>
-                        <span className="text-white text-[9.5px] font-medium">45, allées Jean Jaurès — 31000 Toulouse</span>
-                        <span className="text-white/40 text-[9px]">|</span>
-                        <span className="text-white text-[9.5px] font-medium">05.61.99.08.08</span>
-                        <span className="text-white/40 text-[9px]">|</span>
-                        <span className="text-white text-[9.5px] font-medium">www.patrim.fr</span>
-                        <div className="ml-auto text-white/60 text-[9px] font-mono">{pageOf(1)}</div>
+                    <div className="px-[14mm] pb-[8mm] pt-[6mm] shrink-0 flex items-center justify-between text-[7.5px] text-[#86868b]">
+                        <span>SAS Patrim · Carte professionnelle CPI 3101 2016 000 013 177 · RCS Toulouse B 403 231 145</span>
+                        <span className="tabular-nums font-semibold">{pageOf(1)}</span>
                     </div>
                 </div>
 
-                {/* ================================================================= */}
-                {/* PAGE 2 : CARACTÉRISTIQUES                                         */}
-                {/* ================================================================= */}
-                <div className="print-page page-watermark w-[297mm] h-[210mm] mx-auto bg-[#f5f5f7] p-9 flex flex-col mb-8 shadow-2xl relative">
-                    <div className="flex justify-between items-center mb-4 pb-3.5 border-b border-zinc-200 shrink-0">
-                        <div className="flex items-center gap-3">
-                            <div className="w-6 h-6 rounded-lg flex items-center justify-center" style={{ background: `linear-gradient(135deg, ${COLORS.primary}, ${COLORS.secondary})` }}>
-                                <span className="text-white text-[9px] font-black">01</span>
-                            </div>
-                            <h2 className="text-[11px] font-black uppercase tracking-[0.3em] pdf-font" style={{ color: COLORS.primary }}>Le Bien & Ses Caractéristiques</h2>
-                        </div>
-                        <div className="flex items-center gap-4">
-                            <img src="/logo-patrim.png" alt="PATRIM" className="h-6 object-contain opacity-60"/>
-                            <span className="text-[8px] font-mono text-zinc-400 bg-zinc-200 px-2 py-0.5 rounded-full">{pageOf(2)}</span>
-                        </div>
-                    </div>
-
-                    <div className="flex gap-4 flex-1 min-h-0">
-                        <div className="flex flex-col gap-3.5 min-h-0" style={{ width: '56%' }}>
-                            <div className="grid grid-cols-3 gap-3.5 shrink-0" style={{ height: '90px' }}>
-                                <div className="premium-card bg-white rounded-[18px] flex flex-col justify-center items-center text-center shadow-sm border border-zinc-200 relative overflow-hidden">
-                                    <div className="absolute inset-x-0 top-0 h-[3px]" style={{ background: `linear-gradient(90deg, ${COLORS.primary}, ${COLORS.secondary})` }}></div>
-                                    <p className="text-[10px] uppercase font-bold tracking-widest text-zinc-400 mb-2">Surface</p>
-                                    <div className="flex items-end justify-center gap-1.5 leading-none">
-                                        <span className={`${Number.isInteger(Number(data.surface)) ? 'text-5xl' : 'text-4xl'} font-black pdf-display`} style={{ color: COLORS.gray }}>{formatSurface(data.surface)}</span>
-                                        <span className="text-lg font-bold text-zinc-400 mb-1">m²</span>
-                                    </div>
+                {/* ============ PAGE 2 : LE BIEN ============ */}
+                <div className={PAGE}>
+                    {renderHeader(1, "Le bien")}
+                    {renderTitle("Le bien", `${data.propertyType}${data.surface > 0 ? ` de ${formatSurface(data.surface)} m²` : ""}${data.rooms > 0 ? ` · ${data.rooms} pièces` : ""}${city ? ` · ${city}` : ""}`)}
+                    <div className="px-[14mm] flex-1 flex flex-col gap-[5mm] min-h-0 pb-[2mm]">
+                        {/* Chiffres clés */}
+                        <div className="grid grid-cols-4 rounded-[18px] bg-[#f5f5f7] py-[5mm]">
+                            {[
+                                { l: "Surface", v: data.surface > 0 ? formatSurface(data.surface) : "—", u: "m²", sub: "surface déclarée" },
+                                { l: "Pièces", v: data.rooms > 0 ? String(data.rooms) : "—", u: "", sub: "" },
+                                data.propertyType === "Maison"
+                                    ? { l: "Terrain", v: data.plotSurface > 0 ? formatPrice(data.plotSurface) : "—", u: data.plotSurface > 0 ? "m²" : "", sub: data.gardenSurface > 0 ? `jardin ${formatPrice(data.gardenSurface)} m²` : "" }
+                                    : { l: "Étage", v: data.floor ? getDisplayFloor(data.floor).replace(/\s*étage/i, "") : "—", u: "", sub: data.floor ? (data.hasElevator ? "avec ascenseur" : "sans ascenseur") : "" },
+                                { l: "Construction", v: data.buildYear > 0 ? String(data.buildYear) : "—", u: "", sub: "" },
+                            ].map((k, i) => (
+                                <div key={k.l} className={`px-[5mm] ${i > 0 ? "border-l border-[#e3e3e8]" : ""}`}>
+                                    <p className={LABEL}>{k.l}</p>
+                                    <p className="mt-1.5 text-[#1d1d1f] leading-none whitespace-nowrap"><span className="text-[26px] font-bold tracking-[-0.03em] tabular-nums">{k.v}</span>{k.u && <span className="text-[10px] font-medium text-[#6e6e73] ml-1">{k.u}</span>}</p>
+                                    {k.sub && <p className="text-[8.5px] text-[#86868b] mt-1.5">{k.sub}</p>}
                                 </div>
-                                <div className="premium-card bg-white rounded-[18px] flex flex-col justify-center items-center text-center shadow-sm border border-zinc-200 relative overflow-hidden">
-                                    <div className="absolute inset-x-0 top-0 h-[3px]" style={{ background: `linear-gradient(90deg, ${COLORS.secondary}, #f0a090)` }}></div>
-                                    <p className="text-[10px] uppercase font-bold tracking-widest text-zinc-400 mb-2">Pièces</p>
-                                    <div className="flex items-end justify-center gap-1.5 leading-none">
-                                        <span className="text-5xl font-black pdf-display" style={{ color: COLORS.gray }}>{data.rooms}</span>
-                                        <span className="text-lg font-bold text-zinc-400 mb-1">pces</span>
-                                    </div>
-                                </div>
-                                <div className="premium-card bg-white rounded-[18px] px-4 py-3 shadow-sm border border-zinc-200 flex flex-col justify-center gap-1.5 relative overflow-hidden">
-                                    <div className="absolute inset-x-0 top-0 h-[3px]" style={{ background: `linear-gradient(90deg, #a3a3b3, #d4d4d8)` }}></div>
-                                    {data.propertyType === "Maison" ? (
-                                        <>
-                                            {data.plotSurface > 0 && (
-                                                <div className="flex justify-between items-center">
-                                                    <span className="text-[9px] uppercase font-bold text-zinc-400 tracking-wider">Parcelle</span>
-                                                    <span className="text-[11px] font-black text-zinc-700">{formatPrice(data.plotSurface)} m²</span>
-                                                </div>
-                                            )}
-                                            {data.gardenSurface > 0 && (
-                                                <div className="flex justify-between items-center">
-                                                    <span className="text-[9px] uppercase font-bold text-zinc-400 tracking-wider">Jardin</span>
-                                                    <span className="text-[11px] font-black text-zinc-700">{formatPrice(data.gardenSurface)} m²</span>
-                                                </div>
-                                            )}
-                                            {data.buildYear > 0 && (
-                                                <div className="flex justify-between items-center">
-                                                    <span className="text-[9px] uppercase font-bold text-zinc-400 tracking-wider">Construction</span>
-                                                    <span className="text-[11px] font-black text-zinc-700">{data.buildYear}</span>
-                                                </div>
-                                            )}
-                                        </>
-                                    ) : (
-                                        <>
-                                            {data.floor && (
-                                                <div className="flex justify-between items-center">
-                                                    <span className="text-[9px] uppercase font-bold text-zinc-400 tracking-wider">Étage</span>
-                                                    <span className="text-[11px] font-black text-zinc-700">{getDisplayFloor(data.floor)}</span>
-                                                </div>
-                                            )}
-                                            {data.buildYear > 0 && (
-                                                <div className="flex justify-between items-center">
-                                                    <span className="text-[9px] uppercase font-bold text-zinc-400 tracking-wider">Construction</span>
-                                                    <span className="text-[11px] font-black text-zinc-700">{data.buildYear}</span>
-                                                </div>
-                                            )}
-                                            <div className="flex justify-between items-center">
-                                                <span className="text-[9px] uppercase font-bold text-zinc-400 tracking-wider">Ascenseur</span>
-                                                <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${data.hasElevator ? 'text-emerald-700 bg-emerald-50' : 'text-zinc-500 bg-zinc-100'}`}>
-                                                    {data.hasElevator ? 'Oui' : 'Non'}
-                                                </span>
-                                            </div>
-                                        </>
-                                    )}
-                                </div>
-                            </div>
-
-                            <div className="grid grid-rows-2 gap-3.5 flex-1 min-h-0">
-                                <div className="premium-card bg-white rounded-[18px] p-5 shadow-sm border border-zinc-200 flex flex-col min-h-0">
-                                    <p className="text-[10px] uppercase font-bold tracking-widest text-zinc-400 mb-3 flex items-center gap-1.5 shrink-0"><Leaf size={12}/> Performance Énergétique</p>
-                                    <div className="grid grid-cols-2 gap-6 flex-1 items-center">
-                                        <div className="flex flex-col">
-                                            <p className="text-[10px] uppercase font-bold text-zinc-400 mb-2 tracking-widest">DPE — Diagnostic de Performance</p>
-                                            {renderEnergyRail(data.dpe)}
-                                            <p className="text-[9px] text-zinc-400 mt-2">Consommation d'énergie primaire</p>
-                                        </div>
-                                        <div className="flex flex-col">
-                                            <p className="text-[10px] uppercase font-bold text-zinc-400 mb-2 tracking-widest">GES — Émissions CO₂</p>
-                                            {renderEnergyRail(data.ges)}
-                                            <p className="text-[9px] text-zinc-400 mt-2">Impact sur le climat</p>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="premium-card bg-white rounded-[18px] px-5 py-4 shadow-sm border border-zinc-200 shrink-0">
-                                    <p className="text-[10px] uppercase font-bold tracking-widest text-zinc-400 mb-2">Prestations & Descriptif</p>
-                                    <div className="text-[11.5px] leading-snug text-zinc-700 font-medium whitespace-pre-wrap">{data.features || "Non renseigné."}</div>
-                                </div>
-                            </div>
+                            ))}
                         </div>
 
-                        <div className="flex flex-col gap-3.5 min-h-0" style={{ width: '44%' }}>
-                            <div className="premium-card bg-white rounded-[18px] p-5 shadow-sm border border-zinc-200 shrink-0">
-                                <p className="text-[10px] uppercase font-bold tracking-widest text-zinc-400 mb-4 flex items-center gap-1.5"><Banknote size={12}/> Charges & Coûts Annuels</p>
-                                <div className="flex gap-3">
-                                    <div className="flex-1 inner-card bg-zinc-50 border border-zinc-100 rounded-[14px] px-4 py-3.5 text-center">
-                                        <p className="text-[9px] text-zinc-400 font-semibold uppercase tracking-wider mb-1.5">Taxe Foncière</p>
-                                        <p className="font-black text-xl pdf-display text-zinc-800 leading-none">{formatPrice(data.taxeFonciere)}</p>
-                                        <p className="text-[10px] font-semibold text-zinc-500 mt-1">€ / an</p>
+                        {/* Photos : occupent l'espace disponible */}
+                        {data.secondaryPhotos.length > 0 && (
+                            <div className={`grid gap-[3mm] flex-1 min-h-[72mm] max-h-[135mm] ${data.secondaryPhotos.length === 1 ? "grid-cols-1" : data.secondaryPhotos.length === 2 ? "grid-cols-2" : "grid-cols-3 grid-rows-2"}`}>
+                                {data.secondaryPhotos.slice(0, 3).map((url, i) => (
+                                    <div key={i} className={`rounded-[16px] overflow-hidden bg-[#f5f5f7] ${data.secondaryPhotos.length >= 3 && i === 0 ? "col-span-2 row-span-2" : ""}`}>
+                                        <img src={url} alt="" className="w-full h-full object-cover"/>
                                     </div>
-                                    {data.isCopropriete ? (
-                                        <div className="flex-1 inner-card border rounded-[14px] px-4 py-3.5 text-center relative overflow-hidden"
-                                            style={{ backgroundColor: `${COLORS.primary}06`, borderColor: `${COLORS.primary}20` }}>
-                                            <p className="text-[9px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: COLORS.primary }}>Charges Copropriété</p>
-                                            <p className="font-black text-xl pdf-display text-zinc-800 leading-none">{formatPrice(data.coproFees * 12)}</p>
-                                            <p className="text-[10px] font-semibold text-zinc-500 mt-1">€ / an <span className="text-zinc-400">({formatPrice(data.coproFees)} €/mois)</span></p>
-                                        </div>
-                                    ) : (
-                                        <div className="flex-1 inner-card bg-zinc-50 border border-zinc-100 rounded-[14px] px-4 py-3.5 text-center flex flex-col items-center justify-center">
-                                            <p className="text-[9px] text-zinc-400 font-semibold uppercase tracking-wider mb-1.5">Statut</p>
-                                            <p className="font-black text-base text-zinc-800">Individuel</p>
-                                            <p className="text-[9px] text-zinc-400 mt-1">Pas de charges de copropriété</p>
-                                        </div>
-                                    )}
+                                ))}
+                            </div>
+                        )}
+
+                        {/* Énergie & charges */}
+                        <div className={`grid gap-[4mm] ${hasCharges ? "grid-cols-[1.35fr_1fr]" : "grid-cols-1"}`}>
+                            <div className="rounded-[18px] border border-[#e8e8ed] p-[5mm]">
+                                <p className="text-[12px] font-semibold text-[#1d1d1f] flex items-center gap-1.5 mb-[4mm]"><Leaf size={13} className="text-[#248a3d]"/> Performance énergétique</p>
+                                <div className="grid grid-cols-2 gap-[6mm]">
+                                    {renderEnergyRail(data.dpe, "DPE", "énergie")}
+                                    {renderEnergyRail(data.ges, "GES", "climat")}
                                 </div>
                             </div>
-
-                            {data.secondaryPhotos.length > 0 ? (
-                                <div className="flex flex-col gap-3.5 flex-1 min-h-0">
-                                    {data.secondaryPhotos.map((url, i) => (
-                                        <div key={i} className="rounded-[18px] overflow-hidden shadow-sm border border-zinc-200 relative flex-1 min-h-0">
-                                            <img src={url} className="w-full h-full object-cover"/>
-                                            <div className="absolute inset-0 rounded-[18px]" style={{ boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.06)' }}></div>
-                                        </div>
-                                    ))}
-                                    {(data.amenities ?? []).length > 0 && (
-                                        <div className="premium-card bg-white rounded-[18px] px-4 py-3 shadow-sm border border-zinc-200 shrink-0">
-                                            <p className="text-[9px] uppercase font-bold tracking-widest text-zinc-400 mb-2">Équipements & Annexes</p>
-                                            <div className="flex flex-wrap gap-1.5">
-                                                {(data.amenities ?? []).map(id => {
-                                                    const am = ALL_AMENITIES.find(a => a.id === id);
-                                                    const label = am ? am.label : id;
-                                                    return (
-                                                        <span key={id} className="inline-flex items-center text-[10px] font-semibold px-2.5 py-1.5 rounded-xl border"
-                                                            style={{ backgroundColor: `${COLORS.primary}08`, borderColor: `${COLORS.primary}20`, color: COLORS.gray }}>
-                                                            {label}
-                                                        </span>
-                                                    );
-                                                })}
+                            {hasCharges && (
+                                <div className="rounded-[18px] border border-[#e8e8ed] p-[5mm]">
+                                    <p className="text-[12px] font-semibold text-[#1d1d1f] flex items-center gap-1.5 mb-[4mm]"><Banknote size={13} style={{ color: COLORS.primary }}/> Charges annuelles</p>
+                                    <div className="space-y-2.5">
+                                        {data.taxeFonciere > 0 && (
+                                            <div className="flex items-baseline justify-between">
+                                                <span className="text-[10.5px] text-[#6e6e73]">Taxe foncière</span>
+                                                <span className="text-[14px] font-bold text-[#1d1d1f] tabular-nums">{eur(data.taxeFonciere)}</span>
                                             </div>
-                                        </div>
-                                    )}
-                                </div>
-                            ) : (
-                                <div className="flex-1 premium-card bg-white rounded-[18px] p-6 shadow-sm border border-zinc-200 flex flex-col justify-center items-center min-h-0">
-                                    <div className="flex flex-col justify-center items-center text-center">
-                                        <div className="w-16 h-16 rounded-[20px] flex items-center justify-center mb-4 shrink-0"
-                                            style={{ background: `linear-gradient(135deg, ${COLORS.primary}15, ${COLORS.secondary}10)`, border: `1.5px solid ${COLORS.primary}25` }}>
-                                            <Home size={30} style={{ color: COLORS.secondary }}/>
-                                        </div>
-                                        <p className="text-3xl font-black pdf-display text-zinc-800 mb-2">{data.propertyType}</p>
-                                        <p className="text-[13px] uppercase font-bold text-zinc-400 tracking-widest mb-3">{formatSurface(data.surface)} m² — {data.rooms} pièces</p>
-                                        <div className="flex items-center gap-2.5 justify-center flex-wrap">
-                                            <span className="text-[11px] font-bold px-3.5 py-1.5 rounded-full border text-zinc-600" style={{ borderColor: 'rgba(0,0,0,0.1)', backgroundColor: '#f5f5f7' }}>DPE {data.dpe}</span>
-                                            <span className="text-[11px] font-bold px-3.5 py-1.5 rounded-full border text-zinc-600" style={{ borderColor: 'rgba(0,0,0,0.1)', backgroundColor: '#f5f5f7' }}>GES {data.ges}</span>
-                                            {data.buildYear > 0 && <span className="text-[11px] font-bold px-3.5 py-1.5 rounded-full border text-zinc-600" style={{ borderColor: 'rgba(0,0,0,0.1)', backgroundColor: '#f5f5f7' }}>Construit en {data.buildYear}</span>}
-                                            {data.floor && <span className="text-[11px] font-bold px-3.5 py-1.5 rounded-full border text-zinc-600" style={{ borderColor: 'rgba(0,0,0,0.1)', backgroundColor: '#f5f5f7' }}>{getDisplayFloor(data.floor)}</span>}
-                                        </div>
+                                        )}
+                                        {data.isCopropriete && (
+                                            <div className="flex items-baseline justify-between">
+                                                <span className="text-[10.5px] text-[#6e6e73]">Charges de copropriété</span>
+                                                <span className="text-[14px] font-bold text-[#1d1d1f] tabular-nums">{data.coproFees > 0 ? eur(data.coproFees * 12) : "—"}</span>
+                                            </div>
+                                        )}
+                                        {data.isCopropriete && data.coproFees > 0 && <p className="text-[9px] text-[#86868b] text-right">soit {eur(data.coproFees)} par mois</p>}
                                     </div>
-                                    {(data.amenities ?? []).length > 0 && (
-                                        <div className="border-t border-zinc-100 pt-4 mt-5 w-full">
-                                            <p className="text-[10px] uppercase font-bold tracking-widest text-zinc-400 mb-3 text-center">Équipements & Annexes</p>
-                                            <div className="flex flex-wrap gap-2 justify-center">
-                                                {(data.amenities ?? []).map(id => {
-                                                    const am = ALL_AMENITIES.find(a => a.id === id);
-                                                    const label = am ? am.label : id;
-                                                    return (
-                                                        <span key={id} className="inline-flex items-center text-[11px] font-semibold px-3.5 py-1.5 rounded-xl border"
-                                                            style={{ backgroundColor: `${COLORS.primary}08`, borderColor: `${COLORS.primary}25`, color: COLORS.gray }}>
-                                                            {label}
-                                                        </span>
-                                                    );
-                                                })}
-                                            </div>
-                                        </div>
-                                    )}
                                 </div>
                             )}
                         </div>
-                    </div>
-                </div>
 
-                {/* ================================================================= */}
-                {/* PAGE 3 : MARCHÉ                                                  */}
-                {/* ================================================================= */}
-                {(data.soldComparables.length > 0 || data.forSaleComparables.length > 0) && (
-                    <div className="print-page page-watermark w-[297mm] h-[210mm] mx-auto bg-[#f5f5f7] p-10 flex flex-col mb-8 shadow-2xl relative">
-                        <div className="flex justify-between items-center mb-5 pb-4 border-b border-zinc-200 shrink-0">
-                            <div className="flex items-center gap-3">
-                                <div className="w-6 h-6 rounded-lg flex items-center justify-center" style={{ background: `linear-gradient(135deg, ${COLORS.secondary}, #f0a090)` }}>
-                                    <span className="text-white text-[9px] font-black">02</span>
-                                </div>
-                                <h2 className="text-xs font-black uppercase tracking-[0.35em]" style={{ color: COLORS.secondary }}>Le Marché & Concurrence</h2>
-                            </div>
-                            <div className="flex items-center gap-3">
-                                <img src="/logo-patrim.png" alt="PATRIM" className="h-6 object-contain opacity-60"/>
-                                <span className="text-[8px] font-mono text-zinc-400 bg-zinc-200 px-2 py-0.5 rounded-full">{pageOf(3)}</span>
-                            </div>
-                        </div>
-
-                        {(data.lowPrice > 0 && allComps.length > 0) && (
-                            <div className="premium-card bg-white rounded-[20px] p-7 mb-4 shadow-sm border border-zinc-200 shrink-0" style={{ minHeight: '90px' }}>
-                                <div className="flex items-center justify-between mb-7 gap-4">
-                                    <h4 className="text-[11px] uppercase tracking-widest font-bold text-zinc-400 flex items-center gap-2"><BarChart3 size={14}/> Positionnement Prix / m²</h4>
-                                    {data.marketStats && (
-                                        <p className="text-[9.5px] text-zinc-500 font-medium text-right">
-                                            Référence DVF : médiane <b className="text-zinc-700">{formatPrice(data.marketStats.median)} €/m²</b> sur {data.marketStats.count} ventes comparables
-                                            à moins de {data.marketStats.radius >= 1000 ? `${data.marketStats.radius / 1000} km` : `${data.marketStats.radius} m`} ({data.marketStats.years[0]}–{data.marketStats.years[data.marketStats.years.length - 1]})
-                                        </p>
-                                    )}
-                                </div>
-                                <div className="relative w-full" style={{ height: '64px' }}>
-                                    <div className="absolute left-0 w-full h-[4px] bg-zinc-100 rounded-full" style={{ top: '32px' }}></div>
-                                    <div className="absolute h-[4px] rounded-full opacity-20" style={{ backgroundColor: COLORS.primary, top: '32px', left: `${getPositionPercent(data.lowPrice / (data.surface || 1))}%`, width: `${Math.max(0, getPositionPercent(data.highPrice / (data.surface || 1)) - getPositionPercent(data.lowPrice / (data.surface || 1)))}%` }}></div>
-                                    <div className="absolute h-[4px] rounded-full z-10" style={{ background: `linear-gradient(90deg, ${COLORS.primary}, ${COLORS.secondary})`, top: '32px', left: `${getPositionPercent(data.lowPrice / (data.surface || 1))}%`, width: `${Math.max(0, getPositionPercent(data.highPrice / (data.surface || 1)) - getPositionPercent(data.lowPrice / (data.surface || 1)))}%` }}></div>
-                                    <div className="absolute -translate-x-1/2 w-7 h-7 rounded-full border-[3px] border-white z-20 shadow-lg" style={{ top: '18px', left: `${getPositionPercent(estimatedPriceSqm)}%`, background: `linear-gradient(135deg, ${COLORS.primary}, ${COLORS.secondary})` }}>
-                                        <div className="absolute -top-9 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-bold text-center leading-tight" style={{ color: COLORS.primary }}>
-                                            <span className="block font-semibold">Notre estimation</span>
-                                            <span className="block font-black text-[12px]">{formatPrice(Math.round(estimatedPriceSqm))} €/m²</span>
-                                        </div>
-                                    </div>
-                                    {(() => {
-                                        const points = allComps.filter(c => sqmOf(c) > 0).map((c, i) => ({
-                                            c, i,
-                                            pct: getPositionPercent(c.price / (c.surface || 1)),
-                                            sqm: Math.round(c.price / (c.surface || 1)),
-                                        })).sort((a, b) => a.pct - b.pct);
-                                        const sides: ('top' | 'bottom')[] = [];
-                                        points.forEach((pt, idx) => {
-                                            if (idx === 0) { sides.push('bottom'); return; }
-                                            const prev = points[idx - 1];
-                                            const prevSide = sides[idx - 1];
-                                            const tooClose = (pt.pct - prev.pct) < 8;
-                                            sides.push(tooClose ? (prevSide === 'bottom' ? 'top' : 'bottom') : (prevSide === 'bottom' ? 'top' : 'bottom'));
-                                        });
-                                        return points.map((pt, idx) => {
-                                            const side = sides[idx];
-                                            return (
-                                                <div key={pt.i} className="absolute -translate-x-1/2 w-3.5 h-3.5 rounded-full border-2 border-white z-10"
-                                                    style={{ top: '26px', left: `${pt.pct}%`, backgroundColor: '#a3a3b3' }}>
-                                                    <div className={`absolute left-1/2 -translate-x-1/2 whitespace-nowrap text-[9px] text-zinc-600 font-bold`}
-                                                        style={side === 'bottom' ? { top: '16px' } : { bottom: '16px' }}>
-                                                        {formatPrice(pt.sqm)} €/m²
-                                                    </div>
-                                                </div>
-                                            );
-                                        });
-                                    })()}
+                        {amenityLabels.length > 0 && (
+                            <div>
+                                <p className={`${LABEL} mb-2`}>Équipements et annexes</p>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {amenityLabels.map(l => <span key={l} className="text-[10px] font-medium text-[#1d1d1f] bg-[#f5f5f7] px-3 py-1.5 rounded-full">{l}</span>)}
                                 </div>
                             </div>
                         )}
 
-                        {(() => {
-                            const soldCount = data.soldComparables.length;
-                            const saleCount = data.forSaleComparables.length;
-                            const maxRows = Math.min(Math.max(soldCount, saleCount), 5);
-                            const rowH = maxRows <= 1 ? '100px' : maxRows === 2 ? '80px' : maxRows === 3 ? '66px' : maxRows === 4 ? '56px' : '48px';
-                            const photoSize = maxRows <= 2 ? 'w-16 h-16' : maxRows === 3 ? 'w-13 h-13' : 'w-11 h-11';
-                            const priceClass = maxRows <= 2 ? 'text-xl' : maxRows === 3 ? 'text-lg' : 'text-base';
-                            const addrClass = maxRows <= 2 ? 'text-[13px]' : maxRows === 3 ? 'text-[12px]' : 'text-[11px]';
-                            const metaClass = maxRows <= 2 ? 'text-[11px]' : 'text-[10px]';
-                            const renderRow = (comp: Comparable, accentColor: string) => {
-                                const compSqm = comp.price / (comp.surface || 1);
-                                const refSqm = estimatedPriceSqm > 0 ? estimatedPriceSqm : (pricesPerSqm.length > 0 ? pricesPerSqm.reduce((a,b) => a+b,0)/pricesPerSqm.length : 0);
-                                const delta = refSqm > 0 && compSqm > 0 ? Math.round(((compSqm - refSqm)/refSqm)*100) : null;
-                                return (
-                                    <div key={comp.id} className="inner-card flex items-center bg-zinc-50 rounded-2xl border border-zinc-100 gap-4 px-4 shrink-0" style={{ height: rowH }}>
-                                        {comp.photoUrl ? <img src={comp.photoUrl} className={`${photoSize} object-cover rounded-xl shrink-0`}/> : <div className={`${photoSize} bg-zinc-200 rounded-xl shrink-0 flex items-center justify-center`}><Home size={maxRows <= 2 ? 18 : 14} className="text-zinc-400"/></div>}
-                                        <div className="flex-1 min-w-0">
-                                            <p className={`font-bold ${addrClass} text-zinc-800 truncate`}>{comp.address}</p>
-                                            <p className={`text-zinc-400 ${metaClass} font-medium mt-0.5`}>
-                                                {formatSurface(comp.surface)} m²
-                                                {comp.soldDate && ` · vendu en ${formatMonthYear(comp.soldDate)}`}
-                                                {comp.distance !== undefined && comp.distance !== null && ` · à ${comp.distance} m`}
-                                                {comp.source === "portal" && comp.portal && ` · ${comp.portal}`}
-                                                {comp.source === "portal" && (() => { const d = daysOnline({ publishedAt: comp.publishedAt, firstSeenAt: comp.firstSeenAt || "" }); return d !== null ? ` · en ligne depuis ${d} j` : ""; })()}
-                                            </p>
-                                            {comp.source === "portal" && (comp.initialPrice && comp.initialPrice > comp.price || comp.highlight) && maxRows <= 4 && (
-                                                <p className={`${metaClass} text-zinc-500 truncate mt-0.5`}>
-                                                    {comp.initialPrice && comp.initialPrice > comp.price && <span className="font-bold text-rose-700">Baisse de {formatPrice(comp.initialPrice - comp.price)} € · </span>}
-                                                    {comp.highlight}
-                                                </p>
-                                            )}
+                        {data.features?.trim() && (
+                            <div>
+                                <p className={`${LABEL} mb-2`}>Descriptif et prestations</p>
+                                <p className="text-[10.5px] leading-[1.55] text-[#3a3a3c] whitespace-pre-wrap line-clamp-[10]">{data.features}</p>
+                            </div>
+                        )}
+                    </div>
+                    {renderFooter(2)}
+                </div>
+
+                {/* ============ PAGE 3 : MARCHÉ ============ */}
+                {hasMarketPage && (
+                    <div className={PAGE}>
+                        {renderHeader(2, "Le marché")}
+                        {renderTitle("Le marché", "Ventes notariées et biens actuellement en vente autour de l'adresse")}
+                        <div className="px-[14mm] flex flex-col gap-[5mm] min-h-0">
+                            {data.marketStats && (
+                                <div className="grid grid-cols-4 rounded-[18px] bg-[#f5f5f7] py-[4.5mm]">
+                                    {[
+                                        { l: "Prix médian vendu", v: `${formatPrice(data.marketStats.median)}`, u: "€/m²" },
+                                        { l: "Ventes analysées", v: String(data.marketStats.count), u: "actes DVF" },
+                                        { l: "Périmètre", v: data.marketStats.radius >= 1000 ? `${data.marketStats.radius / 1000}` : String(data.marketStats.radius), u: data.marketStats.radius >= 1000 ? "km" : "m" },
+                                        { l: "Notre estimation", v: estimatedPriceSqm > 0 ? formatPrice(Math.round(estimatedPriceSqm)) : "—", u: "€/m²", accent: true },
+                                    ].map((k, i) => (
+                                        <div key={k.l} className={`px-[5mm] ${i > 0 ? "border-l border-[#e3e3e8]" : ""}`}>
+                                            <p className={LABEL}>{k.l}</p>
+                                            <p className="mt-1.5 leading-none"><span className="text-[21px] font-bold tracking-[-0.03em] tabular-nums" style={{ color: k.accent ? COLORS.primary : "#1d1d1f" }}>{k.v}</span><span className="text-[9.5px] font-medium text-[#6e6e73] ml-1">{k.u}</span></p>
                                         </div>
-                                        <div className="text-right shrink-0 flex flex-col items-end gap-1">
-                                            <p className={`${priceClass} font-black text-zinc-800`}>{formatPrice(comp.price)} €</p>
-                                            <div className="flex items-center gap-1.5">
-                                                <p className={`${metaClass} font-bold`} style={{ color: accentColor }}>{formatPrice(Math.round(compSqm))} €/m²</p>
-                                                {delta !== null && <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full ${delta > 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>{delta > 0 ? '+' : ''}{delta}%</span>}
-                                            </div>
+                                    ))}
+                                </div>
+                            )}
+
+                            {central > 0 && pricesPerSqm.length > 0 && (
+                                <div className="rounded-[18px] border border-[#e8e8ed] px-[6mm] pt-[5mm] pb-[3mm]">
+                                    <div className="flex items-baseline justify-between">
+                                        <p className="text-[12px] font-semibold text-[#1d1d1f] flex items-center gap-1.5"><BarChart3 size={13} style={{ color: COLORS.primary }}/> Positionnement au m²</p>
+                                        {data.marketStats && <p className="text-[8.5px] text-[#86868b]">Ventes {data.marketStats.years[0]}–{data.marketStats.years[data.marketStats.years.length - 1]}</p>}
+                                    </div>
+                                    <div className="relative w-full h-[27mm] mt-2">
+                                        <div className="absolute inset-x-0 h-[4px] rounded-full bg-[#f0f0f2]" style={{ top: "12mm" }}/>
+                                        {!singleValue && (
+                                            <div className="absolute h-[4px] rounded-full" style={{ top: "12mm", background: `linear-gradient(90deg, ${COLORS.primary}, ${COLORS.secondary})`, left: `${getPositionPercent(low / (data.surface || 1))}%`, width: `${Math.max(0, getPositionPercent(high / (data.surface || 1)) - getPositionPercent(low / (data.surface || 1)))}%` }}/>
+                                        )}
+                                        {(() => {
+                                            const points = allComps.filter(c => sqmOf(c) > 0).map((c, i) => ({ i, pct: getPositionPercent(sqmOf(c)), sqm: Math.round(sqmOf(c)) })).sort((a, b) => a.pct - b.pct);
+                                            return points.map((pt, idx) => (
+                                                <div key={pt.i} className="absolute -translate-x-1/2 w-[9px] h-[9px] rounded-full border-2 border-white bg-[#aeaeb2]" style={{ top: "calc(12mm - 2.5px)", left: `${pt.pct}%` }}>
+                                                    <span className="absolute left-1/2 -translate-x-1/2 whitespace-nowrap text-[7.5px] font-medium text-[#6e6e73] tabular-nums" style={{ top: idx % 2 === 0 ? "11px" : "22px" }}>{formatPrice(pt.sqm)}</span>
+                                                </div>
+                                            ));
+                                        })()}
+                                        <div className="absolute -translate-x-1/2 w-[18px] h-[18px] rounded-full border-[3px] border-white shadow-[0_2px_8px_rgba(138,14,1,0.45)]" style={{ top: "calc(12mm - 7px)", left: `${getPositionPercent(estimatedPriceSqm)}%`, background: `linear-gradient(135deg, ${COLORS.primary}, ${COLORS.secondary})` }}>
+                                            <span className="absolute left-1/2 -translate-x-1/2 -top-[22px] whitespace-nowrap text-[9.5px] font-bold tabular-nums px-2 py-0.5 rounded-full bg-white shadow-[0_1px_4px_rgba(0,0,0,0.12)]" style={{ color: COLORS.primary }}>Notre estimation · {formatPrice(Math.round(estimatedPriceSqm))} €/m²</span>
                                         </div>
-                                    </div>
-                                );
-                            };
-                            // Mention des sources des photos automatiques (licences ouvertes)
-                            const photoCredits = Array.from(new Set(
-                                [...data.soldComparables.slice(0, 5), ...data.forSaleComparables.slice(0, 5)]
-                                    .filter(c => c.photoUrl && c.photoAuto?.credit)
-                                    .map(c => c.photoAuto!.credit)
-                            ));
-                            return (
-                                <>
-                                <div className="flex gap-5 flex-1 min-h-0">
-                                    <div className="w-1/2 premium-card bg-white rounded-[20px] p-5 shadow-sm border border-zinc-200 flex flex-col gap-2.5">
-                                        {soldCount > 0 ? (<>
-                                            <h4 className="text-[10px] font-bold uppercase tracking-widest mb-1 flex items-center gap-1.5 shrink-0" style={{ color: '#059669' }}><CheckCircle size={12}/> Vendus récemment</h4>
-                                            {data.soldComparables.slice(0,5).map(c => renderRow(c, '#059669'))}
-                                        </>) : <div className="flex-1 flex items-center justify-center text-zinc-300 text-xs">Aucun bien vendu renseigné</div>}
-                                    </div>
-                                    <div className="w-1/2 premium-card bg-white rounded-[20px] p-5 shadow-sm border border-zinc-200 flex flex-col gap-2.5">
-                                        {saleCount > 0 ? (<>
-                                            <h4 className="text-[10px] font-bold uppercase tracking-widest mb-1 flex items-center gap-1.5 text-amber-600 shrink-0"><TrendingUp size={12}/> Actuellement en vente</h4>
-                                            {data.forSaleComparables.slice(0,5).map(c => renderRow(c, '#d97706'))}
-                                        </>) : <div className="flex-1 flex items-center justify-center text-zinc-300 text-xs">Aucun bien en vente renseigné</div>}
                                     </div>
                                 </div>
-                                {photoCredits.length > 0 && (
-                                    <p className="text-[6.5px] text-zinc-400 mt-2 shrink-0 truncate">Photos : {photoCredits.join(" · ")}</p>
-                                )}
-                                </>
-                            );
-                        })()}
+                            )}
+
+                            {soldList.length > 0 && (
+                                <div>
+                                    <p className="text-[12px] font-semibold text-[#1d1d1f] flex items-center gap-1.5 mb-1"><CheckCircle size={13} className="text-[#248a3d]"/> Vendus récemment <span className="text-[#86868b] font-normal">· ventes notariées</span></p>
+                                    <div>{soldList.map(c => renderCompRow(c, "#248a3d"))}</div>
+                                </div>
+                            )}
+                            {saleList.length > 0 && (
+                                <div>
+                                    <p className="text-[12px] font-semibold text-[#1d1d1f] flex items-center gap-1.5 mb-1"><TrendingUp size={13} className="text-[#c93400]"/> Actuellement en vente <span className="text-[#86868b] font-normal">· concurrence</span></p>
+                                    <div>{saleList.map(c => renderCompRow(c, "#c93400"))}</div>
+                                </div>
+                            )}
+                            {photoCredits.length > 0 && <p className="text-[6.5px] text-[#aeaeb2] truncate">Photos : {photoCredits.join(" · ")}</p>}
+                        </div>
+                        {renderFooter(3)}
                     </div>
                 )}
 
-                {/* ================================================================= */}
-                {/* PAGE 4 : CONCLUSION & VALORISATION                                */}
-                {/* ================================================================= */}
-                <div className="print-page page-watermark w-[297mm] h-[210mm] mx-auto bg-[#f5f5f7] p-9 flex flex-col mb-8 shadow-2xl relative">
-                    <div className="flex justify-between items-center mb-4 pb-3 border-b border-zinc-200 shrink-0">
-                        <div className="flex items-center gap-3">
-                            <div className="w-6 h-6 rounded-lg flex items-center justify-center" style={{ background: `linear-gradient(135deg, ${COLORS.primary}, ${COLORS.secondary})` }}>
-                                <span className="text-white text-[9px] font-black">{pad2(hasMarketPage ? 3 : 2)}</span>
+                {/* ============ PAGE 4 : ESTIMATION ============ */}
+                <div className={PAGE}>
+                    {renderHeader(hasMarketPage ? 3 : 2, "Notre estimation")}
+                    {renderTitle("Notre estimation", "Valeur vénale du bien au regard du marché et de ses caractéristiques")}
+                    <div className="px-[14mm] flex-1 flex flex-col gap-[5mm] min-h-0">
+                        {data.isRented ? (
+                            <div className="grid grid-cols-2 gap-[4mm]">
+                                {[
+                                    { t: "Valeur libre", lo: low, hi: high, bg: `radial-gradient(120% 140% at 0% 0%, #b3261a 0%, ${COLORS.primary} 45%, #2a0804 100%)` },
+                                    { t: "Valeur occupée (vendu loué)", lo: data.lowPriceRented, hi: data.highPriceRented, bg: "radial-gradient(120% 140% at 0% 0%, #3a3a3c 0%, #1c1c1e 55%, #000 100%)" },
+                                ].map(v => {
+                                    const c = v.lo && v.hi ? Math.round((v.lo + v.hi) / 2) : v.lo || v.hi;
+                                    return (
+                                        <div key={v.t} className="rounded-[22px] p-[7mm] text-white" style={{ background: v.bg }}>
+                                            <p className="text-[9px] font-semibold uppercase tracking-[0.08em] text-white/70">{v.t}</p>
+                                            <p className="text-[30px] font-bold tracking-[-0.035em] tabular-nums mt-2 leading-none">{c ? eur(c) : "—"}</p>
+                                            {v.lo > 0 && v.hi > 0 && v.lo !== v.hi && <p className="text-[10.5px] text-white/80 mt-2 tabular-nums">de {eur(v.lo)} à {eur(v.hi)}</p>}
+                                            {c > 0 && data.surface > 0 && <span className="inline-block mt-4 text-[9.5px] font-semibold px-2.5 py-1 rounded-full bg-white/15 tabular-nums">{formatPrice(Math.round(c / data.surface))} €/m²</span>}
+                                        </div>
+                                    );
+                                })}
                             </div>
-                            <h2 className="text-[11px] font-black uppercase tracking-[0.3em]" style={{ color: COLORS.primary }}>Conclusion & Valorisation</h2>
+                        ) : (
+                            <div className="relative overflow-hidden rounded-[24px] px-[9mm] py-[9mm] text-white" style={{ background: `radial-gradient(120% 140% at 0% 0%, #b3261a 0%, ${COLORS.primary} 45%, #2a0804 100%)` }}>
+                                <div className="absolute -right-16 -top-16 w-64 h-64 rounded-full opacity-25 blur-3xl bg-[#ffb4a8]"/>
+                                <p className="relative text-[9.5px] font-semibold uppercase tracking-[0.08em] text-white/70">Valeur vénale estimée</p>
+                                <p className="relative text-[52px] font-bold tracking-[-0.04em] leading-none tabular-nums mt-3">{central ? eur(central) : "—"}</p>
+                                <div className="relative flex flex-wrap items-center gap-2 mt-5">
+                                    {!singleValue && <span className="text-[10.5px] font-semibold px-3 py-1.5 rounded-full bg-white/15 tabular-nums">Fourchette {eur(low)} – {eur(high)}</span>}
+                                    {central > 0 && data.surface > 0 && <span className="text-[10.5px] font-semibold px-3 py-1.5 rounded-full bg-white/15 tabular-nums">{formatPrice(Math.round(central / data.surface))} €/m²</span>}
+                                    {data.marketStats && <span className="text-[10.5px] font-semibold px-3 py-1.5 rounded-full bg-white/15 tabular-nums">Médiane du secteur {formatPrice(data.marketStats.median)} €/m²</span>}
+                                </div>
+                            </div>
+                        )}
+
+                        {data.hasRentalEstimation && data.monthlyRent > 0 && (
+                            <div className="grid grid-cols-3 rounded-[18px] bg-[#f5f5f7] py-[4.5mm]">
+                                {[
+                                    { l: "Valeur locative", v: eur(data.monthlyRent), u: "HC / mois" },
+                                    { l: "Rendement brut", v: `${((data.monthlyRent * 12) / (central || 1) * 100).toFixed(1).replace(".", ",")} %`, u: "sur la valeur centrale" },
+                                    { l: "Loyer au m²", v: `${Math.round(data.monthlyRent / (data.surface || 1))} €`, u: "par mois" },
+                                ].map((k, i) => (
+                                    <div key={k.l} className={`px-[5mm] ${i > 0 ? "border-l border-[#e3e3e8]" : ""}`}>
+                                        <p className={LABEL}>{k.l}</p>
+                                        <p className="text-[20px] font-bold tracking-[-0.03em] tabular-nums text-[#1d1d1f] mt-1.5 leading-none">{k.v}</p>
+                                        <p className="text-[8.5px] text-[#86868b] mt-1">{k.u}</p>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {hasOpinion && (
+                            <div className="grid grid-cols-2 gap-[4mm]">
+                                {[
+                                    { t: "Points forts", items: data.strengths, icon: ThumbsUp, c: "#248a3d", bg: "#e8f7ec" },
+                                    { t: "Points de vigilance", items: data.weaknesses, icon: ThumbsDown, c: "#c93400", bg: "#fff1e6" },
+                                ].filter(b => b.items.length > 0).map(b => (
+                                    <div key={b.t} className="rounded-[18px] border border-[#e8e8ed] p-[5mm]">
+                                        <p className="text-[12px] font-semibold text-[#1d1d1f] flex items-center gap-2 mb-3">
+                                            <span className="w-6 h-6 rounded-full flex items-center justify-center" style={{ backgroundColor: b.bg }}><b.icon size={12} style={{ color: b.c }}/></span>{b.t}
+                                        </p>
+                                        <ul className="space-y-1.5">
+                                            {b.items.slice(0, 6).map((s, i) => <li key={i} className="flex gap-2 text-[10.5px] text-[#3a3a3c] leading-snug"><span className="w-1.5 h-1.5 rounded-full mt-[5px] shrink-0" style={{ backgroundColor: b.c }}/>{s}</li>)}
+                                        </ul>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {data.agentAnalysis?.trim() && (
+                            <div className="rounded-[18px] bg-[#f5f5f7] p-[6mm]">
+                                <p className="text-[12px] font-semibold text-[#1d1d1f] flex items-center gap-1.5 mb-2"><Star size={13} style={{ color: COLORS.primary }}/> L&apos;analyse de votre conseiller</p>
+                                <p className="text-[11px] leading-[1.6] text-[#3a3a3c] whitespace-pre-wrap line-clamp-[12]">{data.agentAnalysis}</p>
+                            </div>
+                        )}
+
+                        <div className="grid grid-cols-3 gap-[3mm]">
+                            {[
+                                { n: "1", t: "Ventes réelles", d: data.marketStats ? `${data.marketStats.count} ventes notariées (DVF) à moins de ${data.marketStats.radius >= 1000 ? `${data.marketStats.radius / 1000} km` : `${data.marketStats.radius} m`}` : `${data.soldComparables.length} ventes comparables du secteur` },
+                                { n: "2", t: "Offre concurrente", d: data.forSaleComparables.length ? `${data.forSaleComparables.length} bien${data.forSaleComparables.length > 1 ? "s" : ""} comparable${data.forSaleComparables.length > 1 ? "s" : ""} actuellement en vente` : "Biens en vente du quartier analysés" },
+                                { n: "3", t: "Visite du bien", d: "État, prestations, étage, extérieurs et performance énergétique" },
+                            ].map(m => (
+                                <div key={m.n} className="rounded-[16px] border border-[#e8e8ed] p-[4mm]">
+                                    <span className="w-5 h-5 rounded-full text-[9px] font-bold text-white flex items-center justify-center" style={{ background: `linear-gradient(135deg, ${COLORS.primary}, ${COLORS.secondary})` }}>{m.n}</span>
+                                    <p className="text-[11px] font-semibold text-[#1d1d1f] mt-2">{m.t}</p>
+                                    <p className="text-[9px] text-[#6e6e73] mt-0.5 leading-snug">{m.d}</p>
+                                </div>
+                            ))}
                         </div>
-                        <div className="flex items-center gap-3">
-                            <img src="/logo-patrim.png" alt="PATRIM" className="h-6 object-contain opacity-60"/>
-                            <span className="text-[8px] font-mono text-zinc-400 bg-zinc-200 px-2 py-0.5 rounded-full">{pageOf(conclusionPage)}</span>
-                        </div>
+
+                        <div className="mt-auto pt-[2mm]">{renderSignature()}</div>
                     </div>
-                    {(data.lowPrice > 0 && data.highPrice > 0) && (
-                        <div className="grid grid-cols-3 gap-3 mb-3.5 shrink-0">
-                            <div className="inner-card bg-white rounded-[14px] px-4 py-3 border border-zinc-200 flex flex-col justify-center">
-                                <p className="text-[9px] uppercase font-bold text-zinc-400 tracking-wider mb-1">Prix central estimé {data.isRented ? "(Libre)" : ""}</p>
-                                <p className="text-xl font-black pdf-display text-zinc-800 leading-none">{formatPrice(Math.round((data.lowPrice + data.highPrice) / 2))} <span className="text-sm font-bold text-zinc-500">€</span></p>
-                            </div>
-                            <div className="inner-card bg-white rounded-[14px] px-4 py-3 border border-zinc-200 flex flex-col justify-center">
-                                <p className="text-[9px] uppercase font-bold text-zinc-400 tracking-wider mb-1">Prix / m² estimé</p>
-                                <p className="text-xl font-black pdf-display text-zinc-800 leading-none">{formatPrice(Math.round(((data.lowPrice + data.highPrice) / 2) / (data.surface || 1)))} <span className="text-sm font-bold text-zinc-500">€/m²</span></p>
-                            </div>
-                            <div className="inner-card bg-white rounded-[14px] px-4 py-3 border border-zinc-200 flex flex-col justify-center">
-                                <p className="text-[9px] uppercase font-bold text-zinc-400 tracking-wider mb-1">Amplitude de fourchette</p>
-                                <p className="text-xl font-black pdf-display leading-none" style={{ color: COLORS.secondary }}>{formatPrice(data.highPrice - data.lowPrice)} <span className="text-sm font-bold text-zinc-500">€</span></p>
-                            </div>
-                        </div>
-                    )}
-
-                    <div className="flex gap-5 flex-1 min-h-0">
-                        <div className="w-[47%] flex flex-col gap-3 min-h-0">
-                            <div className="grid grid-cols-2 gap-3" style={{ flex: '0 0 auto', minHeight: '120px' }}>
-                                <div className="premium-card bg-white rounded-[16px] p-4 shadow-sm border border-zinc-200">
-                                    <div className="flex items-center gap-2 mb-3">
-                                        <div className="w-6 h-6 rounded-lg flex items-center justify-center bg-emerald-50 border border-emerald-100 shrink-0">
-                                            <ThumbsUp size={12} className="text-emerald-600"/>
-                                        </div>
-                                        <h4 className="text-[10px] font-black uppercase tracking-widest text-emerald-600">Points Forts</h4>
-                                    </div>
-                                    {data.strengths.length > 0 ? (
-                                        <div className="flex flex-col gap-2">
-                                            {data.strengths.map((s, i) => (
-                                                <div key={i} className="flex items-center gap-2">
-                                                    <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0"></span>
-                                                    <span className="text-[12px] font-semibold text-zinc-700 leading-tight">{s}</span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    ) : (
-                                        <p className="text-[11px] text-zinc-400 italic">Non renseigné</p>
-                                    )}
-                                </div>
-                                <div className="premium-card bg-white rounded-[16px] p-4 shadow-sm border border-zinc-200">
-                                    <div className="flex items-center gap-2 mb-3">
-                                        <div className="w-6 h-6 rounded-lg flex items-center justify-center bg-rose-50 border border-rose-100 shrink-0">
-                                            <ThumbsDown size={12} className="text-rose-600"/>
-                                        </div>
-                                        <h4 className="text-[10px] font-black uppercase tracking-widest text-rose-600">Freins</h4>
-                                    </div>
-                                    {data.weaknesses.length > 0 ? (
-                                        <div className="flex flex-col gap-2">
-                                            {data.weaknesses.map((w, i) => (
-                                                <div key={i} className="flex items-center gap-2">
-                                                    <span className="w-2 h-2 rounded-full bg-rose-400 shrink-0"></span>
-                                                    <span className="text-[12px] font-semibold text-zinc-700 leading-tight">{w}</span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    ) : (
-                                        <p className="text-[11px] text-zinc-400 italic">Non renseigné</p>
-                                    )}
-                                </div>
-                            </div>
-                            <div className="premium-card bg-white rounded-[16px] px-4 py-4 shadow-sm border border-zinc-200 shrink-0 flex flex-col justify-between" style={{ minHeight: '180px' }}>
-                                <div>
-                                    <p className="text-[9px] uppercase font-bold tracking-widest text-zinc-400 mb-1.5 flex items-center gap-1.5">
-                                        <Star size={10}/> Analyse de l'Expertise
-                                    </p>
-                                    <div className="text-[10.5px] leading-relaxed text-zinc-600 italic whitespace-pre-wrap">{data.agentAnalysis || "Aucune analyse rédigée."}</div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="w-[53%] flex flex-col gap-3 min-h-0">
-                            {data.isRented ? (
-                                <div className="flex-1 flex flex-col gap-3 min-h-0">
-                                    <div className="flex-1 premium-card bg-white rounded-[16px] shadow-sm border border-zinc-200 flex flex-col justify-center relative overflow-hidden">
-                                        <div className="absolute inset-x-0 top-0 h-[3px]" style={{ background: `linear-gradient(90deg, ${COLORS.primary}, ${COLORS.secondary})` }}></div>
-                                        <div className="px-4 py-3">
-                                            <p className="text-[9px] uppercase font-bold tracking-widest text-zinc-400 text-center mb-3">Valeur Vénale Libre</p>
-                                            <div className="flex items-stretch justify-center gap-0 w-full">
-                                                <div className="text-right flex-1 pr-4">
-                                                    <p className="text-zinc-400 text-[8px] font-bold uppercase mb-1 tracking-wider">Basse</p>
-                                                    <div className="flex items-baseline justify-end gap-1 whitespace-nowrap">
-                                                        <span className={`font-black text-zinc-800 tracking-tighter pdf-display ${getPriceSizeClassSplit(data.lowPrice)}`}>{formatPrice(data.lowPrice)}</span>
-                                                        <span className="text-sm font-black text-zinc-700">€</span>
-                                                    </div>
-                                                </div>
-                                                <div className="flex flex-col items-center justify-center shrink-0 px-2">
-                                                    <div className="w-[1.5px] h-full rounded-full" style={{ background: `linear-gradient(to bottom, transparent, ${COLORS.secondary}, transparent)` }}></div>
-                                                </div>
-                                                <div className="text-left flex-1 pl-4">
-                                                    <p className="text-zinc-400 text-[8px] font-bold uppercase mb-1 tracking-wider">Haute</p>
-                                                    <div className="flex items-baseline justify-start gap-1 whitespace-nowrap">
-                                                        <span className={`font-black tracking-tighter pdf-display ${getPriceSizeClassSplit(data.highPrice)}`} style={{ color: COLORS.secondary }}>{formatPrice(data.highPrice)}</span>
-                                                        <span className="text-sm font-black" style={{ color: COLORS.secondary }}>€</span>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div className="flex-1 premium-card bg-white rounded-[16px] shadow-sm border border-zinc-200 flex flex-col justify-center relative overflow-hidden">
-                                        <div className="absolute inset-x-0 top-0 h-[3px]" style={{ background: `linear-gradient(90deg, ${COLORS.gold}, #e8b86d)` }}></div>
-                                        <div className="px-4 py-3">
-                                            <p className="text-[9px] uppercase font-bold tracking-widest text-zinc-400 text-center mb-3">Valeur Vénale Loué</p>
-                                            <div className="flex items-stretch justify-center gap-0 w-full">
-                                                <div className="text-right flex-1 pr-4">
-                                                    <p className="text-zinc-400 text-[8px] font-bold uppercase mb-1 tracking-wider">Basse</p>
-                                                    <div className="flex items-baseline justify-end gap-1 whitespace-nowrap">
-                                                        <span className={`font-black text-zinc-800 tracking-tighter pdf-display ${getPriceSizeClassSplit(data.lowPriceRented)}`}>{formatPrice(data.lowPriceRented)}</span>
-                                                        <span className="text-sm font-black text-zinc-700">€</span>
-                                                    </div>
-                                                </div>
-                                                <div className="flex flex-col items-center justify-center shrink-0 px-2">
-                                                    <div className="w-[1.5px] h-full rounded-full" style={{ background: `linear-gradient(to bottom, transparent, ${COLORS.gold}, transparent)` }}></div>
-                                                </div>
-                                                <div className="text-left flex-1 pl-4">
-                                                    <p className="text-zinc-400 text-[8px] font-bold uppercase mb-1 tracking-wider">Haute</p>
-                                                    <div className="flex items-baseline justify-start gap-1 whitespace-nowrap">
-                                                        <span className={`font-black tracking-tighter pdf-display ${getPriceSizeClassSplit(data.highPriceRented)}`} style={{ color: COLORS.gold }}>{formatPrice(data.highPriceRented)}</span>
-                                                        <span className="text-sm font-black" style={{ color: COLORS.gold }}>€</span>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        {/* SIGNATURE DANS LA CARTE "LOUÉ" */}
-                                        {renderSignature()}
-                                    </div>
-                                </div>
-                            ) : (
-                                <div className="flex-1 premium-card bg-white rounded-[18px] shadow-sm border border-zinc-200 flex flex-col justify-center relative overflow-hidden min-h-0">
-                                    <div className="absolute inset-x-0 top-0 h-[4px]" style={{ background: `linear-gradient(90deg, ${COLORS.primary}, ${COLORS.secondary})` }}></div>
-                                    <div className="p-7">
-                                        <p className="text-[10px] uppercase font-bold tracking-widest text-zinc-400 text-center mb-6">Estimation de la Valeur Vénale</p>
-                                        <div className="flex items-stretch justify-center gap-0 w-full">
-                                            <div className="text-right flex-1 pr-5">
-                                                <p className="text-zinc-400 text-[9px] font-bold uppercase mb-2 tracking-wider">Fourchette Basse</p>
-                                                <div className="flex items-baseline justify-end gap-1 whitespace-nowrap">
-                                                    <span className={`font-black text-zinc-800 tracking-tighter pdf-display ${getPriceSizeClass(data.lowPrice)}`}>{formatPrice(data.lowPrice)}</span>
-                                                    <span className="text-xl font-black text-zinc-700">€</span>
-                                                </div>
-                                                <div className="mt-2.5 flex justify-end">
-                                                    <span className="text-[10px] text-zinc-500 font-semibold font-mono bg-zinc-100 px-3 py-1 rounded-full border border-zinc-200">{formatPrice(Math.round(data.lowPrice / (data.surface || 1)))} €/m²</span>
-                                                </div>
-                                            </div>
-                                            <div className="flex flex-col items-center justify-center shrink-0 px-1">
-                                                <div className="w-[1.5px] flex-1 rounded-full" style={{ background: `linear-gradient(to bottom, transparent, ${COLORS.secondary}, transparent)` }}></div>
-                                            </div>
-                                            <div className="text-left flex-1 pl-5">
-                                                <p className="text-zinc-400 text-[9px] font-bold uppercase mb-2 tracking-wider">Fourchette Haute</p>
-                                                <div className="flex items-baseline justify-start gap-1 whitespace-nowrap">
-                                                    <span className={`font-black tracking-tighter pdf-display ${getPriceSizeClass(data.highPrice)}`} style={{ color: COLORS.secondary }}>{formatPrice(data.highPrice)}</span>
-                                                    <span className="text-xl font-black" style={{ color: COLORS.secondary }}>€</span>
-                                                </div>
-                                                <div className="mt-2.5">
-                                                    <span className="text-[10px] text-zinc-500 font-semibold font-mono bg-zinc-100 px-3 py-1 rounded-full border border-zinc-200">{formatPrice(Math.round(data.highPrice / (data.surface || 1)))} €/m²</span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    {/* SIGNATURE DANS LA CARTE "NON LOUÉ" */}
-                                    {renderSignature()}
-                                </div>
-                            )}
-
-                            {data.hasRentalEstimation && data.monthlyRent > 0 && (
-                                <div className="premium-card bg-white rounded-[16px] shadow-sm border border-zinc-200 grid grid-cols-3 relative overflow-hidden shrink-0" style={{ height: '76px' }}>
-                                    <div className="absolute inset-x-0 top-0 h-[3px]" style={{ background: `linear-gradient(90deg, ${COLORS.gold}, #e8b86d)` }}></div>
-                                    <div className="flex flex-col justify-center items-center border-r border-zinc-100">
-                                        <p className="text-[9px] font-bold uppercase tracking-widest text-zinc-400 mb-1">Valeur Locative</p>
-                                        <div className="flex items-baseline gap-0.5">
-                                            <span className="text-xl font-black text-zinc-800 pdf-display">{formatPrice(data.monthlyRent)}</span>
-                                            <span className="text-sm font-bold text-zinc-500">€</span>
-                                        </div>
-                                        <p className="text-[8px] text-zinc-400 mt-0.5 font-mono">HC / mois</p>
-                                    </div>
-                                    <div className="flex flex-col justify-center items-center border-r border-zinc-100">
-                                        <p className="text-[9px] font-bold uppercase tracking-widest text-zinc-400 mb-1">Rentabilité brute</p>
-                                        <div className="flex items-baseline gap-0.5">
-                                            <span className="text-xl font-black pdf-display" style={{ color: COLORS.gold }}>
-                                                {((data.monthlyRent * 12) / (((data.lowPrice + data.highPrice) / 2) || 1) * 100).toFixed(1)}
-                                            </span>
-                                            <span className="text-base font-bold" style={{ color: COLORS.gold }}>%</span>
-                                        </div>
-                                    </div>
-                                    <div className="flex flex-col justify-center items-center">
-                                        <p className="text-[9px] font-bold uppercase tracking-widest text-zinc-400 mb-1">Loyer / m²</p>
-                                        <div className="flex items-baseline gap-0.5">
-                                            <span className="text-xl font-black text-zinc-800 pdf-display">{Math.round(data.monthlyRent / (data.surface || 1))}</span>
-                                            <span className="text-sm font-bold text-zinc-500">€/m²</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-
-                    <div className="mt-3 pt-3 border-t border-zinc-200 shrink-0">
-                        <p className="text-[6.5px] leading-relaxed text-zinc-400 text-justify" style={{ lineHeight: '1.6' }}>
-                            Sous réserve que l'étude des diagnostics techniques et du carnet numérique du logement ne révèlent pas d'anomalie ni de non-conformité affectant sa valeur. Document à usage strictement privé. Conformément à la réglementation, le professionnel de l'immobilier n'est en aucun cas qualifié pour déterminer la surface du bien de manière réglementaire. La surface indiquée a été communiquée par le propriétaire, lue sur le titre de propriété ou lue sur l'avis de taxe foncière. Pour toute commercialisation de ce bien, le mandant fera appel à un diagnostiqueur professionnel dont la loi impose la qualification pour attester de la surface Carrez s'il s'agit d'un bien en copropriété ou de la surface de plancher pour les maisons de ville ou pavillons. Le professionnel de l'immobilier, rédacteur du présent avis de valeur n'assume aucune responsabilité sur la surface qui serait attestée par le diagnostiqueur et qui servirait de base juridique dans l'avant-contrat et l'acte définitif, et à toutes les conséquences qui y seraient liées. De même le présent document ne vaut ni n'engage la responsabilité du professionnel de l'immobilier quant à la conformité de l'état du bâti face aux divers diagnostics (Amiante, Plomb, Gaz, Électricité, Assainissement, Termites, Mérules).
+                    <div className="mt-auto px-[14mm] pt-[4mm] shrink-0">
+                        <p className="text-[6.5px] leading-[1.55] text-[#aeaeb2] text-justify">
+                            Sous réserve que l&apos;étude des diagnostics techniques et du carnet numérique du logement ne révèle pas d&apos;anomalie ni de non-conformité affectant sa valeur. Document à usage strictement privé. Conformément à la réglementation, le professionnel de l&apos;immobilier n&apos;est en aucun cas qualifié pour déterminer la surface du bien de manière réglementaire. La surface indiquée a été communiquée par le propriétaire, lue sur le titre de propriété ou sur l&apos;avis de taxe foncière. Pour toute commercialisation de ce bien, le mandant fera appel à un diagnostiqueur professionnel dont la loi impose la qualification pour attester de la surface Carrez s&apos;il s&apos;agit d&apos;un bien en copropriété ou de la surface de plancher pour les maisons de ville ou pavillons. Le professionnel de l&apos;immobilier, rédacteur du présent avis de valeur, n&apos;assume aucune responsabilité sur la surface qui serait attestée par le diagnostiqueur et qui servirait de base juridique dans l&apos;avant-contrat et l&apos;acte définitif, ni sur les conséquences qui y seraient liées. De même, le présent document n&apos;engage pas la responsabilité du professionnel de l&apos;immobilier quant à la conformité de l&apos;état du bâti face aux divers diagnostics (amiante, plomb, gaz, électricité, assainissement, termites, mérules).
                         </p>
                     </div>
+                    {renderFooter(conclusionPage)}
                 </div>
 
-                {(data.extraPhotos ?? []).length > 0 && (
-                    <div className="print-page page-watermark w-[297mm] h-[210mm] mx-auto bg-[#f5f5f7] p-9 flex flex-col mb-8 shadow-2xl relative">
-                        <div className="flex justify-between items-center mb-5 pb-3.5 border-b border-zinc-200 shrink-0">
-                            <div className="flex items-center gap-3">
-                                <div className="w-6 h-6 rounded-lg flex items-center justify-center" style={{ background: `linear-gradient(135deg, ${COLORS.primary}, ${COLORS.secondary})` }}>
-                                    <span className="text-white text-[9px] font-black">{pad2(hasMarketPage ? 4 : 3)}</span>
-                                </div>
-                                <h2 className="text-[11px] font-black uppercase tracking-[0.3em] pdf-font" style={{ color: COLORS.primary }}>Dossier Photographique</h2>
-                            </div>
-                            <div className="flex items-center gap-3">
-                                <img src="/logo-patrim.png" alt="PATRIM" className="h-6 object-contain opacity-60"/>
-                                <span className="text-[8px] font-mono text-zinc-400 bg-zinc-200 px-2 py-0.5 rounded-full">
-                                    {pageOf(totalPages)}
-                                </span>
-                            </div>
-                        </div>
-                        <p className="text-[9px] uppercase font-bold tracking-widest text-zinc-400 mb-4 shrink-0">
-                            {data.propertyAddress} — {(data.extraPhotos ?? []).length} vue{(data.extraPhotos ?? []).length > 1 ? 's' : ''}
-                        </p>
-                        <div className="flex-1 min-h-0">
-                            {(() => {
-                                const photos = data.extraPhotos ?? [];
-                                const count = photos.length;
-                                const gridClass = count <= 2 ? 'grid-cols-2' : count <= 4 ? 'grid-cols-2' : count <= 6 ? 'grid-cols-3' : 'grid-cols-4';
-                                const rowClass = count <= 2 ? 'grid-rows-1' : 'grid-rows-2';
-                                return (
-                                    <div className={`grid ${gridClass} ${rowClass} gap-3 h-full`}>
-                                        {photos.map((url, i) => (
-                                            <div key={i} className="rounded-[16px] overflow-hidden shadow-sm border border-zinc-200 relative">
-                                                <img src={url} className="w-full h-full object-cover"/>
-                                                <div className="absolute bottom-2 right-2 w-6 h-6 rounded-full bg-black/50 flex items-center justify-center">
-                                                    <span className="text-white text-[9px] font-bold">{i + 1}</span>
-                                                </div>
-                                            </div>
-                                        ))}
+                {/* ============ PAGE 5 : PHOTOS ============ */}
+                {hasPhotoPage && (
+                    <div className={PAGE}>
+                        {renderHeader(hasMarketPage ? 4 : 3, "Photographies")}
+                        {renderTitle("Le bien en images", `${extra.length} vue${extra.length > 1 ? "s" : ""} · ${street}`)}
+                        <div className="px-[14mm] flex-1 min-h-0">
+                            <div className="grid gap-[3mm] h-full" style={{ gridTemplateColumns: `repeat(${photoCols}, minmax(0, 1fr))`, gridTemplateRows: `repeat(${photoCols === 3 ? Math.ceil(extra.length / 3) : photoRows}, minmax(0, 1fr))` }}>
+                                {extra.slice(0, 12).map((url, i) => (
+                                    <div key={i} className="rounded-[14px] overflow-hidden bg-[#f5f5f7] min-h-0">
+                                        <img src={url} alt="" className="w-full h-full object-cover"/>
                                     </div>
-                                );
-                            })()}
+                                ))}
+                            </div>
                         </div>
+                        {renderFooter(totalPages)}
                     </div>
                 )}
             </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useSyncExternalStore } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { fetchSharedEstimation } from "@/lib/sharedEstimation";
@@ -47,8 +47,13 @@ const GES_LABELS: Record<string, string> = {
     "G": "Émissions extrêmement élevées"
 };
 
+/** Largeur de la fenêtre : les pages A4 sont mises à l'échelle de l'écran (téléphone) */
+const subscribeResize = (cb: () => void) => { window.addEventListener("resize", cb); return () => window.removeEventListener("resize", cb); };
+
 export default function BrochureClient() {
     const params = useParams();
+    const viewportWidth = useSyncExternalStore(subscribeResize, () => window.innerWidth, () => 1280);
+    const pdfZoom = Math.min(1, (viewportWidth - 24) / 794);
     const searchParams = useSearchParams();
     const estimationId = params.id as string;
 
@@ -140,19 +145,13 @@ export default function BrochureClient() {
     if (!baseData) return <div className="min-h-screen bg-[#faf8f6] p-10 text-center text-zinc-600 font-medium">Ce dossier n'est plus disponible.</div>;
 
     return (
-        <div className="min-h-screen font-sans pb-16" style={{ backgroundColor: '#e8e8ec' }}>
+        <div className="min-h-screen font-sans pb-16" style={{ backgroundColor: '#e8e8ec', ['--pdf-zoom' as string]: pdfZoom }}>
             <style jsx global>{`
-                @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@400;500;700;900&family=JetBrains+Mono:wght@500;700&display=swap');
                 
-                .print-page-wrapper { width: 210mm; margin: 0 auto 2rem auto; box-shadow: 0 20px 40px rgba(0,0,0,0.1); }
-                
-                @media screen and (max-width: 820px) {
-                    .plaquette-container { padding: 0 0.75rem; pt: 1rem; width: 100%; max-width: 100vw; overflow: hidden; }
-                    .print-page-wrapper { width: 100%; max-width: 100%; --scale: calc((100vw - 1.5rem) / 210mm); height: calc(297mm * var(--scale)); position: relative; overflow: hidden; margin-bottom: 1rem; }
-                    .print-page { transform: scale(var(--scale)); transform-origin: top left; position: absolute; top: 0; left: 0; }
-                }
-                .font-serif { font-family: 'Playfair Display', serif; }
-                .font-mono-num { font-family: 'JetBrains Mono', monospace; }
+                .print-page-wrapper { width: 210mm; margin: 0 auto 2rem auto; box-shadow: 0 20px 40px rgba(0,0,0,0.1); zoom: var(--pdf-zoom, 1); }
+                .font-sans { font-family: var(--font-ios); -webkit-font-smoothing: antialiased; }
+                .font-serif { font-family: var(--font-ios); font-weight: 700; letter-spacing: -0.03em; }
+                .font-mono-num { font-family: var(--font-ios); font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
             `}</style>
 
             <div className="plaquette-container flex flex-col items-center pt-8">

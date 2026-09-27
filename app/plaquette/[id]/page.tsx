@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useSyncExternalStore } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { fetchSharedEstimation } from "@/lib/sharedEstimation";
@@ -50,9 +50,14 @@ const GES_LABELS: Record<string, string> = {
     "G": "Émissions extrêmement élevées"
 };
 
+/** Largeur de la fenêtre : les pages A4 sont mises à l'échelle de l'écran (téléphone) */
+const subscribeResize = (cb: () => void) => { window.addEventListener("resize", cb); return () => window.removeEventListener("resize", cb); };
+
 export default function PlaquetteManager() {
     const params = useParams();
     const router = useRouter();
+    const viewportWidth = useSyncExternalStore(subscribeResize, () => window.innerWidth, () => 1280);
+    const pdfZoom = Math.min(1, (viewportWidth - 24) / 794);
     const estimationId = params.id as string;
 
     const [loading, setLoading] = useState(true);
@@ -246,49 +251,36 @@ export default function PlaquetteManager() {
     if (!baseData) return <div className="min-h-screen bg-[#faf8f6] p-10">Bien introuvable.</div>;
 
     return (
-        <div className="min-h-screen font-sans pb-32" style={{ backgroundColor: '#e8e8ec' }}>
+        <div className="min-h-screen font-sans pb-32" style={{ backgroundColor: '#e8e8ec', ['--pdf-zoom' as string]: pdfZoom }}>
             <style jsx global>{`
-                @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@400;500;700;900&family=JetBrains+Mono:wght@500;700&display=swap');
                 
-                .print-page-wrapper { width: 210mm; max-width: 100%; }
-
-                @media screen and (max-width: 820px) {
-                    .plaquette-container { padding: 0 0.75rem; width: 100%; max-width: 100vw; overflow: hidden; }
-                    .print-page-wrapper {
-                        width: 100%; max-width: 100%;
-                        --scale: calc((100vw - 1.5rem) / 210mm);
-                        height: calc(297mm * var(--scale));
-                        position: relative; overflow: hidden;
-                    }
-                    .print-page { transform: scale(var(--scale)); transform-origin: top left; position: absolute; top: 0; left: 0; }
-                }
+                .print-page-wrapper { width: 210mm; zoom: var(--pdf-zoom, 1); }
+                .font-sans { font-family: var(--font-ios); -webkit-font-smoothing: antialiased; }
+                .font-serif { font-family: var(--font-ios); font-weight: 700; letter-spacing: -0.03em; }
+                .font-mono-num { font-family: var(--font-ios); font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
 
                 @media print {
                     @page { size: A4 portrait; margin: 0; }
                     body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; background-color: white !important; }
                     .print-hidden { display: none !important; }
-                    .print-page-wrapper { width: 210mm !important; height: auto !important; overflow: visible !important; }
+                    .print-page-wrapper { width: 210mm !important; height: auto !important; overflow: visible !important; zoom: 1 !important; }
                     .print-page { width: 210mm !important; height: 297mm !important; box-shadow: none !important; margin: 0 !important; overflow: hidden !important; transform: none !important; position: static !important; page-break-inside: avoid !important; }
                     .print-page:first-of-type { page-break-after: always !important; }
                     a { text-decoration: none !important; color: inherit !important; display: block !important; }
                 }
-                .font-serif { font-family: 'Playfair Display', serif; }
-                .font-mono-num { font-family: 'JetBrains Mono', monospace; }
             `}</style>
 
             {/* TOOLBAR ÉDITEUR */}
-            <div className="fixed bottom-10 left-1/2 -translate-x-1/2 text-white px-8 py-4 rounded-full flex items-center gap-5 shadow-2xl z-50 print-hidden border bg-[#0a0a0c]/95 backdrop-blur-md">
+            <div className="fixed z-50 print-hidden text-white shadow-2xl border border-white/10 bottom-0 inset-x-0 px-3 pt-2.5 flex items-center justify-between gap-2 sm:bottom-8 sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 sm:px-3 sm:py-2 sm:rounded-full sm:gap-3" style={{ backgroundColor: "rgba(28,28,30,0.82)", backdropFilter: "saturate(180%) blur(24px)", WebkitBackdropFilter: "saturate(180%) blur(24px)", paddingBottom: "max(0.625rem, env(safe-area-inset-bottom))" }}>
                 <Button variant="ghost" onClick={() => router.back()} className="text-zinc-400 hover:text-white rounded-full text-sm">
-                    <ArrowLeft size={15} className="mr-2"/> Retour
+                    <ArrowLeft size={15} className="sm:mr-2"/><span className="hidden sm:inline">Retour</span>
                 </Button>
-                <div className="w-px h-5 bg-white/10"></div>
-                <span className="text-xs font-bold text-white px-4 tracking-widest uppercase">Brochure Commerciale (2 pages)</span>
-                <div className="w-px h-5 bg-white/10"></div>
+                <span className="hidden md:inline text-xs font-semibold text-white/70 px-2">Brochure commerciale · 2 pages</span>
                 <Button onClick={handleShare} variant="ghost" className="rounded-full px-5 h-10 font-bold text-sm text-white hover:bg-white/10 border border-white/15">
-                    <Share2 size={15} className="mr-2"/> Partager
+                    <Share2 size={15} className="mr-2"/>Partager
                 </Button>
-                <Button onClick={() => window.print()} className="rounded-full px-7 h-10 font-bold text-sm bg-gradient-to-r from-[#8a0e01] to-[#d35f52]">
-                    <Printer size={15} className="mr-2"/> Imprimer PDF
+                <Button onClick={() => window.print()} className="rounded-full px-5 sm:px-7 h-10 font-bold text-sm text-white bg-gradient-to-r from-[#8a0e01] to-[#d35f52]">
+                    <Printer size={15} className="mr-2"/>PDF
                 </Button>
             </div>
 
