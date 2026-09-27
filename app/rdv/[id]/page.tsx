@@ -9,7 +9,7 @@
    Aucune donnée interne n'apparaît dans la présentation.
    ============================================================ */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
@@ -17,13 +17,25 @@ import { ArrowLeft, Maximize2, Minimize2, Share2, CheckCircle2, PencilRuler, Loa
 import { supabase } from "@/lib/supabaseClient";
 import ThemeToggle from "@/components/estimation/ThemeToggle";
 import MeetingPresentation, { type MeetingMode, type PresentationData } from "@/components/rdv/MeetingPresentation";
+import type { FinancingState } from "@/components/rdv/FinancingSection";
 
-type Meeting = { mode: MeetingMode; askingPrice?: number };
+type Meeting = { mode: MeetingMode; askingPrice?: number; financing?: FinancingState };
+type Income = { income?: number; otherLoans?: number };
+
+/** Le lien partagé reçoit le scénario de financement, jamais les revenus du client */
+function toSaved(mode: MeetingMode, ask: string, fin?: FinancingState) {
+    const askingPrice = Number(ask.replace(/\s/g, "")) || undefined;
+    if (!fin) return { meeting: { mode, askingPrice } as Meeting };
+    const { income, otherLoans, ...pub } = fin;
+    return { meeting: { mode, askingPrice, financing: pub } as Meeting, financingIncome: { income, otherLoans } as Income };
+}
 
 export default function MeetingPage() {
     const { id } = useParams<{ id: string }>();
     const router = useRouter();
-    const [data, setData] = useState<(PresentationData & { meeting?: Meeting; shareAvis?: boolean; status?: string; clientName?: string }) | null>(null);
+    const [data, setData] = useState<(PresentationData & { meeting?: Meeting; financingIncome?: Income; shareAvis?: boolean; status?: string; clientName?: string }) | null>(null);
+    const [fin, setFin] = useState<FinancingState | undefined>();
+    const savedRef = useRef("");
     const [error, setError] = useState("");
     const [mode, setMode] = useState<MeetingMode>("vendeur");
     const [ask, setAsk] = useState("");
@@ -43,6 +55,9 @@ export default function MeetingPage() {
             setData(d);
             if (d.meeting?.mode) setMode(d.meeting.mode);
             if (d.meeting?.askingPrice) setAsk(String(d.meeting.askingPrice));
+            const f = d.meeting?.financing ? { ...d.meeting.financing, ...(d.financingIncome || {}) } : undefined;
+            setFin(f);
+            savedRef.current = JSON.stringify(toSaved(d.meeting?.mode || "vendeur", d.meeting?.askingPrice ? String(d.meeting.askingPrice) : "", f));
         })();
     }, [id, router]);
 
@@ -56,14 +71,15 @@ export default function MeetingPage() {
         setData(prev => (prev ? { ...prev, ...values } : prev));
     }, [id]);
 
-    // Parcours et prix demandé mémorisés dans le dossier
+    // Parcours, prix demandé et scénario de financement mémorisés dans le dossier
     useEffect(() => {
         if (!data) return;
-        const askingPrice = Number(ask.replace(/\s/g, "")) || undefined;
-        if (data.meeting?.mode === mode && (data.meeting?.askingPrice || undefined) === askingPrice) return;
-        const t = setTimeout(() => { void patch({ meeting: { mode, askingPrice } }).catch(() => {}); }, 600);
+        const values = toSaved(mode, ask, fin);
+        const key = JSON.stringify(values);
+        if (key === savedRef.current) return;
+        const t = setTimeout(() => { savedRef.current = key; void patch(values).catch(() => { savedRef.current = ""; }); }, 700);
         return () => clearTimeout(t);
-    }, [mode, ask, data, patch]);
+    }, [mode, ask, fin, data, patch]);
 
     useEffect(() => {
         const onFs = () => setChrome(!document.fullscreenElement);
@@ -158,7 +174,7 @@ export default function MeetingPage() {
                     className="fixed top-4 right-4 z-40 h-10 w-10 rounded-full bg-[rgba(0,0,0,0.45)] text-[#fff] backdrop-blur flex items-center justify-center opacity-40 hover:opacity-100" aria-label="Quitter le plein écran"><Minimize2 size={16}/></button>
             )}
 
-            <MeetingPresentation data={data} mode={mode} askingPrice={Number(ask.replace(/\s/g, "")) || undefined}/>
+            <MeetingPresentation data={data} mode={mode} askingPrice={Number(ask.replace(/\s/g, "")) || undefined} financing={fin} onFinancingChange={setFin}/>
 
             {/* Fin de rendez-vous */}
             <AnimatePresence>

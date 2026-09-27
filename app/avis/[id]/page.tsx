@@ -12,11 +12,12 @@ import { useParams } from "next/navigation";
 import { Loader2, Lock } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import ThemeToggle from "@/components/estimation/ThemeToggle";
+import type { FinancingState } from "@/components/rdv/FinancingSection";
 import MeetingPresentation, { type MeetingMode, type PresentationData } from "@/components/rdv/MeetingPresentation";
 
 export default function SharedAvisPage() {
     const { id } = useParams<{ id: string }>();
-    const [data, setData] = useState<(PresentationData & { meeting?: { mode?: MeetingMode; askingPrice?: number } }) | null | undefined>(undefined);
+    const [data, setData] = useState<(PresentationData & { meeting?: { mode?: MeetingMode; askingPrice?: number; financing?: FinancingState } }) | null | undefined>(undefined);
 
     useEffect(() => {
         void supabase.rpc("get_shared_avis", { p_id: id }).then(({ data: d, error }) => setData(error ? null : (d as typeof data) ?? null));
@@ -35,7 +36,7 @@ export default function SharedAvisPage() {
     return (
         <div className="patrim-ui min-h-screen">
             <div className="fixed top-4 right-4 z-40"><ThemeToggle className="!bg-[rgba(0,0,0,0.35)] !text-white !border-transparent backdrop-blur"/></div>
-            <MeetingPresentation data={data} mode={data.meeting?.mode || "vendeur"} askingPrice={data.meeting?.askingPrice}/>
+            <MeetingPresentation data={data} mode={data.meeting?.mode || "vendeur"} askingPrice={data.meeting?.askingPrice} financing={data.meeting?.financing}/>
         </div>
     );
 }

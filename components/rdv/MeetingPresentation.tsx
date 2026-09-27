@@ -3,6 +3,7 @@
 import { motion } from "framer-motion";
 import { MapPin, Ruler, BedDouble, Building, Leaf, TrendingUp, TrendingDown, Sparkles, ShieldAlert, Target, Clock, CheckCircle2, Scale, ArrowDownRight, Megaphone, Camera, Globe2 } from "lucide-react";
 import MarketBar from "@/components/rdv/MarketBar";
+import FinancingSection, { type FinancingState } from "@/components/rdv/FinancingSection";
 import { PATRIM_AGENTS } from "@/lib/dossier";
 
 /* ============================================================
@@ -69,7 +70,10 @@ function SectionTitle({ kicker, title }: { kicker: string; title: string }) {
     );
 }
 
-export default function MeetingPresentation({ data: d, mode, askingPrice }: { data: PresentationData; mode: MeetingMode; askingPrice?: number }) {
+export default function MeetingPresentation({ data: d, mode, askingPrice, financing, onFinancingChange }: {
+    data: PresentationData; mode: MeetingMode; askingPrice?: number;
+    financing?: FinancingState; onFinancingChange?: (v: FinancingState) => void;
+}) {
     const S = Number(d.surface) || 0;
     const low = Number(d.lowPrice) || 0, high = Number(d.highPrice) || 0;
     const central = low && high ? Math.round((low + high) / 2 / 1000) * 1000 : low || high;
@@ -186,6 +190,16 @@ export default function MeetingPresentation({ data: d, mode, askingPrice }: { da
                                 {high > 0 && <p className="text-xs text-[var(--p-muted)] mp-num">Plafond conseillé : <b className="text-[var(--p-fg)]">{eur(high)}</b></p>}
                             </div>
                         )}
+                    </Reveal>
+                )}
+
+                {/* ── FINANCEMENT ── */}
+                {mode === "acquereur" && (offer || ask || central) > 0 && (
+                    <Reveal>
+                        <div id="financement" className="scroll-mt-24">
+                            <SectionTitle kicker="Financement" title="Votre projet, chiffré"/>
+                            <FinancingSection price={offer || ask || central} estimatedValue={central || undefined} dpe={dpe} value={financing} onChange={onFinancingChange}/>
+                        </div>
                     </Reveal>
                 )}
 
