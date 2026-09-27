@@ -16,7 +16,7 @@ import Link from "next/link";
 import dynamic from "next/dynamic";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-    AlertTriangle, ArrowLeft, Box, Check, ChevronLeft, CircleAlert, FileUp, Info, LayoutGrid, Loader2, Plus, Presentation,
+    AlertTriangle, ArrowLeft, Box, Camera, Check, Download, ChevronLeft, CircleAlert, FileUp, Info, LayoutGrid, Loader2, Plus, Presentation,
     Redo2, RotateCcw, RotateCw, Sofa, Sparkles, Sun as SunIcon, Trash2, Undo2, Wand2, X,
 } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
@@ -190,7 +190,7 @@ function GlassButton({ onClick, label, icon, active, disabled, iconOnly, classNa
     return (
         <button type="button" onClick={onClick} title={label} aria-label={label} aria-pressed={active} disabled={disabled}
             className={`h-8 px-2 sm:px-2.5 rounded-lg inline-flex items-center gap-1.5 text-xs font-semibold transition-colors disabled:opacity-35 disabled:pointer-events-none ${active ? "text-[var(--p-accent)] bg-[var(--p-accent-soft)]" : "text-[var(--p-fg-2)] hover:bg-[var(--p-hover)]"} ${className ?? ""}`}>
-            {icon}{!iconOnly && <span className="hidden sm:inline lg:hidden xl:inline">{label}</span>}
+            {icon}{!iconOnly && <span className="hidden sm:inline lg:hidden xl:inline whitespace-nowrap">{label}</span>}
         </button>
     );
 }
@@ -343,6 +343,16 @@ export default function Plan3DPage() {
     const [furnMenu, setFurnMenu] = useState(false);
     const [catalogFor, setCatalogFor] = useState<{ replacing: string | null } | null>(null);
     const [selFurniture, setSelFurniture] = useState<string | null>(null);
+    // Photo HD (lancer de rayons) : prise en cours, avancement, image obtenue
+    const [photo, setPhoto] = useState<{ id: number; samples: number; stop: boolean } | null>(null);
+    const [photoProgress, setPhotoProgress] = useState(0);
+    const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+    const photoSeq = useRef(0);
+    const startPhoto = () => {
+        setLightOpen(false); setFurnMenu(false); setCatalogFor(null); setSelFurniture(null); setSelected(null); setOpening3d(null);
+        setPhotoProgress(0);
+        setPhoto({ id: ++photoSeq.current, samples: 160, stop: false });
+    };
     const geoTried = useRef(false);
     const [furniture, setFurniture] = useState(true);
     const [pane, setPane] = useState<Pane>("3d");
@@ -814,6 +824,9 @@ export default function Plan3DPage() {
                                 <Scene3D plan={plan} view={view} showFurniture={furnMode !== "none"} realFurniture={furnMode === "real"} showLabels selectedRoomId={selectedRoomId}
                                     selectedFurnitureId={selFurniture} onSelectFurniture={id => { setSelFurniture(id); if (id) { setSelected(null); setOpening3d(null); } }}
                                     onSelectRoom={id => { setSelected(id); setOpening3d(null); }}
+                                    photo={photo} onPhotoProgress={setPhotoProgress}
+                                    onPhotoDone={url => { setPhoto(null); setPhotoUrl(url); }}
+                                    onPhotoFail={() => { setPhoto(null); setNotes(["Photo HD impossible sur cet appareil (carte graphique trop limitée)."]); }}
                                     onEdit={onEditorChange} lockAreas={lockAreas} walkFov={walkFov} hour={hour} floorLevel={floorLevel} selectedOpeningId={selOpening3d?.id ?? null}
                                     onSelectOpening={id => { setOpening3d(id); const o = plan.openings.find(x => x.id === id); if (o) setSelected(o.roomId); }}
                                     theme={theme} className="absolute inset-0"/>
@@ -822,6 +835,7 @@ export default function Plan3DPage() {
                                 <div className="absolute top-3 inset-x-3 flex items-start justify-between gap-2 pointer-events-none">
                                     <Segmented label="Vue" value={view} onChange={setView} options={VIEWS} glass/>
                                     <div className="pointer-events-auto flex items-center gap-0.5 p-1 rounded-xl border border-[var(--p-line)] backdrop-blur-xl shadow-lg" style={{ backgroundColor: "var(--p-glass)" }}>
+                                        <GlassButton label="Photo HD" icon={<Camera size={15}/>} active={!!photo} onClick={() => (photo ? setPhoto(p => (p ? { ...p, stop: true } : p)) : startPhoto())}/>
                                         <GlassButton label="Lumière" icon={<SunIcon size={15}/>} active={lightOpen} onClick={() => setLightOpen(v => !v)}/>
                                         <GlassButton label="Meubles" icon={<Sofa size={15}/>} active={furnMenu || furnMode !== "none"} onClick={() => setFurnMenu(v => !v)}/>
                                         <GlassButton label="Réaménager" icon={<Wand2 size={15}/>} onClick={refurnish}/>
@@ -864,7 +878,17 @@ export default function Plan3DPage() {
                                             Tirez les pastilles rouges pour pousser un mur · glissez une porte ou la pièce
                                         </p>
                                     )}
-                                    {catalogFor ? (
+                                    {photo ? (
+                                        <div className="pointer-events-auto w-full sm:w-80 rounded-[22px] p-4 border border-[var(--p-line)] backdrop-blur-xl shadow-[var(--p-shadow)] space-y-2.5"
+                                            style={{ backgroundColor: "var(--p-glass)" }} role="status" aria-live="polite">
+                                            <div className="flex items-center justify-between gap-2">
+                                                <p className="text-sm font-semibold text-[var(--p-fg)] flex items-center gap-2"><Loader2 size={14} className="animate-spin text-[var(--p-accent)]"/> Photo HD en cours… {Math.round(photoProgress * 100)} %</p>
+                                                <button type="button" onClick={() => setPhoto(p => (p ? { ...p, stop: true } : p))} className="h-8 px-3 rounded-lg text-xs font-semibold bg-[var(--p-sunken)] text-[var(--p-fg)]">Terminer</button>
+                                            </div>
+                                            <div className="h-1.5 rounded-full bg-[var(--p-sunken)] overflow-hidden"><div className="h-full rounded-full transition-[width]" style={{ width: `${Math.round(photoProgress * 100)}%`, background: BRAND_GRADIENT }}/></div>
+                                            <p className="text-[11.5px] text-[var(--p-muted)]">Lumière calculée rayon par rayon : ne bougez pas la vue. « Terminer » enregistre l&apos;image en l&apos;état.</p>
+                                        </div>
+                                    ) : catalogFor ? (
                                         <CatalogPanel replacing={catalogFor.replacing} onPick={pickFromCatalog} onClose={() => setCatalogFor(null)}/>
                                     ) : selFurn ? (
                                         <div className="pointer-events-auto w-full sm:w-80 sm:self-end rounded-[24px] p-4 border border-[var(--p-line)] backdrop-blur-xl shadow-[var(--p-shadow)] space-y-3"
@@ -1025,6 +1049,30 @@ export default function Plan3DPage() {
                     </AnimatePresence>
                 </main>
             )}
+
+            {/* Photo HD obtenue */}
+            <AnimatePresence>
+                {photoUrl && (
+                    <motion.div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-8" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                        <div className="absolute inset-0 bg-[rgba(0,0,0,0.72)] backdrop-blur-sm" onClick={() => setPhotoUrl(null)}/>
+                        <motion.div initial={{ scale: 0.96, y: 12 }} animate={{ scale: 1, y: 0 }} role="dialog" aria-modal aria-label="Photo HD"
+                            className="relative w-full max-w-5xl rounded-[28px] overflow-hidden border border-[var(--p-line)] shadow-2xl" style={{ backgroundColor: "var(--p-card)" }}>
+                            {/* eslint-disable-next-line @next/next/no-img-element -- image générée localement (data URL) */}
+                            <img src={photoUrl} alt="Photo HD de la visite" className="w-full max-h-[72vh] object-contain bg-black"/>
+                            <div className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                <p className="text-sm text-[var(--p-fg-2)]">Photo HD calculée par lancer de rayons : prête pour l&apos;annonce ou le dossier client.</p>
+                                <div className="flex gap-2">
+                                    <a href={photoUrl} download={`visite-3d-${(data.propertyAddress || "bien").replace(/[^a-z0-9]+/gi, "-").slice(0, 40)}.jpg`}
+                                        className="h-11 px-5 rounded-2xl text-sm font-semibold text-[#fff] inline-flex items-center gap-2 shadow-md" style={{ background: BRAND_GRADIENT }}>
+                                        <Download size={16}/> Télécharger
+                                    </a>
+                                    <button type="button" onClick={() => setPhotoUrl(null)} className="h-11 px-4 rounded-2xl text-sm font-semibold text-[var(--p-fg)]" style={{ backgroundColor: "var(--p-sunken)" }}>Fermer</button>
+                                </div>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
             {/* Notes de lecture du plan */}
             <AnimatePresence>

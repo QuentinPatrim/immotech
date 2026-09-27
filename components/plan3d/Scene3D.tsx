@@ -19,6 +19,7 @@ import { ContactShadows, Environment, Lightformer, OrbitControls, Sky } from "@r
 import { EffectComposer, N8AO, SMAA, ToneMapping } from "@react-three/postprocessing";
 import { ToneMappingMode } from "postprocessing";
 import { DEFAULT_GEO, localDate, planDirection, sunPosition } from "@/lib/plan3d/sun";
+import type { PhotoJob } from "@/components/plan3d/PhotoCapture";
 import type { Plan3D, Pt, Room, Wall } from "@/lib/plan3d/types";
 import { centroid, computeWalls, edgePoint, isOutdoor, planBBox, pointInPolygon, roomArea } from "@/lib/plan3d/geometry";
 import { STYLES, type StylePalette } from "@/lib/plan3d/styles";
@@ -58,6 +59,11 @@ export interface Scene3DProps {
     onSelectFurniture?: (id: string | null) => void;
     /** Catalogue chargé (ou échec) : informe la page */
     onCatalog?: (state: "loading" | "ready" | "error") => void;
+    /** Photo HD en cours (lancer de rayons) et ses retours */
+    photo?: PhotoJob | null;
+    onPhotoProgress?: (p: number) => void;
+    onPhotoDone?: (dataUrl: string) => void;
+    onPhotoFail?: () => void;
     selectedOpeningId?: string | null;
     onSelectOpening?: (id: string | null) => void;
 }
@@ -66,6 +72,8 @@ const FOV = 40;
 /** Vue réelle Google 3D (clé Map Tiles API) : chargée seulement en visite */
 const GOOGLE_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY || "";
 const GoogleTiles3D = lazy(() => import("@/components/plan3d/GoogleTiles3D"));
+/** Photo HD : moteur de lancer de rayons chargé seulement à la première prise */
+const PhotoCapture = lazy(() => import("@/components/plan3d/PhotoCapture"));
 const EYE = 1.6;
 const ACCENT = "#d35f52";
 const DOOR_HEAD = 2.1;
@@ -653,10 +661,11 @@ function CameraRig({ view, plan, bb, ox, oy, autoRotate, walkRequestRef, walkFov
 
 /* ─────────────────────────── SCÈNE ─────────────────────────── */
 
-function SceneContent({ plan, dragging, onDraft, labels, labelEls, view, showFurniture, selectedRoomId, onSelectRoom, dark, autoRotate, onEdit, lockAreas, selectedOpeningId, onSelectOpening, walkFov, hour, floorLevel, quality, catalog, selectedFurnitureId, onSelectFurniture }: {
+function SceneContent({ plan, dragging, onDraft, labels, labelEls, view, showFurniture, selectedRoomId, onSelectRoom, dark, autoRotate, onEdit, lockAreas, selectedOpeningId, onSelectOpening, walkFov, hour, floorLevel, quality, catalog, selectedFurnitureId, onSelectFurniture, photo, onPhotoProgress, onPhotoDone, onPhotoFail }: {
     plan: Plan3D; dragging: boolean; onDraft: (p: Plan3D | null) => void; labels: LabelItem[]; labelEls: RefObject<Map<string, HTMLElement>>;
     walkFov: number; hour: number; floorLevel: number; quality: "high" | "low";
     catalog: LibraryItem[] | null; selectedFurnitureId: string | null; onSelectFurniture?: (id: string | null) => void;
+    photo: PhotoJob | null; onPhotoProgress?: (p: number) => void; onPhotoDone?: (dataUrl: string) => void; onPhotoFail?: () => void;
     view: ViewMode; showFurniture: boolean; selectedRoomId: string | null;
     onSelectRoom?: (id: string | null) => void; dark: boolean; autoRotate: boolean;
     onEdit?: (plan: Plan3D) => void; lockAreas: boolean; selectedOpeningId: string | null; onSelectOpening?: (id: string | null) => void;
@@ -767,7 +776,13 @@ function SceneContent({ plan, dragging, onDraft, labels, labelEls, view, showFur
                     onDraft={onDraft} onCommit={onEdit}/>
             )}
             <CameraRig view={view} plan={plan} bb={bb} ox={ox} oy={oy} autoRotate={autoRotate && view === "dollhouse"} walkRequestRef={walkRequestRef} walkFov={walkFov} />
-            {quality === "high" && (
+            {photo && (
+                <Suspense fallback={null}>
+                    <PhotoCapture job={photo} outdoor={sun.up ? { top: "#8fb4e0", bottom: "#d9d4c7" } : { top: "#1d2740", bottom: "#2a2a2a" }}
+                        onProgress={p => onPhotoProgress?.(p)} onDone={u => onPhotoDone?.(u)} onFail={() => onPhotoFail?.()} />
+                </Suspense>
+            )}
+            {quality === "high" && !photo && (
                 // Occlusion ambiante (angles, pieds de meubles), anticrénelage, tonalité filmique
                 <EffectComposer multisampling={0} enableNormalPass={false}>
                     <N8AO halfRes aoRadius={walking ? 0.8 : 0.6} distanceFalloff={0.6} intensity={walking ? 2.4 : 1.8} quality="performance" />
@@ -801,6 +816,10 @@ export default function Scene3D({
     selectedFurnitureId = null,
     onSelectFurniture,
     onCatalog,
+    photo = null,
+    onPhotoProgress,
+    onPhotoDone,
+    onPhotoFail,
     selectedOpeningId = null,
     onSelectOpening,
 }: Scene3DProps) {
@@ -877,6 +896,10 @@ export default function Scene3D({
                     floorLevel={floorLevel}
                     quality={quality}
                     catalog={realFurniture ? catalog : null}
+                    photo={photo}
+                    onPhotoProgress={onPhotoProgress}
+                    onPhotoDone={onPhotoDone}
+                    onPhotoFail={onPhotoFail}
                     selectedFurnitureId={selectedFurnitureId}
                     onSelectFurniture={onSelectFurniture}
                     selectedOpeningId={selectedOpeningId}
