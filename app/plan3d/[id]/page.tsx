@@ -24,6 +24,7 @@ import { getAuthHeaders } from "@/lib/apiHelpers";
 import { usePatrimTheme } from "@/lib/patrimTheme";
 import ThemeToggle from "@/components/estimation/ThemeToggle";
 import PlanEditor2D, { OpeningInspector, RoomInspector } from "@/components/plan3d/PlanEditor2D";
+import FinishPicker from "@/components/plan3d/FinishPicker";
 import LightPanel from "@/components/plan3d/LightPanel";
 import CatalogPanel from "@/components/plan3d/CatalogPanel";
 import { typeFor, type LibraryItem } from "@/lib/plan3d/library";
@@ -930,7 +931,8 @@ export default function Plan3DPage() {
                                                     groupedIn={(() => { const o = placardGroups(plan).get(selRoom3d.id); return o ? plan.rooms.find(r => r.id === o)?.name ?? null : null; })()}
                                                     onTarget={t => editPlan(t ? relock(setRoomTarget(plan, selRoom3d.id, t)) : setRoomTarget(plan, selRoom3d.id, null))}
                                                     onArea={a => editPlan(setRoomArea(plan, selRoom3d.id, a))}
-                                                    onSize={(axis, v) => editPlan(setRoomSize(plan, selRoom3d.id, axis, v, lockAreas))}/>
+                                                    onSize={(axis, v) => editPlan(setRoomSize(plan, selRoom3d.id, axis, v, lockAreas))}
+                                                    finishes={<FinishPicker plan={plan} room={selRoom3d} onPlan={editPlan}/>}/>
                                             )}
                                         </div>
                                     ) : (

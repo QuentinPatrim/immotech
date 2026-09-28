@@ -23,7 +23,8 @@ import type { PhotoJob } from "@/components/plan3d/PhotoCapture";
 import type { Plan3D, Pt, Room, Wall } from "@/lib/plan3d/types";
 import { centroid, computeWalls, edgePoint, isOutdoor, planBBox, pointInPolygon, roomArea } from "@/lib/plan3d/geometry";
 import { STYLES, type StylePalette } from "@/lib/plan3d/styles";
-import { FLOOR_ROUGHNESS, disposeTextures, makeFloorTexture } from "@/components/plan3d/materials";
+import { FLOOR_ROUGHNESS, HAS_RELIEF, disposeTextures, makeBumpTexture, makeTexture } from "@/components/plan3d/materials";
+import { BEAM_COLOR, CEILING_WHITE, findCeiling, floorOf, wallOf, type WallFinish } from "@/lib/plan3d/finishes";
 import { FurnitureMesh, disposeFurnitureResources } from "@/components/plan3d/furnitureModels";
 import EditHandles3D from "@/components/plan3d/EditHandles3D";
 import RealFurniture from "@/components/plan3d/RealFurniture";
@@ -235,9 +236,199 @@ function Walls({ plan, palette, ox, oy }: { plan: Pick<Plan3D, "rooms" | "openin
     );
 }
 
+/* ─────────────────────────── HABILLAGE DES MURS ─────────────────────────── */
+
+/**
+ * Revêtement mural d'une pièce (faïence, gouttelettes, brique, peinture teintée) :
+ * fines surfaces posées contre la face intérieure des murs de la pièce, découpées
+ * autour des portes et fenêtres. Les murs sont centrés sur les côtés des pièces :
+ * la face intérieure est à une demi-épaisseur du côté, vers l'intérieur.
+ * UV en mètres : u le long du périmètre, v la hauteur.
+ */
+function buildSkin(room: Room, walls: Wall[], height: number, ox: number, oy: number): THREE.BufferGeometry | null {
+    const P = room.polygon.filter((p, i, arr) => Math.hypot(p.x - arr[(i + 1) % arr.length].x, p.y - arr[(i + 1) % arr.length].y) > 0.02);
+    const n = P.length;
+    if (n < 3) return null;
+    let area2 = 0;
+    for (let i = 0; i < n; i++) { const a = P[i], b = P[(i + 1) % n]; area2 += a.x * b.y - b.x * a.y; }
+    const sgn = area2 > 0 ? 1 : -1;
+    const parallel = (w: Wall, ux: number, uy: number, a: Pt) => {
+        const L = Math.hypot(w.b.x - w.a.x, w.b.y - w.a.y);
+        if (L < 0.02) return null;
+        const wx = (w.b.x - w.a.x) / L, wy = (w.b.y - w.a.y) / L;
+        if (Math.abs(wx * uy - wy * ux) > 0.03) return null;
+        if (Math.abs((w.a.x - a.x) * uy - (w.a.y - a.y) * ux) > 0.13) return null;
+        return { L, wx, wy };
+    };
+    const E = P.map((a, i) => {
+        const b = P[(i + 1) % n];
+        const L = Math.hypot(b.x - a.x, b.y - a.y);
+        const ux = (b.x - a.x) / L, uy = (b.y - a.y) / L;
+        const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+        const wall = walls.find(w => {
+            const q = parallel(w, ux, uy, a);
+            if (!q) return false;
+            const s = (mid.x - w.a.x) * q.wx + (mid.y - w.a.y) * q.wy;
+            return s > -0.05 && s < q.L + 0.05;
+        });
+        return { a, ux, uy, nx: -uy * sgn, ny: ux * sgn, off: (wall ? wall.thickness / 2 : 0) + 0.004 };
+    });
+    // Sommets de la face intérieure : intersection des côtés décalés consécutifs
+    const V = E.map((e, i) => {
+        const p = E[(i - 1 + n) % n];
+        const pa = { x: p.a.x + p.nx * p.off, y: p.a.y + p.ny * p.off };
+        const ea = { x: e.a.x + e.nx * e.off, y: e.a.y + e.ny * e.off };
+        const cross = p.ux * e.uy - p.uy * e.ux;
+        if (Math.abs(cross) < 1e-6) return ea;
+        const t = ((ea.x - pa.x) * e.uy - (ea.y - pa.y) * e.ux) / cross;
+        return { x: pa.x + p.ux * t, y: pa.y + p.uy * t };
+    });
+    const positions: number[] = [], normals: number[] = [], uvs: number[] = [];
+    const head = (v: number) => Math.min(v, height - 0.08);
+    let perimeter = 0;
+    E.forEach((e, i) => {
+        const A = V[i], B = V[(i + 1) % n];
+        const len = (B.x - A.x) * e.ux + (B.y - A.y) * e.uy;
+        if (len < 0.02) return;
+        const holes: { s0: number; s1: number; kind: string }[] = [];
+        for (const w of walls) {
+            const q = parallel(w, e.ux, e.uy, e.a);
+            if (!q) continue;
+            for (const o of w.openings) {
+                const p0 = { x: w.a.x + q.wx * o.from, y: w.a.y + q.wy * o.from };
+                const p1 = { x: w.a.x + q.wx * o.to, y: w.a.y + q.wy * o.to };
+                let s0 = (p0.x - A.x) * e.ux + (p0.y - A.y) * e.uy;
+                let s1 = (p1.x - A.x) * e.ux + (p1.y - A.y) * e.uy;
+                if (s0 > s1) [s0, s1] = [s1, s0];
+                s0 = Math.max(0, s0); s1 = Math.min(len, s1);
+                if (s1 - s0 > 0.02) holes.push({ s0, s1, kind: o.kind });
+            }
+        }
+        holes.sort((x, y) => x.s0 - y.s0);
+        const quad = (s0: number, s1: number, y0: number, y1: number) => {
+            if (s1 - s0 < 0.004 || y1 - y0 < 0.004) return;
+            const pt = (s: number, y: number) => [A.x + e.ux * s - ox, y, A.y + e.uy * s - oy];
+            const c = [pt(s0, y0), pt(s1, y0), pt(s1, y1), pt(s0, y1)];
+            const uv = [[perimeter + s0, y0], [perimeter + s1, y0], [perimeter + s1, y1], [perimeter + s0, y1]];
+            // Sens des triangles : face visible tournée vers l'intérieur de la pièce
+            const ax = c[1][0] - c[0][0], az = c[1][2] - c[0][2];
+            const fx = -az * (c[2][1] - c[0][1]); // (b-a) × (c-a), composante utile (le mur est vertical)
+            const fz = ax * (c[2][1] - c[0][1]);
+            const order = fx * e.nx + fz * e.ny >= 0 ? [0, 1, 2, 0, 2, 3] : [0, 2, 1, 0, 3, 2];
+            for (const k of order) {
+                positions.push(...c[k]);
+                normals.push(e.nx, 0, e.ny);
+                uvs.push(...uv[k]);
+            }
+        };
+        let cursor = 0;
+        for (const h of holes) {
+            if (h.s0 > cursor) quad(cursor, h.s0, 0, height);
+            const s0 = Math.max(cursor, h.s0);
+            if (h.kind === "door") quad(s0, h.s1, head(DOOR_HEAD), height);
+            else {
+                if (h.kind === "window") quad(s0, h.s1, 0, WINDOW_SILL);
+                quad(s0, h.s1, head(WINDOW_HEAD), height);
+            }
+            cursor = Math.max(cursor, h.s1);
+        }
+        quad(cursor, len, 0, height);
+        perimeter += len;
+    });
+    if (!positions.length) return null;
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+    g.setAttribute("normal", new THREE.Float32BufferAttribute(normals, 3));
+    g.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
+    g.computeBoundingSphere();
+    return g;
+}
+
+/** Matériau d'un revêtement mural ou de plafond (motif teinté + relief) */
+function SurfaceMaterial({ tex, color, alt, roughness, side, emissive = 0 }: {
+    tex: WallFinish["tex"]; color: string; alt?: string; roughness: number; side?: THREE.Side; emissive?: number;
+}) {
+    const map = tex ? makeTexture(tex, color, alt ?? color) : null;
+    const bump = tex ? makeBumpTexture(tex) : null;
+    return (
+        <meshStandardMaterial
+            color={map ? "#ffffff" : color}
+            map={map}
+            bumpMap={bump}
+            bumpScale={tex ? HAS_RELIEF[tex] ?? 0 : 0}
+            roughness={roughness}
+            side={side}
+            emissive={emissive ? "#fffaf2" : "#000000"}
+            emissiveIntensity={emissive}
+        />
+    );
+}
+
+function WallSkins({ plan, ox, oy }: { plan: Plan3D; ox: number; oy: number }) {
+    const { rooms, openings, wallHeight } = plan;
+    const items = useMemo(() => {
+        const dressed = rooms.filter(r => !isOutdoor(r) && wallOf(r));
+        if (!dressed.length) return [];
+        const walls = computeWalls({ rooms, openings: openings ?? [] });
+        return dressed.flatMap(r => {
+            const geometry = buildSkin(r, walls, wallHeight || 2.5, ox, oy);
+            const look = wallOf(r);
+            return geometry && look ? [{ id: r.id, geometry, look }] : [];
+        });
+    }, [rooms, openings, wallHeight, ox, oy]);
+    useEffect(() => () => { for (const i of items) i.geometry.dispose(); }, [items]);
+    return (
+        <group>
+            {items.map(i => (
+                <mesh key={i.id} geometry={i.geometry} receiveShadow onClick={e => e.stopPropagation()}>
+                    <SurfaceMaterial tex={i.look.finish.tex} color={i.look.color} alt={i.look.finish.alt} roughness={i.look.finish.roughness} />
+                </mesh>
+            ))}
+        </group>
+    );
+}
+
 /* ─────────────────────────── SOLS ─────────────────────────── */
 
-interface FloorItem { room: Room; geometry: THREE.ShapeGeometry; texture: THREE.Texture; roughness: number }
+interface FloorItem { room: Room; geometry: THREE.ShapeGeometry; texture: THREE.Texture; bump: THREE.Texture | null; bumpScale: number; roughness: number }
+
+/** Poutres apparentes : solives perpendiculaires au grand côté, tous les 60 cm, découpées au contour de la pièce */
+function buildBeams(rooms: Room[], height: number, ox: number, oy: number): THREE.BufferGeometry | null {
+    const batch = new Batch();
+    const W = 0.1, H = 0.16, STEP = 0.6;
+    for (const r of rooms) {
+        const P = r.polygon;
+        if (P.length < 3) continue;
+        const xs = P.map(p => p.x), ys = P.map(p => p.y);
+        const bb = { x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) };
+        // Les poutres franchissent la plus petite portée
+        const alongX = bb.x1 - bb.x0 < bb.y1 - bb.y0;
+        const [c0, c1] = alongX ? [bb.y0, bb.y1] : [bb.x0, bb.x1];
+        const count = Math.floor((c1 - c0) / STEP);
+        const start = c0 + ((c1 - c0) - (count - 1) * STEP) / 2;
+        for (let k = 0; k < count; k++) {
+            const c = start + k * STEP;
+            // Intersections du contour avec la droite de la poutre
+            const hits: number[] = [];
+            for (let i = 0; i < P.length; i++) {
+                const a = P[i], b = P[(i + 1) % P.length];
+                const [ac, bc, av, bv] = alongX ? [a.y, b.y, a.x, b.x] : [a.x, b.x, a.y, b.y];
+                if ((ac <= c && bc > c) || (bc <= c && ac > c)) hits.push(av + ((c - ac) / (bc - ac)) * (bv - av));
+            }
+            hits.sort((p, q) => p - q);
+            for (let h = 0; h + 1 < hits.length; h += 2) {
+                const v0 = hits[h] + 0.05, v1 = hits[h + 1] - 0.05;
+                if (v1 - v0 < 0.3) continue;
+                const len = v1 - v0, mid = (v0 + v1) / 2;
+                const g = new THREE.BoxGeometry(alongX ? len : W, H, alongX ? W : len).toNonIndexed();
+                g.translate(alongX ? mid - ox : c - ox, height - H / 2, alongX ? c - oy : mid - oy);
+                batch.push(g, 0, g.getAttribute("position").count);
+                g.dispose();
+            }
+        }
+    }
+    return batch.positions.length ? batch.build() : null;
+}
 
 /**
  * Sol de chaque pièce : forme construite dans le plan XY avec (x, -z) puis
@@ -253,15 +444,23 @@ function Floors({ plan, palette, ox, oy, selectedRoomId, onFloorClick, ceilings 
 }) {
     const items = useMemo<FloorItem[]>(() => plan.rooms.filter(r => r.polygon.length >= 3).map(room => {
         const shape = new THREE.Shape(room.polygon.map(p => new THREE.Vector2(p.x - ox, -(p.y - oy))));
-        const f = palette.floor(room.kind);
+        const f = floorOf(room, palette);
         return {
             room,
             geometry: new THREE.ShapeGeometry(shape),
-            texture: makeFloorTexture(f.kind, f.base, f.alt),
+            texture: makeTexture(f.kind, f.base, f.alt),
+            bump: makeBumpTexture(f.kind),
+            bumpScale: HAS_RELIEF[f.kind] ?? 0,
             roughness: FLOOR_ROUGHNESS[f.kind],
         };
     }), [plan.rooms, palette, ox, oy]);
     useEffect(() => () => { for (const i of items) i.geometry.dispose(); }, [items]);
+    const height = plan.wallHeight || 2.5;
+    const beams = useMemo(
+        () => (ceilings ? buildBeams(plan.rooms.filter(r => !isOutdoor(r) && findCeiling(r.finish?.ceiling)?.beams), height, ox, oy) : null),
+        [ceilings, plan.rooms, height, ox, oy],
+    );
+    useEffect(() => () => { beams?.dispose(); }, [beams]);
     return (
         <group>
             {items.map(i => {
@@ -277,6 +476,8 @@ function Floors({ plan, palette, ox, oy, selectedRoomId, onFloorClick, ceilings 
                     >
                         <meshStandardMaterial
                             map={i.texture}
+                            bumpMap={i.bump}
+                            bumpScale={i.bumpScale}
                             roughness={i.roughness}
                             envMapIntensity={0.7}
                             emissive={selected ? ACCENT : "#000000"}
@@ -285,13 +486,22 @@ function Floors({ plan, palette, ox, oy, selectedRoomId, onFloorClick, ceilings 
                     </mesh>
                 );
             })}
-            {ceilings && items.filter(i => !isOutdoor(i.room)).map(i => (
-                // Même forme que le sol, retournée vers le bas à hauteur sous plafond
-                <mesh key={`c${i.room.id}`} geometry={i.geometry} rotation={[Math.PI / 2, 0, 0]} position={[0, plan.wallHeight || 2.5, 0]} scale={[1, -1, 1]} receiveShadow>
-                    {/* Lumière renvoyée par le sol et les murs : un plafond blanc n'est jamais gris */}
-                    <meshStandardMaterial color="#f7f6f3" roughness={0.95} side={THREE.DoubleSide} emissive="#fffaf2" emissiveIntensity={0.42} />
+            {ceilings && items.filter(i => !isOutdoor(i.room)).map(i => {
+                const c = findCeiling(i.room.finish?.ceiling);
+                return (
+                    // Même forme que le sol, retournée vers le bas à hauteur sous plafond
+                    <mesh key={`c${i.room.id}`} geometry={i.geometry} rotation={[Math.PI / 2, 0, 0]} position={[0, height, 0]} scale={[1, -1, 1]} receiveShadow>
+                        {/* Lumière renvoyée par le sol et les murs : un plafond blanc n'est jamais gris */}
+                        <SurfaceMaterial tex={c?.tex ?? null} color={c?.base ?? CEILING_WHITE} alt={c?.alt} roughness={0.95} side={THREE.DoubleSide}
+                            emissive={c?.tex === "lambris" ? 0.12 : c?.tex ? 0.3 : 0.42} />
+                    </mesh>
+                );
+            })}
+            {beams && (
+                <mesh geometry={beams} castShadow receiveShadow>
+                    <meshStandardMaterial color={BEAM_COLOR} roughness={0.8} />
                 </mesh>
-            ))}
+            )}
         </group>
     );
 }
@@ -760,6 +970,7 @@ function SceneContent({ plan, dragging, onDraft, labels, labelEls, view, showFur
 
             <Floors plan={plan} palette={palette} ox={ox} oy={oy} selectedRoomId={selectedRoomId} onFloorClick={onFloorClick} ceilings={walking} />
             <Walls plan={plan} palette={palette} ox={ox} oy={oy} />
+            <WallSkins plan={plan} ox={ox} oy={oy} />
             {showFurniture && (
                 <FurnitureLayer plan={plan} palette={palette} ox={ox} oy={oy} catalog={catalog}
                     selectedId={selectedFurnitureId} onSelect={onSelectFurniture && view !== "walk" ? id => onSelectFurniture(id) : undefined} />

@@ -7,7 +7,9 @@
 
 import type { RoomKind, StyleId } from "@/lib/plan3d/types";
 
-export type FloorKind = "parquet" | "parquet_chevron" | "tiles" | "concrete" | "decking" | "grass";
+export type FloorKind =
+    | "parquet" | "parquet_chevron" | "tiles" | "concrete" | "decking" | "grass"
+    | "tiles_large" | "cement_tiles" | "tomettes" | "marble" | "carpet" | "stone";
 
 export interface StylePalette {
     id: StyleId;

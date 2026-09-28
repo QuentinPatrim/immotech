@@ -46,6 +46,17 @@ export interface Room {
      * est posée, la pièce la garde quand on déplace ses murs (les autres murs se recalent).
      */
     targetArea?: number;
+    /** Revêtements choisis (sinon ceux du style d'aménagement) */
+    finish?: RoomFinish;
+}
+
+/** Revêtements d'une pièce : identifiants du catalogue (lib/plan3d/finishes) */
+export interface RoomFinish {
+    floor?: string;
+    wall?: string;
+    /** Teinte de la peinture murale (peinture lisse, gouttelettes) */
+    wallColor?: string;
+    ceiling?: string;
 }
 
 export type OpeningKind = "door" | "window" | "french";

@@ -13,7 +13,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import {
-    AppWindow, Check, ChevronDown, ChevronUp, Columns2, Copy, DoorOpen, Lock, LockOpen, Maximize2, Minus, Plus, Redo2, SquarePlus, Trash2, TriangleAlert, Undo2, X,
+    AppWindow, Check, ChevronDown, ChevronUp, Columns2, Copy, DoorOpen, Lock, LockOpen, Maximize2, Minus, Paintbrush, Plus, Redo2, SquarePlus, Trash2, TriangleAlert, Undo2, X,
 } from "lucide-react";
 import {
     ROOM_KINDS, type Opening, type OpeningKind, type Plan3D, type Pt, type Room, type RoomKind, type Wall,
@@ -27,6 +27,7 @@ import {
     countedArea, dragWall, hasTargets, mapRoom, placardGroups, setRoomTarget, moveOpening, openingEnds, relock, targetGaps, patchOpening as patchOpeningOp, r3, resizeOpening, setRoomArea, setRoomSize,
     setVertex, snapGrid, translateRoom, wallHandleT, wallOffset, type WallGrab,
 } from "@/lib/plan3d/edit";
+import FinishPicker from "@/components/plan3d/FinishPicker";
 
 export interface PlanEditor2DProps {
     plan: Plan3D;
@@ -401,8 +402,10 @@ const isAxisRect = (room: Room) => room.polygon.length === 4 && room.polygon.eve
     return Math.abs(p.x - q.x) < 0.02 || Math.abs(p.y - q.y) < 0.02;
 });
 
-export function RoomInspector({ room, counted, groupedIn, compact, onTarget, onRename, onKind, onDuplicate, onDelete, onClose, onArea, onSize }: {
+export function RoomInspector({ room, counted, groupedIn, compact, onTarget, onRename, onKind, onDuplicate, onDelete, onClose, onArea, onSize, finishes }: {
     room: Room;
+    /** Choix des revêtements (sol, murs, plafond), replié sous un bouton */
+    finishes?: ReactNode;
     /** Fiche repliée au départ (peu de place pour le plan) */
     compact?: boolean;
     /** Surface comptée (avec les placards rattachés) */
@@ -422,6 +425,7 @@ export function RoomInspector({ room, counted, groupedIn, compact, onTarget, onR
     const rect = isAxisRect(room);
     // Téléphone : fiche repliée (nom + surface) pour laisser le plan visible
     const [open, setOpen] = useState(() => (compact !== undefined ? !compact : typeof window === "undefined" || window.innerWidth >= 640));
+    const [finishOpen, setFinishOpen] = useState(false);
     if (!open) {
         return (
             <div className="flex items-center gap-2">
@@ -501,6 +505,16 @@ export function RoomInspector({ room, counted, groupedIn, compact, onTarget, onR
                     <Row label="Dimensions">{fmt2.format(bb.w)} × {fmt2.format(bb.h)} m</Row>
                 )}
             </div>
+            {finishes && (
+                <div className="rounded-2xl bg-[var(--p-card)] border border-[var(--p-line)]">
+                    <button type="button" onClick={() => setFinishOpen(v => !v)} aria-expanded={finishOpen}
+                        className="w-full flex items-center justify-between gap-2 px-3.5 py-2.5 text-[13.5px] font-semibold text-[var(--p-fg)]">
+                        <span className="flex items-center gap-2"><Paintbrush size={14} className="text-[var(--p-accent)]"/> Revêtements</span>
+                        <span className="flex items-center gap-1 text-[12px] font-medium text-[var(--p-muted)]">Sol, murs, plafond {finishOpen ? <ChevronUp size={15}/> : <ChevronDown size={15}/>}</span>
+                    </button>
+                    {finishOpen && <div className="px-2.5 pb-3">{finishes}</div>}
+                </div>
+            )}
             <div className="grid grid-cols-2 gap-2">
                 <button type="button" onClick={onDuplicate} aria-label="Dupliquer la pièce" className="h-10 rounded-xl flex items-center justify-center gap-1.5 text-[14px] font-semibold bg-[var(--p-sunken)] text-[var(--p-fg)] hover:bg-[var(--p-hover)]">
                     <Copy size={15}/> Dupliquer
@@ -1294,7 +1308,8 @@ export default function PlanEditor2D({
                                 groupedIn={(() => { const o = placardGroups(shown).get(selRoom.id); return o ? shown.rooms.find(r => r.id === o)?.name ?? null : null; })()}
                                 onTarget={t => commit(t ? relock(setRoomTarget(plan, selRoom.id, t)) : setRoomTarget(plan, selRoom.id, null))}
                                 onArea={a => commit(setRoomArea(plan, selRoom.id, a))}
-                                onSize={(axis, v) => commit(setRoomSize(plan, selRoom.id, axis, v, lock))}/>
+                                onSize={(axis, v) => commit(setRoomSize(plan, selRoom.id, axis, v, lock))}
+                                finishes={<FinishPicker plan={plan} room={selRoom} onPlan={commit}/>}/>
                         )}
                     </div>
                 )}
