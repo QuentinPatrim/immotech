@@ -77,7 +77,7 @@ export default function SituationMap({ lat, lon, zoom = 16, color = "#8a0e01" }:
         : ignTile(z, tx, ty));
 
     return (
-        <div className="relative w-full h-full overflow-hidden bg-[#f2f1ed]">
+        <div className="relative w-full h-full overflow-hidden bg-[#f2f1ed]" style={{ overflow: "clip", contain: "strict" }}>
             {tiles.map(({ tx, ty }) => (
                 // eslint-disable-next-line @next/next/no-img-element -- tuiles cartographiques externes
                 <img key={`${source?.kind}-${tx}-${ty}`} alt="" draggable={false}
