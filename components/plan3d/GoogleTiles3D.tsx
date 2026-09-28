@@ -99,7 +99,7 @@ export default function GoogleTiles3D({ apiKey, lat, lng, north, groundY, halfX,
     return (
         // Nord des tuiles (+Z) aligné sur le plan : rotation d'un demi-tour plus le cap du haut du plan
         <group ref={wrap} rotation={[0, north * DEG + Math.PI, 0]} position={[0, lift ?? 0, 0]} visible={lift !== null}>
-            <TilesRenderer ref={tiles} errorTarget={8}
+            <TilesRenderer ref={tiles} errorTarget={4}
                 onLoadModel={e => applyClip(e.scene)}
                 onTilesLoadEnd={measureGround}>
                 <TilesPlugin plugin={GoogleCloudAuthPlugin} args={[{ apiToken: apiKey, autoRefreshToken: true }]} />
