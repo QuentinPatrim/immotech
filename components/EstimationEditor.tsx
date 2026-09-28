@@ -342,6 +342,8 @@ export default function EstimationEditor({
     const [saveState, setSaveState] = useState<SaveState>(existingId ? "saved" : "idle");
     const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
     const dataRef = useRef<EstimationData>(data);
+    /** Partage de l'avis en ligne demandé (e-mail avec lien) : imposé à chaque enregistrement de la session */
+    const shareRequestedRef = useRef(false);
     useEffect(() => { dataRef.current = data; }, [data]);
     const currentIdRef = useRef<string | null>(existingId);
     const lastSavedJson = useRef<string>(JSON.stringify(initialData));
@@ -363,6 +365,8 @@ export default function EstimationEditor({
             const dbJson: Record<string, unknown> = current?.data_json || {};
             const merged: Record<string, unknown> = { ...clean };
             for (const k of HUB_KEYS) if (k in dbJson) merged[k] = dbJson[k];
+            // Lien en ligne activé depuis l'envoi par e-mail : jamais écrasé par la version lue en base
+            if (shareRequestedRef.current) merged.shareAvis = true;
             // Génération du PDF : un avis "en cours" passe à "remis"
             if (opts?.promote && (!merged.status || merged.status === "en_cours")) {
                 merged.status = "remise";
@@ -381,6 +385,7 @@ export default function EstimationEditor({
             clean.status = "remise";
             clean.statusUpdatedAt = new Date().toISOString();
         }
+        if (shareRequestedRef.current) (clean as EstimationData & { shareAvis?: boolean }).shareAvis = true;
         const payload = {
             user_id: user.id,
             client_name: clean.clientName || "Dossier Sans Nom",
@@ -397,12 +402,12 @@ export default function EstimationEditor({
         return inserted.id as string;
     }, []);
 
-    const saveNow = useCallback(async (opts?: { promote?: boolean }): Promise<boolean> => {
+    const saveNow = useCallback(async (opts?: { promote?: boolean; force?: boolean }): Promise<boolean> => {
         // Attend la fin d'un enregistrement en cours (évite les doublons à la création)
         while (savingRef.current) await new Promise(r => setTimeout(r, 80));
         const snapshot = dataRef.current;
         const json = JSON.stringify(snapshot);
-        if (json === lastSavedJson.current && currentIdRef.current && !opts?.promote) {
+        if (json === lastSavedJson.current && currentIdRef.current && !opts?.promote && !opts?.force) {
             setSaveState("saved");
             return true;
         }
@@ -463,17 +468,15 @@ export default function EstimationEditor({
     }, []);
 
     // Retour à /mes-biens (on enregistre d'abord ce qui ne l'est pas)
-    /** Avis envoyé par e-mail : coordonnées retenues, lien en ligne activé si ajouté au message */
+    /** Avis envoyé par e-mail : coordonnées du client retenues */
     const onMailSent = (m: MailSent) => {
         setData(prev => ({ ...prev, clientEmail: m.clientEmail || prev.clientEmail, clientCivility: m.clientCivility, mailSentAt: m.mailSentAt }));
-        const id = currentIdRef.current;
-        if (!m.shareAvis || !id) return;
-        void (async () => {
-            const { data: row } = await supabase.from('estimations').select('data_json').eq('id', id).maybeSingle();
-            if (row?.data_json && !row.data_json.shareAvis) {
-                await supabase.from('estimations').update({ data_json: { ...row.data_json, shareAvis: true } }).eq('id', id);
-            }
-        })();
+    };
+
+    /** Active le lien de consultation en ligne (/avis/…) avant l'envoi du message */
+    const enableShareLink = async (): Promise<boolean> => {
+        shareRequestedRef.current = true;
+        return saveNow({ force: true });
     };
 
     const goToMesBiens = async () => {
@@ -2010,6 +2013,7 @@ export default function EstimationEditor({
                         dossier={{ clientName: data.clientName, clientEmail: data.clientEmail, clientCivility: data.clientCivility, propertyType: data.propertyType, propertyAddress: data.propertyAddress, agentId: data.agentId }}
                         getPages={() => Array.from(pdfStageRef.current?.querySelectorAll<HTMLElement>(".print-page") ?? [])}
                         onSent={onMailSent}
+                        onShareLink={enableShareLink}
                         onClose={() => setMailOpen(false)}/>
                 )}
             </AnimatePresence>

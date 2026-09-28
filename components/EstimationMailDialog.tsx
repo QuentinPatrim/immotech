@@ -33,8 +33,6 @@ export interface MailDossier {
 export interface MailSent {
     clientEmail: string;
     clientCivility: Civility;
-    /** Lien de consultation en ligne ajouté : l'avis doit être partagé */
-    shareAvis: boolean;
     mailSentAt: string;
 }
 
@@ -47,12 +45,14 @@ const PROVIDERS: { id: MailProvider; label: string; hint: string }[] = [
     { id: "device", label: "Autre messagerie", hint: "Mail, Outlook, Thunderbird…" },
 ];
 
-export default function EstimationMailDialog({ dossier, id, getPages, onSent, onClose }: {
+export default function EstimationMailDialog({ dossier, id, getPages, onSent, onShareLink, onClose }: {
     dossier: MailDossier;
     id: string | null;
     /** Pages A4 de l'avis affichées à l'écran */
     getPages: () => HTMLElement[];
     onSent: (s: MailSent) => void;
+    /** Active le partage en ligne de l'avis (enregistré avant l'envoi) */
+    onShareLink: () => Promise<boolean>;
     onClose: () => void;
 }) {
     const [to, setTo] = useState(dossier.clientEmail ?? "");
@@ -61,6 +61,15 @@ export default function EstimationMailDialog({ dossier, id, getPages, onSent, on
     const [template, setTemplate] = useState(() => read(TEMPLATE_KEY) || DEFAULT_TEMPLATE);
     const [subject, setSubject] = useState(() => mailSubject(dossier.propertyType, dossier.propertyAddress));
     const [withLink, setWithLink] = useState(false);
+    const [linkState, setLinkState] = useState<"idle" | "saving" | "ready" | "error">("idle");
+    const toggleLink = async (on: boolean) => {
+        setWithLink(on);
+        if (!on || linkState === "ready") return;
+        setLinkState("saving");
+        const ok = await onShareLink().catch(() => false);
+        setLinkState(ok ? "ready" : "error");
+        if (!ok) setWithLink(false);
+    };
     const [provider, setProvider] = useState<MailProvider>(() => (read(PROVIDER_KEY) as MailProvider) || "gmail");
     const filled = useMemo(() => fillTemplate(template, {
         clientName: dossier.clientName, civility, propertyType: dossier.propertyType, propertyAddress: dossier.propertyAddress, agentId: dossier.agentId, phone,
@@ -106,7 +115,7 @@ export default function EstimationMailDialog({ dossier, id, getPages, onSent, on
 
     const remember = () => {
         write(phoneKey(dossier.agentId), phone.trim() && phone.trim() !== agentPhone(dossier.agentId) ? phone.trim() : null);
-        onSent({ clientEmail: to.trim(), clientCivility: civility, shareAvis: withLink, mailSentAt: new Date().toISOString() });
+        onSent({ clientEmail: to.trim(), clientCivility: civility, mailSentAt: new Date().toISOString() });
     };
 
     const download = () => {
@@ -265,10 +274,15 @@ export default function EstimationMailDialog({ dossier, id, getPages, onSent, on
                         </div>
                         {id && (
                             <label className="flex items-center gap-3 px-3.5 py-3 cursor-pointer">
-                                <input type="checkbox" checked={withLink} onChange={e => setWithLink(e.target.checked)} className="w-4 h-4 accent-[#8a0e01]"/>
+                                <input type="checkbox" checked={withLink} disabled={linkState === "saving"} onChange={e => void toggleLink(e.target.checked)} className="w-4 h-4 accent-[#8a0e01]"/>
                                 <span className="flex-1 min-w-0 text-[13px] text-[var(--p-fg)]">
                                     <span className="font-semibold inline-flex items-center gap-1.5"><Link2 size={13}/> Ajouter le lien de consultation en ligne</span>
-                                    <span className="block text-[12px] text-[var(--p-muted)]">L&apos;avis devient consultable par ce lien (sans le nom du client).</span>
+                                    <span className="block text-[12px] text-[var(--p-muted)]">
+                                        {linkState === "saving" ? "Activation du lien…"
+                                            : linkState === "ready" && withLink ? "Lien actif : le client peut consulter l'avis en ligne."
+                                            : linkState === "error" ? <span className="text-[var(--p-negative,#d70015)]">Activation impossible, réessayez.</span>
+                                            : "L'avis devient consultable par ce lien (sans le nom du client)."}
+                                    </span>
                                 </span>
                             </label>
                         )}
@@ -279,7 +293,7 @@ export default function EstimationMailDialog({ dossier, id, getPages, onSent, on
                 <div className="px-5 sm:px-6 pt-3 pb-5 border-t border-[var(--p-line)] space-y-2.5" style={{ paddingBottom: "max(20px, env(safe-area-inset-bottom))" }}>
                     {!validTo && to.trim() && <p className="text-[12px] text-[var(--p-warning,#b25000)]">Adresse e-mail à vérifier.</p>}
                     {canShareFiles && (
-                        <button type="button" onClick={share} disabled={!pdf}
+                        <button type="button" onClick={share} disabled={!pdf || linkState === "saving"}
                             className="w-full h-12 rounded-2xl text-white text-[15px] font-semibold inline-flex items-center justify-center gap-2 disabled:opacity-50"
                             style={{ background: "linear-gradient(135deg, #8a0e01, #d35f52)", boxShadow: "0 10px 26px -10px rgba(138,14,1,0.6)" }}>
                             <Send size={16}/> Envoyer avec mon application mail
@@ -289,7 +303,7 @@ export default function EstimationMailDialog({ dossier, id, getPages, onSent, on
                         {ordered.map((p, i) => {
                             const primary = !canShareFiles && i === 0;
                             return (
-                                <button key={p.id} type="button" onClick={() => open(p.id)} disabled={!pdf && !pdfState.error} title={p.hint}
+                                <button key={p.id} type="button" onClick={() => open(p.id)} disabled={(!pdf && !pdfState.error) || linkState === "saving"} title={p.hint}
                                     className={`h-12 rounded-2xl px-2 text-[13.5px] font-semibold inline-flex flex-col items-center justify-center leading-tight disabled:opacity-50 transition-opacity ${primary ? "text-white" : "bg-[var(--p-sunken)] text-[var(--p-fg)]"}`}
                                     style={primary ? { background: "linear-gradient(135deg, #8a0e01, #d35f52)", boxShadow: "0 10px 26px -10px rgba(138,14,1,0.6)" } : undefined}>
                                     <span className="inline-flex items-center gap-1.5">{primary && <Send size={14}/>}{p.label}</span>
