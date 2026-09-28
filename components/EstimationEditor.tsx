@@ -279,6 +279,8 @@ function suggestWeaknesses(d: EstimationData): string[] {
 }
 
 const LAST_AGENT_KEY = "patrim:lastAgentId";
+/** Photos de la galerie (pages Photos de l'avis : 8 par page) */
+const MAX_GALLERY = 24;
 
 // ============================================================
 // COMPOSANT : EstimationEditor
@@ -528,7 +530,7 @@ export default function EstimationEditor({
                         newData.mainPhoto = result.photos[0];
                         newData.mainPhotoAuto = null;
                         if (result.photos.length > 1) {
-                            newData.extraPhotos = result.photos.slice(1, 9);
+                            newData.extraPhotos = result.photos.slice(1, MAX_GALLERY + 1);
                             newData.secondaryPhotos = result.photos.slice(1, 4);
                         }
                     }
@@ -685,13 +687,13 @@ export default function EstimationEditor({
 
     const handleExtraPhotosUpload = async (files: File[]) => {
         const current = data.extraPhotos ?? [];
-        const remaining = 8 - current.length;
+        const remaining = MAX_GALLERY - current.length;
         const toUpload = files.slice(0, remaining);
         if (toUpload.length === 0) return;
         setUploadingPhotos(p => ({...p, extra: true}));
         const urls = await Promise.all(toUpload.map(f => uploadToStorage(f, 'extra')));
         const valid = urls.filter(Boolean) as string[];
-        setData(prev => ({ ...prev, extraPhotos: [...(prev.extraPhotos ?? []), ...valid].slice(0, 8) }));
+        setData(prev => ({ ...prev, extraPhotos: [...(prev.extraPhotos ?? []), ...valid].slice(0, MAX_GALLERY) }));
         setUploadingPhotos(p => { const n = {...p}; delete n['extra']; return n; });
     };
 
@@ -1243,7 +1245,7 @@ export default function EstimationEditor({
 
                                     <Section icon={<ImageIcon size={16}/>} title="Photos du bien"
                                         hint="★ mettre en couverture · « Page 2 » afficher à côté des caractéristiques (3 max) · dossier photo en fin d'avis (8 max)"
-                                        action={<span className="text-xs font-mono text-[var(--p-muted)]">{(data.extraPhotos ?? []).length} / 8</span>}>
+                                        action={<span className="text-xs font-mono text-[var(--p-muted)]">{(data.extraPhotos ?? []).length} / {MAX_GALLERY}</span>}>
                                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3"
                                             onDragOver={e => e.preventDefault()}
                                             onDrop={e => { const files = droppedImages(e); if (files.length) void handleExtraPhotosUpload(files); }}>
@@ -1274,7 +1276,7 @@ export default function EstimationEditor({
                                                     </div>
                                                 );
                                             })}
-                                            {(data.extraPhotos ?? []).length < 8 && (
+                                            {(data.extraPhotos ?? []).length < MAX_GALLERY && (
                                                 <div className="relative border-2 border-dashed rounded-2xl aspect-[4/3] flex flex-col items-center justify-center cursor-pointer transition-all hover:border-[#d35f52]/50 gap-1"
                                                     style={{ borderColor: uploadingPhotos['extra'] ? COLORS.secondary : 'var(--p-line-strong)', backgroundColor: 'var(--p-sunken)' }}>
                                                     {uploadingPhotos['extra']
@@ -1835,12 +1837,15 @@ export default function EstimationEditor({
     const allComps = [...data.soldComparables, ...data.forSaleComparables];
     // Pagination dynamique (les pages Marché et Photos sont optionnelles)
     const hasMarketPage = allComps.length > 0;
-    // Page 2 : photos choisies, sinon les premières de la galerie (qui ne sont alors pas répétées en page Photos)
+    // Page 2 : photos choisies, sinon un aperçu (3 premières de la galerie) ; la page Photos reprend TOUTE la galerie
     const galleryPhotos = data.extraPhotos ?? [];
-    const bienPhotos = data.secondaryPhotos.length ? data.secondaryPhotos : galleryPhotos.slice(0, 5);
-    const extra = data.secondaryPhotos.length ? galleryPhotos : galleryPhotos.slice(bienPhotos.length);
-    const hasPhotoPage = extra.length > 0;
-    const totalPages = 3 + (hasMarketPage ? 1 : 0) + (hasPhotoPage ? 1 : 0);
+    const bienPhotos = data.secondaryPhotos.length ? data.secondaryPhotos : galleryPhotos.slice(0, 3);
+    // Pages Photos : 8 vues au plus par page (2 colonnes × 4 rangées), autant de pages que nécessaire
+    const PHOTOS_PER_PAGE = 8;
+    const photoChunks: string[][] = [];
+    for (let i = 0; i < galleryPhotos.length; i += PHOTOS_PER_PAGE) photoChunks.push(galleryPhotos.slice(i, i + PHOTOS_PER_PAGE));
+    const hasPhotoPage = photoChunks.length > 0;
+    const totalPages = 3 + (hasMarketPage ? 1 : 0) + photoChunks.length;
     const pageOf = (n: number) => `${n} / ${totalPages}`;
     const conclusionPage = hasMarketPage ? 4 : 3;
     const pad2 = (n: number) => String(n).padStart(2, "0");
@@ -1966,8 +1971,7 @@ export default function EstimationEditor({
     const saleList = data.forSaleComparables.slice(0, Math.max(3, 8 - soldList.length));
     const compactComps = soldList.length + saleList.length > 6 || (soldList.length + saleList.length > 5 && !!data.marketStats);
     const photoCredits = Array.from(new Set([...soldList, ...saleList].filter(c => c.photoUrl && c.photoAuto?.credit).map(c => c.photoAuto!.credit)));
-    const photoRows = extra.length <= 2 ? 1 : extra.length <= 4 ? 2 : extra.length <= 6 ? 3 : 4;
-    const photoCols = extra.length === 1 ? 1 : extra.length > 8 ? 3 : 2;
+    const photoGrid = (n: number) => ({ cols: n === 1 ? 1 : 2, rows: n <= 2 ? 1 : n <= 4 ? 2 : n <= 6 ? 3 : 4 });
     const hasCharges = data.taxeFonciere > 0 || data.isCopropriete;
     const hasOpinion = data.strengths.length > 0 || data.weaknesses.length > 0;
 
@@ -2368,23 +2372,26 @@ export default function EstimationEditor({
                     {renderFooter(conclusionPage)}
                 </div>
 
-                {/* ============ PAGE 5 : PHOTOS ============ */}
-                {hasPhotoPage && (
-                    <div className={PAGE}>
-                        {renderHeader(hasMarketPage ? 4 : 3, "Photographies")}
-                        {renderTitle("Le bien en images", `${extra.length} vue${extra.length > 1 ? "s" : ""} · ${street}`)}
-                        <div className="px-[14mm] flex-1 min-h-0">
-                            <div className="grid gap-[3mm] h-full" style={{ gridTemplateColumns: `repeat(${photoCols}, minmax(0, 1fr))`, gridTemplateRows: `repeat(${photoCols === 3 ? Math.ceil(extra.length / 3) : photoRows}, minmax(0, 1fr))` }}>
-                                {extra.slice(0, 12).map((url, i) => (
-                                    <div key={i} className="rounded-[14px] overflow-hidden bg-[#f5f5f7] min-h-0">
-                                        <img src={url} alt="" className="w-full h-full object-cover"/>
-                                    </div>
-                                ))}
+                {/* ============ PAGES PHOTOS : toute la galerie ============ */}
+                {hasPhotoPage && photoChunks.map((chunk, k) => {
+                    const g = photoGrid(chunk.length);
+                    return (
+                        <div key={`photos-${k}`} className={PAGE}>
+                            {renderHeader(hasMarketPage ? 4 : 3, "Photographies")}
+                            {renderTitle(k === 0 ? "Le bien en images" : "Le bien en images (suite)", `${galleryPhotos.length} vue${galleryPhotos.length > 1 ? "s" : ""} · ${street}`)}
+                            <div className="px-[14mm] flex-1 min-h-0">
+                                <div className="grid gap-[3mm] h-full" style={{ gridTemplateColumns: `repeat(${g.cols}, minmax(0, 1fr))`, gridTemplateRows: `repeat(${g.rows}, minmax(0, 1fr))` }}>
+                                    {chunk.map((url, i) => (
+                                        <div key={i} className={`rounded-[14px] overflow-hidden bg-[#f5f5f7] min-h-0 ${chunk.length > 1 && chunk.length % 2 === 1 && i === chunk.length - 1 ? "col-span-2" : ""}`}>
+                                            <img src={url} alt="" className="w-full h-full object-cover"/>
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
+                            {renderFooter(conclusionPage + 1 + k)}
                         </div>
-                        {renderFooter(totalPages)}
-                    </div>
-                )}
+                    );
+                })}
             </div>
         </>
     );
