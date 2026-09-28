@@ -21,6 +21,7 @@ import AddressInput from "@/components/estimation/AddressInput";
 import ListingCard from "@/components/estimation/ListingCard";
 import PortalSearchPanel from "@/components/estimation/PortalSearchPanel";
 import ThemeToggle from "@/components/estimation/ThemeToggle";
+import SituationMap from "@/components/estimation/SituationMap";
 import EstimationMailDialog, { type MailSent } from "@/components/EstimationMailDialog";
 import { CIVILITIES, guessCivility, type Civility } from "@/lib/estimationMail";
 import { daysOnline, initialPrice, priceDrop, pricePerSqm, type MarketListing } from "@/lib/marketListings";
@@ -1585,7 +1586,7 @@ export default function EstimationEditor({
                                                                     {comp.source === "portal" && (
                                                                         <a href={comp.url} target="_blank" rel="noopener noreferrer" className="font-semibold hover:underline" style={{ color: COLORS.secondary }}>{comp.portal}</a>
                                                                     )}
-                                                                    {comp.source === "portal" && (() => { const d = daysOnline({ publishedAt: comp.publishedAt, firstSeenAt: comp.firstSeenAt || "" }); return d !== null ? ` · en ligne depuis ${d} j` : ""; })()}
+                                                                    {comp.source === "portal" && (() => { const d = daysOnline({ publishedAt: comp.publishedAt, firstSeenAt: comp.firstSeenAt || "" }); return d !== null && d > 0 ? ` · en ligne depuis ${d} j` : ""; })()}
                                                                     {comp.source === "portal" && comp.initialPrice && comp.initialPrice > comp.price ? ` · baisse de ${formatPrice(comp.initialPrice - comp.price)} €` : ""}
                                                                     {sqm > 0 && `${comp.source === "dvf" || comp.source === "portal" ? " · " : ""}${formatPrice(sqm)} €/m²`}
                                                                 </p>
@@ -1834,7 +1835,11 @@ export default function EstimationEditor({
     const allComps = [...data.soldComparables, ...data.forSaleComparables];
     // Pagination dynamique (les pages Marché et Photos sont optionnelles)
     const hasMarketPage = allComps.length > 0;
-    const hasPhotoPage = (data.extraPhotos ?? []).length > 0;
+    // Page 2 : photos choisies, sinon les premières de la galerie (qui ne sont alors pas répétées en page Photos)
+    const galleryPhotos = data.extraPhotos ?? [];
+    const bienPhotos = data.secondaryPhotos.length ? data.secondaryPhotos : galleryPhotos.slice(0, 5);
+    const extra = data.secondaryPhotos.length ? galleryPhotos : galleryPhotos.slice(bienPhotos.length);
+    const hasPhotoPage = extra.length > 0;
     const totalPages = 3 + (hasMarketPage ? 1 : 0) + (hasPhotoPage ? 1 : 0);
     const pageOf = (n: number) => `${n} / ${totalPages}`;
     const conclusionPage = hasMarketPage ? 4 : 3;
@@ -1932,13 +1937,13 @@ export default function EstimationEditor({
             comp.soldDate ? `vendu en ${formatMonthYear(comp.soldDate)}` : "",
             comp.distance !== undefined && comp.distance !== null ? `à ${comp.distance} m` : "",
             comp.source === "portal" && comp.portal ? comp.portal : "",
-            d !== null ? `en ligne depuis ${d} j` : "",
+            d !== null && d > 0 ? `en ligne depuis ${d} j` : "",
         ].filter(Boolean).join(" · ");
         return (
-            <div key={comp.id} className="flex items-center gap-3.5 py-[2.6mm] border-b border-[#f0f0f2] last:border-b-0">
+            <div key={comp.id} className={`flex items-center gap-3.5 border-b border-[#f0f0f2] last:border-b-0 ${compactComps ? "py-[1.7mm]" : "py-[2.6mm]"}`}>
                 {comp.photoUrl
-                    ? <img src={comp.photoUrl} alt="" className="w-[15mm] h-[15mm] rounded-[10px] object-cover shrink-0"/>
-                    : <div className="w-[15mm] h-[15mm] rounded-[10px] bg-[#f5f5f7] shrink-0 flex items-center justify-center"><Home size={15} className="text-[#aeaeb2]"/></div>}
+                    ? <img src={comp.photoUrl} alt="" className={`${compactComps ? "w-[11.5mm] h-[11.5mm]" : "w-[15mm] h-[15mm]"} rounded-[10px] object-cover shrink-0`}/>
+                    : <div className={`${compactComps ? "w-[11.5mm] h-[11.5mm]" : "w-[15mm] h-[15mm]"} rounded-[10px] bg-[#f5f5f7] shrink-0 flex items-center justify-center`}><Home size={15} className="text-[#aeaeb2]"/></div>}
                 <div className="flex-1 min-w-0">
                     <p className="text-[11px] font-semibold text-[#1d1d1f] truncate">{comp.address}</p>
                     <p className="text-[9px] text-[#86868b] mt-0.5 truncate">{meta}</p>
@@ -1956,10 +1961,11 @@ export default function EstimationEditor({
         );
     };
 
+    // 8 lignes au plus ; au-delà de 6, lignes compactes pour tenir sur la page
     const soldList = data.soldComparables.slice(0, 5);
-    const saleList = data.forSaleComparables.slice(0, soldList.length >= 5 ? 4 : 5);
+    const saleList = data.forSaleComparables.slice(0, Math.max(3, 8 - soldList.length));
+    const compactComps = soldList.length + saleList.length > 6 || (soldList.length + saleList.length > 5 && !!data.marketStats);
     const photoCredits = Array.from(new Set([...soldList, ...saleList].filter(c => c.photoUrl && c.photoAuto?.credit).map(c => c.photoAuto!.credit)));
-    const extra = data.extraPhotos ?? [];
     const photoRows = extra.length <= 2 ? 1 : extra.length <= 4 ? 2 : extra.length <= 6 ? 3 : 4;
     const photoCols = extra.length === 1 ? 1 : extra.length > 8 ? 3 : 2;
     const hasCharges = data.taxeFonciere > 0 || data.isCopropriete;
@@ -2087,34 +2093,55 @@ export default function EstimationEditor({
                     {renderHeader(1, "Le bien")}
                     {renderTitle("Le bien", `${data.propertyType}${data.surface > 0 ? ` de ${formatSurface(data.surface)} m²` : ""}${data.rooms > 0 ? ` · ${data.rooms} pièces` : ""}${city ? ` · ${city}` : ""}`)}
                     <div className="px-[14mm] flex-1 flex flex-col gap-[5mm] min-h-0 pb-[2mm]">
-                        {/* Chiffres clés */}
-                        <div className="grid grid-cols-4 rounded-[18px] bg-[#f5f5f7] py-[5mm]">
-                            {[
+                        {/* Chiffres clés (l'année de construction n'apparaît que si elle est connue) */}
+                        {(() => {
+                            const keys = [
                                 { l: "Surface", v: data.surface > 0 ? formatSurface(data.surface) : "—", u: "m²", sub: "surface déclarée" },
                                 { l: "Pièces", v: data.rooms > 0 ? String(data.rooms) : "—", u: "", sub: "" },
                                 data.propertyType === "Maison"
                                     ? { l: "Terrain", v: data.plotSurface > 0 ? formatPrice(data.plotSurface) : "—", u: data.plotSurface > 0 ? "m²" : "", sub: data.gardenSurface > 0 ? `jardin ${formatPrice(data.gardenSurface)} m²` : "" }
                                     : { l: "Étage", v: data.floor ? getDisplayFloor(data.floor).replace(/\s*étage/i, "") : "—", u: "", sub: data.floor ? (data.hasElevator ? "avec ascenseur" : "sans ascenseur") : "" },
-                                { l: "Construction", v: data.buildYear > 0 ? String(data.buildYear) : "—", u: "", sub: "" },
-                            ].map((k, i) => (
-                                <div key={k.l} className={`px-[5mm] ${i > 0 ? "border-l border-[#e3e3e8]" : ""}`}>
-                                    <p className={LABEL}>{k.l}</p>
-                                    <p className="mt-1.5 text-[#1d1d1f] leading-none whitespace-nowrap"><span className="text-[26px] font-bold tracking-[-0.03em] tabular-nums">{k.v}</span>{k.u && <span className="text-[10px] font-medium text-[#6e6e73] ml-1">{k.u}</span>}</p>
-                                    {k.sub && <p className="text-[8.5px] text-[#86868b] mt-1.5">{k.sub}</p>}
+                                ...(data.buildYear > 0 ? [{ l: "Construction", v: String(data.buildYear), u: "", sub: "" }] : []),
+                            ];
+                            return (
+                                <div className="grid rounded-[18px] bg-[#f5f5f7] py-[5mm]" style={{ gridTemplateColumns: `repeat(${keys.length}, minmax(0, 1fr))` }}>
+                                    {keys.map((k, i) => (
+                                        <div key={k.l} className={`px-[5mm] ${i > 0 ? "border-l border-[#e3e3e8]" : ""}`}>
+                                            <p className={LABEL}>{k.l}</p>
+                                            <p className="mt-1.5 text-[#1d1d1f] leading-none whitespace-nowrap"><span className="text-[26px] font-bold tracking-[-0.03em] tabular-nums">{k.v}</span>{k.u && <span className="text-[10px] font-medium text-[#6e6e73] ml-1">{k.u}</span>}</p>
+                                            {k.sub && <p className="text-[8.5px] text-[#86868b] mt-1.5">{k.sub}</p>}
+                                        </div>
+                                    ))}
                                 </div>
-                            ))}
-                        </div>
+                            );
+                        })()}
 
-                        {/* Photos : occupent l'espace disponible */}
-                        {data.secondaryPhotos.length > 0 && (
-                            <div className={`grid gap-[3mm] flex-1 min-h-[72mm] max-h-[135mm] ${data.secondaryPhotos.length === 1 ? "grid-cols-1" : data.secondaryPhotos.length === 2 ? "grid-cols-2" : "grid-cols-3 grid-rows-2"}`}>
-                                {data.secondaryPhotos.slice(0, 3).map((url, i) => (
-                                    <div key={i} className={`rounded-[16px] overflow-hidden bg-[#f5f5f7] ${data.secondaryPhotos.length >= 3 && i === 0 ? "col-span-2 row-span-2" : ""}`}>
-                                        <img src={url} alt="" className="w-full h-full object-cover"/>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
+                        {/* Mosaïque : photos du bien, plan de situation ; occupe la place libre de la page */}
+                        {(() => {
+                            const hasMap = !!(data.propertyLat && data.propertyLon);
+                            const cells: ({ kind: "photo"; url: string } | { kind: "map" })[] = bienPhotos.slice(0, 5).map(url => ({ kind: "photo" as const, url }));
+                            if (hasMap && cells.length < 4) cells.push({ kind: "map" });
+                            const n = cells.length;
+                            if (!n) return null;
+                            const layout = n === 1 ? { cols: 1, rows: 1 } : n === 2 ? { cols: 2, rows: 1 } : n === 3 ? { cols: 3, rows: 2 } : { cols: 4, rows: 2 };
+                            const span = (i: number) => (n >= 3 && i === 0 ? "col-span-2 row-span-2" : n === 4 && i === 3 ? "col-span-2" : "");
+                            return (
+                                <div className="grid gap-[3mm] flex-1 min-h-[62mm]" style={{ gridTemplateColumns: `repeat(${layout.cols}, minmax(0, 1fr))`, gridTemplateRows: `repeat(${layout.rows}, minmax(0, 1fr))` }}>
+                                    {cells.map((c, i) => (
+                                        <div key={i} className={`relative rounded-[16px] overflow-hidden bg-[#f5f5f7] min-h-0 ${span(i)}`}>
+                                            {c.kind === "photo"
+                                                ? <img src={c.url} alt="" className="absolute inset-0 w-full h-full object-cover"/>
+                                                : (
+                                                    <>
+                                                        <SituationMap lat={data.propertyLat!} lon={data.propertyLon!} color={COLORS.primary}/>
+                                                        <span className="absolute left-[3mm] top-[3mm] text-[8.5px] font-semibold uppercase tracking-[0.08em] text-[#1d1d1f] bg-white/90 px-2 py-1 rounded-full shadow-sm">Situation{city ? ` · ${city.replace(/^\d{5}\s*/, "")}` : ""}</span>
+                                                    </>
+                                                )}
+                                        </div>
+                                    ))}
+                                </div>
+                            );
+                        })()}
 
                         {/* Énergie & charges */}
                         <div className={`grid gap-[4mm] ${hasCharges ? "grid-cols-[1.35fr_1fr]" : "grid-cols-1"}`}>
@@ -2171,7 +2198,7 @@ export default function EstimationEditor({
                     <div className={PAGE}>
                         {renderHeader(2, "Le marché")}
                         {renderTitle("Le marché", "Ventes notariées et biens actuellement en vente autour de l'adresse")}
-                        <div className="px-[14mm] flex flex-col gap-[5mm] min-h-0">
+                        <div className={`px-[14mm] flex flex-col min-h-0 ${compactComps ? "gap-[3.5mm]" : "gap-[5mm]"}`}>
                             {data.marketStats && (
                                 <div className="grid grid-cols-4 rounded-[18px] bg-[#f5f5f7] py-[4.5mm]">
                                     {[
@@ -2189,21 +2216,30 @@ export default function EstimationEditor({
                             )}
 
                             {central > 0 && pricesPerSqm.length > 0 && (
-                                <div className="rounded-[18px] border border-[#e8e8ed] px-[6mm] pt-[5mm] pb-[3mm]">
+                                <div className={`rounded-[18px] border border-[#e8e8ed] px-[6mm] pb-[3mm] ${compactComps ? "pt-[4mm]" : "pt-[5mm]"}`}>
                                     <div className="flex items-baseline justify-between">
                                         <p className="text-[12px] font-semibold text-[#1d1d1f] flex items-center gap-1.5"><BarChart3 size={13} style={{ color: COLORS.primary }}/> Positionnement au m²</p>
                                         {data.marketStats && <p className="text-[8.5px] text-[#86868b]">Ventes {data.marketStats.years[0]}–{data.marketStats.years[data.marketStats.years.length - 1]}</p>}
                                     </div>
-                                    <div className="relative w-full h-[27mm] mt-2">
+                                    <div className={`relative w-full mt-2 ${compactComps ? "h-[24mm]" : "h-[27mm]"}`}>
                                         <div className="absolute inset-x-0 h-[4px] rounded-full bg-[#f0f0f2]" style={{ top: "12mm" }}/>
                                         {!singleValue && (
                                             <div className="absolute h-[4px] rounded-full" style={{ top: "12mm", background: `linear-gradient(90deg, ${COLORS.primary}, ${COLORS.secondary})`, left: `${getPositionPercent(low / (data.surface || 1))}%`, width: `${Math.max(0, getPositionPercent(high / (data.surface || 1)) - getPositionPercent(low / (data.surface || 1)))}%` }}/>
                                         )}
                                         {(() => {
                                             const points = allComps.filter(c => sqmOf(c) > 0).map((c, i) => ({ i, pct: getPositionPercent(sqmOf(c)), sqm: Math.round(sqmOf(c)) })).sort((a, b) => a.pct - b.pct);
-                                            return points.map((pt, idx) => (
+                                            // Étiquettes sur deux lignes, sans chevauchement : une valeur trop proche des deux précédentes n'est pas écrite
+                                            const GAP = 5.5, lanes = [-Infinity, -Infinity];
+                                            const estPct = getPositionPercent(estimatedPriceSqm);
+                                            const labelled = points.map(pt => {
+                                                if (Math.abs(pt.pct - estPct) < 1.2) return { ...pt, lane: -1 };
+                                                const lane = lanes.findIndex(end => pt.pct - end >= GAP);
+                                                if (lane >= 0) lanes[lane] = pt.pct;
+                                                return { ...pt, lane };
+                                            });
+                                            return labelled.map(pt => (
                                                 <div key={pt.i} className="absolute -translate-x-1/2 w-[9px] h-[9px] rounded-full border-2 border-white bg-[#aeaeb2]" style={{ top: "calc(12mm - 2.5px)", left: `${pt.pct}%` }}>
-                                                    <span className="absolute left-1/2 -translate-x-1/2 whitespace-nowrap text-[7.5px] font-medium text-[#6e6e73] tabular-nums" style={{ top: idx % 2 === 0 ? "11px" : "22px" }}>{formatPrice(pt.sqm)}</span>
+                                                    {pt.lane >= 0 && <span className="absolute left-1/2 -translate-x-1/2 whitespace-nowrap text-[7.5px] font-medium text-[#6e6e73] tabular-nums" style={{ top: pt.lane === 0 ? "11px" : "22px" }}>{formatPrice(pt.sqm)}</span>}
                                                 </div>
                                             ));
                                         })()}
