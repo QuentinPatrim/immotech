@@ -20,7 +20,7 @@ import {
     Plus, Search, ChevronRight, QrCode, FileText, Home as HomeIcon,
     Image as ImageIcon, Calculator, MoreVertical, Trash2, Copy, Check,
     Sparkles, ArrowUpRight, Link2, Edit3, Wand2, Building2,
-    BellRing, ChevronDown, StickyNote, Printer, CopyPlus, ArrowUpDown, Presentation, Zap, Box,
+    BellRing, ChevronDown, StickyNote, Printer, CopyPlus, ArrowUpDown, Presentation, Zap, Box, Mail,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -889,6 +889,9 @@ function EstimationCard({
                                 <button onClick={onOpenPdf} className={itemClass}>
                                     <Printer size={13}/> Voir l&apos;avis de valeur (PDF)
                                 </button>
+                                <a href={`/estimation/${estim.id}?view=print&mail=1`} className={itemClass}>
+                                    <Mail size={13}/> Envoyer l&apos;avis par e-mail
+                                </a>
                                 <button onClick={onOpenPlaquette} className={itemClass}>
                                     <Sparkles size={13}/> Plaquette commerciale
                                 </button>

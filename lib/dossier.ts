@@ -5,8 +5,11 @@
    ============================================================ */
 
 // --- COLLABORATEURS PATRIM (signataires des avis de valeur) ---
-export const PATRIM_AGENTS = [
-    { id: "quentin", name: "Quentin Delsol", role: "Service Transaction", signatureUrl: "/signatures/signature-quentin.png" },
+/** Téléphone de l'agence (à défaut du portable du collaborateur) */
+export const AGENCY_PHONE = "05 61 99 08 08";
+
+export const PATRIM_AGENTS: { id: string; name: string; role: string; signatureUrl: string; phone?: string }[] = [
+    { id: "quentin", name: "Quentin Delsol", role: "Service Transaction", signatureUrl: "/signatures/signature-quentin.png", phone: "06 52 45 96 54" },
     { id: "rebecca", name: "Rebecca Gau", role: "Service Transaction", signatureUrl: "/signatures/signature-rebecca.png" },
     { id: "clement", name: "Clément Monti", role: "Service Transaction", signatureUrl: "/signatures/signature-clement.png" },
     { id: "julien", name: "Julien Passerini", role: "Service Transaction", signatureUrl: "/signatures/signature-julien.png" },

@@ -27,6 +27,7 @@ export default function EditEstimationPage() {
     const [data, setData] = useState<EstimationData | null>(null);
     const [initialView, setInitialView] = useState<"EDIT" | "PRINT">("EDIT");
     const [initialStep, setInitialStep] = useState(1);
+    const [initialMail, setInitialMail] = useState(false);
 
     useEffect(() => {
         if (!id) {
@@ -38,6 +39,8 @@ export default function EditEstimationPage() {
             setLoading(true);
             const query = new URLSearchParams(window.location.search);
             if (query.get("view") === "print") setInitialView("PRINT");
+            // ?mail=1 : fenêtre d'envoi par e-mail ouverte d'emblée (depuis Mes biens)
+            if (query.get("mail") === "1") setInitialMail(true);
             // ?step=3 : ouverture directe d'une étape (ex. après une capture d'annonces)
             const step = Number(query.get("step"));
             if (step >= 1 && step <= 4) setInitialStep(step);
@@ -103,6 +106,7 @@ export default function EditEstimationPage() {
             existingId={id!}
             initialView={initialView}
             initialStep={initialStep}
+            initialMail={initialMail}
         />
     );
 }

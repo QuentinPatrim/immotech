@@ -8,7 +8,7 @@ import {
     Printer, ArrowRight, ArrowLeft, Plus, Trash2, UploadCloud, FileText,
     List, Edit, X, Leaf, ThumbsUp, ThumbsDown, BarChart3, Loader2, Euro, Building2, Banknote,
     Sparkles, Star, Globe, Wand2, Search, Target, AlertCircle, Check,
-    Camera, Satellite, RefreshCw, User, KeyRound, ArrowUpDown, Box
+    Camera, Satellite, RefreshCw, User, KeyRound, ArrowUpDown, Box, Mail
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,6 +21,8 @@ import AddressInput from "@/components/estimation/AddressInput";
 import ListingCard from "@/components/estimation/ListingCard";
 import PortalSearchPanel from "@/components/estimation/PortalSearchPanel";
 import ThemeToggle from "@/components/estimation/ThemeToggle";
+import EstimationMailDialog, { type MailSent } from "@/components/EstimationMailDialog";
+import { CIVILITIES, guessCivility, type Civility } from "@/lib/estimationMail";
 import { daysOnline, initialPrice, priceDrop, pricePerSqm, type MarketListing } from "@/lib/marketListings";
 import { deleteListing, fetchListingPhoto, fetchListings, LAST_ESTIMATION_KEY, setListingSelected } from "@/lib/captureClient";
 
@@ -67,6 +69,10 @@ export interface MarketStats {
 }
 export interface EstimationData {
     clientName: string; propertyAddress: string; clientAddress: string; propertyType: "Appartement" | "Maison" | "Autre";
+    /** Coordonnées du client pour l'envoi de l'avis par e-mail */
+    clientEmail?: string; clientCivility?: Civility;
+    /** Dernier envoi de l'avis par e-mail */
+    mailSentAt?: string;
     surface: number; rooms: number;
     floor: string; buildYear: number; hasElevator: boolean;
     plotSurface: number; gardenSurface: number;
@@ -286,6 +292,8 @@ export interface EstimationEditorProps {
     existingId: string | null;
     initialView?: "EDIT" | "PRINT";
     initialStep?: number;
+    /** Ouvre directement la fenêtre d'envoi par e-mail (vue PDF) */
+    initialMail?: boolean;
 }
 
 /** Largeur de la fenêtre, pour mettre l'aperçu A4 à l'échelle de l'écran */
@@ -296,6 +304,7 @@ export default function EstimationEditor({
     existingId,
     initialView = "EDIT",
     initialStep = 1,
+    initialMail = false,
 }: EstimationEditorProps) {
     const router = useRouter();
     const viewportWidth = useSyncExternalStore(subscribeResize, () => window.innerWidth, () => 1280);
@@ -304,6 +313,8 @@ export default function EstimationEditor({
     const [step, setStep] = useState(initialStep);
     const [currentId, setCurrentId] = useState<string | null>(existingId);
     const [data, setData] = useState<EstimationData>(initialData);
+    const [mailOpen, setMailOpen] = useState(initialMail && initialView === "PRINT");
+    const pdfStageRef = useRef<HTMLDivElement>(null);
     const [newStrength, setNewStrength] = useState("");
     const [newWeakness, setNewWeakness] = useState("");
     const [newAmenity, setNewAmenity] = useState("");
@@ -452,6 +463,19 @@ export default function EstimationEditor({
     }, []);
 
     // Retour à /mes-biens (on enregistre d'abord ce qui ne l'est pas)
+    /** Avis envoyé par e-mail : coordonnées retenues, lien en ligne activé si ajouté au message */
+    const onMailSent = (m: MailSent) => {
+        setData(prev => ({ ...prev, clientEmail: m.clientEmail || prev.clientEmail, clientCivility: m.clientCivility, mailSentAt: m.mailSentAt }));
+        const id = currentIdRef.current;
+        if (!m.shareAvis || !id) return;
+        void (async () => {
+            const { data: row } = await supabase.from('estimations').select('data_json').eq('id', id).maybeSingle();
+            if (row?.data_json && !row.data_json.shareAvis) {
+                await supabase.from('estimations').update({ data_json: { ...row.data_json, shareAvis: true } }).eq('id', id);
+            }
+        })();
+    };
+
     const goToMesBiens = async () => {
         if (JSON.stringify(dataRef.current) !== lastSavedJson.current && (currentIdRef.current || dataRef.current.propertyAddress.trim() || dataRef.current.clientName.trim())) {
             const ok = await saveNow();
@@ -1032,6 +1056,24 @@ export default function EstimationEditor({
                                                     near={{ lat: data.propertyLat, lon: data.propertyLon }}
                                                     className={`${inputClass} pr-10`}
                                                     placeholder="Ex : 12 rue des Acacias, Toulouse"/>
+                                            </Field>
+                                        </div>
+                                        <div className="grid md:grid-cols-2 gap-4">
+                                            <Field label="E-mail du client">
+                                                <Input type="email" inputMode="email" value={data.clientEmail || ""} onChange={e => setData(prev => ({ ...prev, clientEmail: e.target.value }))} className={inputClass} placeholder="Ex : dupont@gmail.com"/>
+                                            </Field>
+                                            <Field label="Civilité (formule de politesse)">
+                                                <div className="flex gap-1 p-1 rounded-xl bg-[var(--p-sunken)]" role="radiogroup" aria-label="Civilité">
+                                                    {CIVILITIES.slice(0, 3).map(c => {
+                                                        const on = (data.clientCivility ?? guessCivility(data.clientName)) === c.id;
+                                                        return (
+                                                            <button key={c.id} type="button" role="radio" aria-checked={on} onClick={() => setData(prev => ({ ...prev, clientCivility: on ? "" : c.id }))}
+                                                                className={`flex-1 h-9 px-2 rounded-lg text-[13px] font-semibold transition-colors ${on ? "bg-[var(--p-card)] text-[var(--p-fg)] shadow-sm" : "text-[var(--p-muted)] hover:text-[var(--p-fg)]"}`}>
+                                                                {c.id === "M. et Mme" ? "Couple" : c.label}
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
                                             </Field>
                                         </div>
                                         {data.propertyAddress.trim() && !(data.clientAddress || "").trim() && (
@@ -1939,7 +1981,7 @@ export default function EstimationEditor({
             {/* Barre d'actions : pilule sur ordinateur, barre pleine largeur sur téléphone */}
             <div className="print-hidden fixed z-50 bottom-0 inset-x-0 sm:bottom-8 sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 border-t sm:border sm:rounded-full shadow-2xl text-white"
                 style={{ backgroundColor: "rgba(28,28,30,0.82)", backdropFilter: "saturate(180%) blur(24px)", WebkitBackdropFilter: "saturate(180%) blur(24px)", borderColor: "rgba(255,255,255,0.1)", paddingBottom: "env(safe-area-inset-bottom)" }}>
-                <div className="grid grid-cols-4 sm:flex sm:items-center sm:gap-1 sm:px-2 sm:py-2">
+                <div className="grid grid-cols-5 sm:flex sm:items-center sm:gap-1 sm:px-2 sm:py-2">
                     <button type="button" onClick={() => setView("EDIT")} className="flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 py-2.5 sm:py-0 sm:h-10 sm:px-4 rounded-full text-[11px] sm:text-sm font-medium text-[rgba(235,235,245,0.7)] hover:text-white">
                         <Edit size={17} className="sm:w-[15px] sm:h-[15px]"/> Modifier
                     </button>
@@ -1948,6 +1990,9 @@ export default function EstimationEditor({
                     </button>
                     <button type="button" onClick={() => router.push(`/plaquette/${currentId}`)} className="flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 py-2.5 sm:py-0 sm:h-10 sm:px-4 rounded-full text-[11px] sm:text-sm font-semibold text-white">
                         <Sparkles size={17} className="sm:w-[15px] sm:h-[15px] text-[#ff6159]"/> Plaquette
+                    </button>
+                    <button type="button" onClick={() => setMailOpen(true)} className="flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 py-2.5 sm:py-0 sm:h-10 sm:px-4 rounded-full text-[11px] sm:text-sm font-semibold text-white">
+                        <Mail size={17} className="sm:w-[15px] sm:h-[15px] text-[#ff6159]"/> E-mail
                     </button>
                     <div className="flex items-center justify-center p-1.5 sm:p-0 sm:ml-1">
                         <button type="button" onClick={() => window.print()} className="w-full sm:w-auto h-full sm:h-10 min-h-[44px] rounded-2xl sm:rounded-full px-3 sm:px-6 font-semibold text-[11px] sm:text-sm text-white flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2"
@@ -1958,7 +2003,18 @@ export default function EstimationEditor({
                 </div>
             </div>
 
-            <div className="pdf-stage pdf-font min-h-screen py-6 sm:py-10 pb-32 sm:pb-36 print:p-0" style={{ backgroundColor: "#e5e5ea", ["--pdf-zoom" as string]: pdfZoom }}>
+            <AnimatePresence>
+                {mailOpen && (
+                    <EstimationMailDialog
+                        id={currentId}
+                        dossier={{ clientName: data.clientName, clientEmail: data.clientEmail, clientCivility: data.clientCivility, propertyType: data.propertyType, propertyAddress: data.propertyAddress, agentId: data.agentId }}
+                        getPages={() => Array.from(pdfStageRef.current?.querySelectorAll<HTMLElement>(".print-page") ?? [])}
+                        onSent={onMailSent}
+                        onClose={() => setMailOpen(false)}/>
+                )}
+            </AnimatePresence>
+
+            <div ref={pdfStageRef} className="pdf-stage pdf-font min-h-screen py-6 sm:py-10 pb-32 sm:pb-36 print:p-0" style={{ backgroundColor: "#e5e5ea", ["--pdf-zoom" as string]: pdfZoom }}>
 
                 {/* ============ PAGE 1 : COUVERTURE ============ */}
                 <div className={PAGE}>
