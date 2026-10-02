@@ -22,6 +22,7 @@ import ListingCard from "@/components/estimation/ListingCard";
 import PortalSearchPanel from "@/components/estimation/PortalSearchPanel";
 import ThemeToggle from "@/components/estimation/ThemeToggle";
 import SituationMap from "@/components/estimation/SituationMap";
+import FitToPage, { MAX_DENSITY } from "@/components/estimation/FitToPage";
 import EstimationMailDialog, { type MailSent } from "@/components/EstimationMailDialog";
 import { CIVILITIES, guessCivility, type Civility } from "@/lib/estimationMail";
 import { daysOnline, initialPrice, priceDrop, pricePerSqm, type MarketListing } from "@/lib/marketListings";
@@ -1919,16 +1920,16 @@ export default function EstimationEditor({
             </div>
         );
     };
-    const renderSignature = () => (
+    const renderSignature = (imgMm = 15) => (
         <div className="flex items-end justify-between gap-6">
             <div>
                 <p className={LABEL}>Fait à Toulouse, le {today}</p>
-                <p className="text-[14px] font-semibold text-[#1d1d1f] mt-2">{agent?.name || "Agence Patrim"}</p>
+                <p className={`text-[14px] font-semibold text-[#1d1d1f] ${imgMm < 15 ? "mt-1" : "mt-2"}`}>{agent?.name || "Agence Patrim"}</p>
                 <p className="text-[10px] text-[#6e6e73]">{agent?.role || "Service Transaction"} · Patrim Toulouse</p>
             </div>
             <div className="flex items-center gap-4">
-                {agent?.signatureUrl && <img src={agent.signatureUrl} alt="Signature" className="h-[15mm] w-auto max-w-[38mm] object-contain mix-blend-multiply" onError={e => { e.currentTarget.style.display = "none"; }}/>}
-                <img src="/signatures/signature-agence.png" alt="Tampon de l'agence" className="h-[15mm] w-auto object-contain mix-blend-multiply opacity-90" onError={e => { e.currentTarget.style.display = "none"; }}/>
+                {agent?.signatureUrl && <img src={agent.signatureUrl} alt="Signature" className="w-auto max-w-[38mm] object-contain mix-blend-multiply" style={{ height: `${imgMm}mm` }} onError={e => { e.currentTarget.style.display = "none"; }}/>}
+                <img src="/signatures/signature-agence.png" alt="Tampon de l'agence" className="w-auto object-contain mix-blend-multiply opacity-90" style={{ height: `${imgMm}mm` }} onError={e => { e.currentTarget.style.display = "none"; }}/>
             </div>
         </div>
     );
@@ -2276,30 +2277,44 @@ export default function EstimationEditor({
                 <div className={PAGE}>
                     {renderHeader(hasMarketPage ? 3 : 2, "Notre estimation")}
                     {renderTitle("Notre estimation", "Valeur vénale du bien au regard du marché et de ses caractéristiques")}
-                    <div className="px-[14mm] flex-1 flex flex-col gap-[5mm] min-h-0">
+                    {/* Le contenu s'adapte à la hauteur de la page : FitToPage mesure la place disponible et
+                        choisit la densité d = 0 (aéré) → MAX_DENSITY (serré). Les espacements se resserrent
+                        d'abord ; les tailles de texte ne diminuent que dans la seconde moitié.
+                        Aucun bloc n'est jamais écrasé ni coupé. */}
+                    <FitToPage className="px-[14mm]" columnStyle={d => ({ gap: `${5 - 2.6 * (d / MAX_DENSITY)}mm`, justifyContent: d > 0 ? "space-between" : undefined })}>
+                        {d => {
+                            const t = d / MAX_DENSITY;
+                            /** Valeur entre « aéré » et « serré » ; from = part de la course à partir de laquelle elle commence à bouger */
+                            const mix = (loose: number, tight: number, from = 0) => {
+                                const k = Math.min(1, Math.max(0, (t - from) / (1 - from)));
+                                return Math.round((loose + (tight - loose) * k) * 100) / 100;
+                            };
+                            const mm = (loose: number, tight: number) => `${mix(loose, tight)}mm`;
+                            const compact = t >= 0.75;
+                            return (<>
                         {data.isRented ? (
-                            <div className="grid grid-cols-2 gap-[4mm]">
+                            <div className="grid grid-cols-2 gap-[4mm] shrink-0">
                                 {[
                                     { t: "Valeur libre", lo: low, hi: high, bg: `radial-gradient(120% 140% at 0% 0%, #b3261a 0%, ${COLORS.primary} 45%, #2a0804 100%)` },
                                     { t: "Valeur occupée (vendu loué)", lo: data.lowPriceRented, hi: data.highPriceRented, bg: "radial-gradient(120% 140% at 0% 0%, #3a3a3c 0%, #1c1c1e 55%, #000 100%)" },
                                 ].map(v => {
                                     const c = v.lo && v.hi ? Math.round((v.lo + v.hi) / 2) : v.lo || v.hi;
                                     return (
-                                        <div key={v.t} className="rounded-[22px] p-[7mm] text-white" style={{ background: v.bg }}>
+                                        <div key={v.t} className="rounded-[22px] text-white" style={{ background: v.bg, padding: mm(7, 3.6) }}>
                                             <p className="text-[9px] font-semibold uppercase tracking-[0.08em] text-white/70">{v.t}</p>
-                                            <p className="text-[30px] font-bold tracking-[-0.035em] tabular-nums mt-2 leading-none">{c ? eur(c) : "—"}</p>
+                                            <p className="font-bold tracking-[-0.035em] tabular-nums mt-2 leading-none" style={{ fontSize: mix(30, 23, 0.25) }}>{c ? eur(c) : "—"}</p>
                                             {v.lo > 0 && v.hi > 0 && v.lo !== v.hi && <p className="text-[10.5px] text-white/80 mt-2 tabular-nums">de {eur(v.lo)} à {eur(v.hi)}</p>}
-                                            {c > 0 && data.surface > 0 && <span className="inline-block mt-4 text-[9.5px] font-semibold px-2.5 py-1 rounded-full bg-white/15 tabular-nums">{formatPrice(Math.round(c / data.surface))} €/m²</span>}
+                                            {c > 0 && data.surface > 0 && <span className="inline-block text-[9.5px] font-semibold px-2.5 py-1 rounded-full bg-white/15 tabular-nums" style={{ marginTop: mix(16, 7) }}>{formatPrice(Math.round(c / data.surface))} €/m²</span>}
                                         </div>
                                     );
                                 })}
                             </div>
                         ) : (
-                            <div className="relative overflow-hidden rounded-[24px] px-[9mm] py-[9mm] text-white" style={{ background: `radial-gradient(120% 140% at 0% 0%, #b3261a 0%, ${COLORS.primary} 45%, #2a0804 100%)` }}>
+                            <div className="relative overflow-hidden rounded-[24px] px-[9mm] text-white shrink-0" style={{ background: `radial-gradient(120% 140% at 0% 0%, #b3261a 0%, ${COLORS.primary} 45%, #2a0804 100%)`, paddingTop: mm(9, 4.2), paddingBottom: mm(9, 4.2) }}>
                                 <div className="absolute -right-16 -top-16 w-64 h-64 rounded-full opacity-25 blur-3xl bg-[#ffb4a8]"/>
                                 <p className="relative text-[9.5px] font-semibold uppercase tracking-[0.08em] text-white/70">Valeur vénale estimée</p>
-                                <p className="relative text-[52px] font-bold tracking-[-0.04em] leading-none tabular-nums mt-3">{central ? eur(central) : "—"}</p>
-                                <div className="relative flex flex-wrap items-center gap-2 mt-5">
+                                <p className="relative font-bold tracking-[-0.04em] leading-none tabular-nums" style={{ fontSize: mix(52, 34, 0.25), marginTop: mix(12, 6) }}>{central ? eur(central) : "—"}</p>
+                                <div className="relative flex flex-wrap items-center gap-2" style={{ marginTop: mix(20, 8) }}>
                                     {!singleValue && <span className="text-[10.5px] font-semibold px-3 py-1.5 rounded-full bg-white/15 tabular-nums">Fourchette {eur(low)} – {eur(high)}</span>}
                                     {central > 0 && data.surface > 0 && <span className="text-[10.5px] font-semibold px-3 py-1.5 rounded-full bg-white/15 tabular-nums">{formatPrice(Math.round(central / data.surface))} €/m²</span>}
                                     {data.marketStats && <span className="text-[10.5px] font-semibold px-3 py-1.5 rounded-full bg-white/15 tabular-nums">Médiane du secteur {formatPrice(data.marketStats.median)} €/m²</span>}
@@ -2308,7 +2323,7 @@ export default function EstimationEditor({
                         )}
 
                         {data.hasRentalEstimation && data.monthlyRent > 0 && (
-                            <div className="grid grid-cols-3 rounded-[18px] bg-[#f5f5f7] py-[4.5mm]">
+                            <div className="grid grid-cols-3 rounded-[18px] bg-[#f5f5f7] shrink-0" style={{ paddingTop: mm(4.5, 2.3), paddingBottom: mm(4.5, 2.3) }}>
                                 {[
                                     { l: "Valeur locative", v: eur(data.monthlyRent), u: "HC / mois" },
                                     { l: "Rendement brut", v: `${((data.monthlyRent * 12) / (central || 1) * 100).toFixed(1).replace(".", ",")} %`, u: "sur la valeur centrale" },
@@ -2316,7 +2331,7 @@ export default function EstimationEditor({
                                 ].map((k, i) => (
                                     <div key={k.l} className={`px-[5mm] ${i > 0 ? "border-l border-[#e3e3e8]" : ""}`}>
                                         <p className={LABEL}>{k.l}</p>
-                                        <p className="text-[20px] font-bold tracking-[-0.03em] tabular-nums text-[#1d1d1f] mt-1.5 leading-none">{k.v}</p>
+                                        <p className="font-bold tracking-[-0.03em] tabular-nums text-[#1d1d1f] mt-1.5 leading-none" style={{ fontSize: mix(20, 16, 0.5) }}>{k.v}</p>
                                         <p className="text-[8.5px] text-[#86868b] mt-1">{k.u}</p>
                                     </div>
                                 ))}
@@ -2324,17 +2339,17 @@ export default function EstimationEditor({
                         )}
 
                         {hasOpinion && (
-                            <div className="grid grid-cols-2 gap-[4mm]">
+                            <div className="grid grid-cols-2 gap-[4mm] shrink-0">
                                 {[
                                     { t: "Points forts", items: data.strengths, icon: ThumbsUp, c: "#248a3d", bg: "#e8f7ec" },
                                     { t: "Points de vigilance", items: data.weaknesses, icon: ThumbsDown, c: "#c93400", bg: "#fff1e6" },
                                 ].filter(b => b.items.length > 0).map(b => (
-                                    <div key={b.t} className="rounded-[18px] border border-[#e8e8ed] p-[5mm]">
-                                        <p className="text-[12px] font-semibold text-[#1d1d1f] flex items-center gap-2 mb-3">
+                                    <div key={b.t} className="rounded-[18px] border border-[#e8e8ed]" style={{ padding: mm(5, 2.8) }}>
+                                        <p className="text-[12px] font-semibold text-[#1d1d1f] flex items-center gap-2" style={{ marginBottom: mix(12, 5) }}>
                                             <span className="w-6 h-6 rounded-full flex items-center justify-center" style={{ backgroundColor: b.bg }}><b.icon size={12} style={{ color: b.c }}/></span>{b.t}
                                         </p>
-                                        <ul className="space-y-1.5">
-                                            {b.items.slice(0, 6).map((s, i) => <li key={i} className="flex gap-2 text-[10.5px] text-[#3a3a3c] leading-snug"><span className="w-1.5 h-1.5 rounded-full mt-[5px] shrink-0" style={{ backgroundColor: b.c }}/>{s}</li>)}
+                                        <ul className="flex flex-col" style={{ gap: mix(6, 2.5) }}>
+                                            {b.items.slice(0, 6).map((s, i) => <li key={i} className="flex gap-2 text-[#3a3a3c] leading-snug" style={{ fontSize: mix(10.5, 9.5, 0.5) }}><span className="w-1.5 h-1.5 rounded-full mt-[5px] shrink-0" style={{ backgroundColor: b.c }}/>{s}</li>)}
                                         </ul>
                                     </div>
                                 ))}
@@ -2342,28 +2357,33 @@ export default function EstimationEditor({
                         )}
 
                         {data.agentAnalysis?.trim() && (
-                            <div className="rounded-[18px] bg-[#f5f5f7] p-[6mm]">
-                                <p className="text-[12px] font-semibold text-[#1d1d1f] flex items-center gap-1.5 mb-2"><Star size={13} style={{ color: COLORS.primary }}/> L&apos;analyse de votre conseiller</p>
-                                <p className="text-[11px] leading-[1.6] text-[#3a3a3c] whitespace-pre-wrap line-clamp-[12]">{data.agentAnalysis}</p>
+                            <div className="rounded-[18px] bg-[#f5f5f7] shrink-0" style={{ padding: mm(6, 3.2) }}>
+                                <p className="text-[12px] font-semibold text-[#1d1d1f] flex items-center gap-1.5" style={{ marginBottom: mix(8, 4) }}><Star size={13} style={{ color: COLORS.primary }}/> L&apos;analyse de votre conseiller</p>
+                                <p className="text-[#3a3a3c] whitespace-pre-wrap line-clamp-[12]" style={{ fontSize: mix(11, 10, 0.5), lineHeight: mix(1.6, 1.4) }}>{data.agentAnalysis}</p>
                             </div>
                         )}
 
-                        <div className="grid grid-cols-3 gap-[3mm]">
+                        <div className="grid grid-cols-3 gap-[3mm] shrink-0">
                             {[
                                 { n: "1", t: "Ventes réelles", d: data.marketStats ? `${data.marketStats.count} ventes notariées (DVF) à moins de ${data.marketStats.radius >= 1000 ? `${data.marketStats.radius / 1000} km` : `${data.marketStats.radius} m`}` : `${data.soldComparables.length} ventes comparables du secteur` },
                                 { n: "2", t: "Offre concurrente", d: data.forSaleComparables.length ? `${data.forSaleComparables.length} bien${data.forSaleComparables.length > 1 ? "s" : ""} comparable${data.forSaleComparables.length > 1 ? "s" : ""} actuellement en vente` : "Biens en vente du quartier analysés" },
                                 { n: "3", t: "Visite du bien", d: "État, prestations, étage, extérieurs et performance énergétique" },
                             ].map(m => (
-                                <div key={m.n} className="rounded-[16px] border border-[#e8e8ed] p-[4mm]">
-                                    <span className="w-5 h-5 rounded-full text-[9px] font-bold text-white flex items-center justify-center" style={{ background: `linear-gradient(135deg, ${COLORS.primary}, ${COLORS.secondary})` }}>{m.n}</span>
-                                    <p className="text-[11px] font-semibold text-[#1d1d1f] mt-2">{m.t}</p>
+                                // Page très remplie : numéro et titre sur la même ligne
+                                <div key={m.n} className="rounded-[16px] border border-[#e8e8ed]" style={{ padding: mm(4, 2.4) }}>
+                                    <div className={compact ? "flex items-center gap-2" : ""}>
+                                        <span className="w-5 h-5 rounded-full text-[9px] font-bold text-white flex items-center justify-center shrink-0" style={{ background: `linear-gradient(135deg, ${COLORS.primary}, ${COLORS.secondary})` }}>{m.n}</span>
+                                        <p className={`text-[11px] font-semibold text-[#1d1d1f] ${compact ? "" : "mt-2"}`}>{m.t}</p>
+                                    </div>
                                     <p className="text-[9px] text-[#6e6e73] mt-0.5 leading-snug">{m.d}</p>
                                 </div>
                             ))}
                         </div>
 
-                        <div className="mt-auto pt-[2mm]">{renderSignature()}</div>
-                    </div>
+                        <div className={`shrink-0 ${d > 0 ? "" : "mt-auto pt-[2mm]"}`}>{renderSignature(mix(15, 12, 0.5))}</div>
+                            </>);
+                        }}
+                    </FitToPage>
                     <div className="mt-auto px-[14mm] pt-[4mm] shrink-0">
                         <p className="text-[6.5px] leading-[1.55] text-[#aeaeb2] text-justify">
                             Sous réserve que l&apos;étude des diagnostics techniques et du carnet numérique du logement ne révèle pas d&apos;anomalie ni de non-conformité affectant sa valeur. Document à usage strictement privé. Conformément à la réglementation, le professionnel de l&apos;immobilier n&apos;est en aucun cas qualifié pour déterminer la surface du bien de manière réglementaire. La surface indiquée a été communiquée par le propriétaire, lue sur le titre de propriété ou sur l&apos;avis de taxe foncière. Pour toute commercialisation de ce bien, le mandant fera appel à un diagnostiqueur professionnel dont la loi impose la qualification pour attester de la surface Carrez s&apos;il s&apos;agit d&apos;un bien en copropriété ou de la surface de plancher pour les maisons de ville ou pavillons. Le professionnel de l&apos;immobilier, rédacteur du présent avis de valeur, n&apos;assume aucune responsabilité sur la surface qui serait attestée par le diagnostiqueur et qui servirait de base juridique dans l&apos;avant-contrat et l&apos;acte définitif, ni sur les conséquences qui y seraient liées. De même, le présent document n&apos;engage pas la responsabilité du professionnel de l&apos;immobilier quant à la conformité de l&apos;état du bâti face aux divers diagnostics (amiante, plomb, gaz, électricité, assainissement, termites, mérules).
